@@ -231,7 +231,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario';
+      modo?: 'probe' | 'inventario' | 'religar';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -240,6 +240,21 @@ export const handler: RequestHandler = async (req, res) => {
 
     if (modo === 'probe') return res.status(200).json({ modo: 'probe', ...(await probe(dataset_id)) });
     if (modo === 'inventario') return res.status(200).json({ modo: 'inventario', ...(await inventario()) });
+
+    // Religa o que foi congelado por erro sem volta, depois que a causa mudou
+    // (token novo, valor configurado). Sem isso a linha ficaria fora da fila
+    // para sempre e o evento se perderia em silencio -- justamente o que esta
+    // fila existe para impedir.
+    if (modo === 'religar') {
+      const { data, error: erroReligar } = await supabase
+        .from('meta_capi_events')
+        .update({ tentativas: 0, proxima_tentativa_em: null, motivo_skip: null } as any)
+        .eq('status', 'failed')
+        .gte('tentativas', MAX_TENTATIVAS)
+        .select('id');
+      if (erroReligar) return res.status(500).json({ error: erroReligar.message });
+      return res.status(200).json({ modo: 'religar', religados: data?.length ?? 0 });
+    }
 
     const tamanho = Math.min(Math.max(Number(limite) || LOTE_PADRAO, 1), 500);
     const agora = new Date().toISOString();
@@ -318,8 +333,21 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     // Falhou: backoff exponencial por linha, erro preservado para o painel.
+    //
+    // Congelar NAO e `proxima_tentativa_em = null`: o filtro da fila trata null
+    // como elegivel (e o estado de quem acabou de entrar), entao null devolvia a
+    // linha para a rodada seguinte -- o oposto do que a doc dizia. Congela-se
+    // esgotando `tentativas`, que e o que o filtro `.lt(MAX_TENTATIVAS)` exclui.
+    // Religar depois de corrigir a causa: { modo: 'religar' }.
+    const semVolta = r.credencial_morta || r.erro_definitivo;
+    const motivo = r.credencial_morta
+      ? 'credencial invalida: renovar token e religar'
+      : `recusado pela Meta, corpo precisa mudar: ${
+          (r.corpo as any)?.error?.error_user_title || (r.corpo as any)?.error?.message || 'erro 400'
+        }`;
+
     for (const f of fila as any[]) {
-      const tentativas = (f.tentativas || 0) + 1;
+      const tentativas = semVolta ? MAX_TENTATIVAS : (f.tentativas || 0) + 1;
       const esperaMin = Math.min(2 ** tentativas * 5, 240);
       await supabase
         .from('meta_capi_events')
@@ -329,8 +357,8 @@ export const handler: RequestHandler = async (req, res) => {
           http_status: r.http_status,
           fbtrace_id: r.fbtrace_id,
           resposta: r.corpo as any,
-          // Credencial morta não se resolve com retry: congela até alguém agir.
-          proxima_tentativa_em: r.credencial_morta
+          ...(semVolta ? { motivo_skip: motivo } : {}),
+          proxima_tentativa_em: semVolta
             ? null
             : new Date(Date.now() + esperaMin * 60_000).toISOString(),
         } as any)

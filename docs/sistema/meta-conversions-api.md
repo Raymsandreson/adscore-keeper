@@ -199,9 +199,24 @@ status oficial.
 **Enviar sem sujar a otimização:** `{ "test_event_code": "TESTxxxxx" }` — aparece
 em Gerenciador de Eventos → Testar eventos e não entra na otimização.
 
-**Credencial morta congela a fila** (`proxima_tentativa_em = null`) em vez de
-queimar tentativas contra um token que não vai voltar sozinho. Renovar o token
-e chamar *Enviar fila agora* destrava.
+**Erro sem volta congela a linha** em vez de queimar tentativas: credencial
+inválida (`190`/`200`/`803`) e recusa de conteúdo (400 com erro da Meta, ex.
+subcode `2804009` — *Purchase sem value*) esgotam `tentativas` e gravam o motivo
+em `motivo_skip`. Depois de corrigir a causa:
+
+```
+POST /functions/meta-capi-dispatch  { "modo": "religar" }
+```
+
+> Corrigido em 03/09/2026: antes o congelamento setava `proxima_tentativa_em =
+> null`, mas o filtro da fila trata `null` como **elegível** (é o estado de quem
+> acabou de entrar) — então a linha voltava na rodada seguinte, o oposto do que
+> esta seção dizia. Congelar é esgotar `tentativas`, que é o que
+> `.lt('tentativas', MAX_TENTATIVAS)` exclui.
+
+**`Purchase` exige `value`.** Medido contra a Meta em 03/09/2026: evento sem
+`value` recebe `400` / `2804009` / *"Missing Value for Purchase Event"*. Não é
+degradação da otimização, é recusa — o evento não entra.
 
 ---
 

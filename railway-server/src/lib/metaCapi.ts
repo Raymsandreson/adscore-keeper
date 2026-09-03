@@ -73,6 +73,12 @@ export interface RespostaMeta {
   corpo: unknown;
   /** Erro de credencial/config: retentar não resolve, alguém precisa agir. */
   credencial_morta: boolean;
+  /**
+   * Payload que a Meta recusa por conteúdo (400 fora de credencial): retentar
+   * manda exatamente o mesmo corpo e recebe exatamente a mesma recusa. Ex.:
+   * subcode 2804009, "Purchase sem value". Alguém precisa corrigir a origem.
+   */
+  erro_definitivo: boolean;
 }
 
 /**
@@ -92,6 +98,7 @@ export async function enviaParaMeta(
       http_status: 0,
       corpo: { erro: 'META_CAPI_ACCESS_TOKEN ou META_CAPI_DATASET_ID ausente no ambiente' },
       credencial_morta: true,
+      erro_definitivo: false,
     };
   }
 
@@ -119,6 +126,8 @@ export async function enviaParaMeta(
 
       const codigo = corpo?.error?.code;
       const credencial_morta = codigo === 190 || codigo === 200 || codigo === 803;
+      // 400 que não é credencial é recusa de conteúdo: mesmo corpo, mesma resposta.
+      const erro_definitivo = !credencial_morta && resp.status === 400 && !!corpo?.error;
 
       ultimo = {
         ok: resp.ok && !corpo?.error,
@@ -127,9 +136,10 @@ export async function enviaParaMeta(
         fbtrace_id: corpo?.fbtrace_id ?? corpo?.error?.fbtrace_id,
         corpo,
         credencial_morta,
+        erro_definitivo,
       };
 
-      if (ultimo.ok || credencial_morta) return ultimo;
+      if (ultimo.ok || credencial_morta || erro_definitivo) return ultimo;
       if (resp.status !== 429 && resp.status < 500) return ultimo;
 
       if (tentativa < maxTentativas) {
@@ -144,6 +154,7 @@ export async function enviaParaMeta(
         http_status: 0,
         corpo: { erro: err instanceof Error ? err.message : String(err) },
         credencial_morta: false,
+        erro_definitivo: false,
       };
       if (tentativa < maxTentativas) {
         await new Promise((r) => setTimeout(r, 500 * 2 ** (tentativa - 1)));
@@ -151,7 +162,15 @@ export async function enviaParaMeta(
     }
   }
 
-  return ultimo ?? { ok: false, http_status: 0, corpo: { erro: 'sem resposta' }, credencial_morta: false };
+  return (
+    ultimo ?? {
+      ok: false,
+      http_status: 0,
+      corpo: { erro: 'sem resposta' },
+      credencial_morta: false,
+      erro_definitivo: false,
+    }
+  );
 }
 
 /** Carimba o estado da credencial para o painel e para o alerta. */
