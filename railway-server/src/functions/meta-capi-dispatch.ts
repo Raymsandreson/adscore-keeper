@@ -85,6 +85,70 @@ async function diagnosticaAcesso(dataset: string): Promise<{
 }
 
 /**
+ * Qual dataset as campanhas REALMENTE usam.
+ *
+ * O nome do conjunto de dados nao responde isso: "COMPRA ..." pode nao estar em
+ * anuncio ativo nenhum. Quem responde e o `promoted_object.pixel_id` dos
+ * conjuntos de anuncios ativos. Mandar conversao para dataset que nenhuma
+ * campanha usa devolve 200, enche o Gerenciador de Eventos e nao otimiza nada --
+ * a mesma classe de silencio do subcode 33 de julho, por outro caminho.
+ *
+ * Serve tambem de detector: quando trocarem de pixel de novo, isso mostra a
+ * troca em vez de deixar a fila alimentando um dataset orfao.
+ */
+async function inventario() {
+  const g = async (path: string) => {
+    const r = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
+        `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+    );
+    return (await r.json()) as any;
+  };
+
+  const contas = await g('me/adaccounts?fields=id,name,account_status&limit=50');
+  if (contas?.error) return { error: contas.error.message };
+
+  const porPixel: Record<string, { anuncios: number; contas: string[]; eventos: string[] }> = {};
+  const resultado: Array<Record<string, unknown>> = [];
+
+  for (const c of contas?.data ?? []) {
+    const ads = await g(
+      `${c.id}/adsets?fields=name,effective_status,optimization_goal,promoted_object&limit=200`,
+    );
+    if (ads?.error) {
+      resultado.push({ conta: c.name, id: c.id, erro: ads.error.message });
+      continue;
+    }
+    const ativos = (ads?.data ?? []).filter((a: any) => a.effective_status === 'ACTIVE');
+    const semPixel: string[] = [];
+
+    for (const a of ativos) {
+      const pid = a?.promoted_object?.pixel_id;
+      if (!pid) {
+        semPixel.push(a.name);
+        continue;
+      }
+      const slot = (porPixel[pid] ??= { anuncios: 0, contas: [], eventos: [] });
+      slot.anuncios += 1;
+      if (!slot.contas.includes(c.name)) slot.contas.push(c.name);
+      const ev = a?.promoted_object?.custom_event_type || a?.optimization_goal;
+      if (ev && !slot.eventos.includes(ev)) slot.eventos.push(ev);
+    }
+
+    resultado.push({
+      conta: c.name,
+      id: c.id,
+      status_conta: c.account_status,
+      conjuntos_total: (ads?.data ?? []).length,
+      conjuntos_ativos: ativos.length,
+      ativos_sem_pixel: semPixel.length,
+    });
+  }
+
+  return { contas: resultado, uso_por_dataset: porPixel, dataset_configurado: CAPI_DATASET_ID };
+}
+
+/**
  * Checa a credencial sem gastar evento: /me diz se o token vive.
  *
  * `datasetAlvo` serve para sondar um dataset diferente do configurado, sem
@@ -160,7 +224,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe';
+      modo?: 'probe' | 'inventario';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -168,6 +232,7 @@ export const handler: RequestHandler = async (req, res) => {
     };
 
     if (modo === 'probe') return res.status(200).json({ modo: 'probe', ...(await probe(dataset_id)) });
+    if (modo === 'inventario') return res.status(200).json({ modo: 'inventario', ...(await inventario()) });
 
     const tamanho = Math.min(Math.max(Number(limite) || LOTE_PADRAO, 1), 500);
     const agora = new Date().toISOString();
