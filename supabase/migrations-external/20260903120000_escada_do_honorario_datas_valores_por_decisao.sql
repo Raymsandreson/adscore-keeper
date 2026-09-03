@@ -43,10 +43,13 @@
 -- O QUE ELA DELIBERADAMENTE NAO FAZ
 --   1. Nao calcula "honorario esperado naquela data". O valor por decisao aqui
 --      e NOMINAL (dano moral + estetico + base x meses, como consta da peca).
---      Virar CJCM exige a data-base da correcao, que nao esta gravada em lugar
---      nenhum do banco — ver docs/sistema/metodologia-atualizacao.md secao 0.
---      Multiplicar por coeficiente aqui repetiria o erro de 19/08/2026, que
---      inventou R$ 260 mil numa tela.
+--      O TERMO INICIAL da correcao existe: quem o determina e cada sentenca /
+--      acordao, e ele esta em jm_decisoes.termo_inicial_jcm (435 de 439 linhas,
+--      99,1%; em 32% delas coincide com data_decisao, nas outras 68% e anterior).
+--      O que falta e a data FINAL ate a qual a Tab. Aux corrigiu o
+--      condenacao_cjcm (docs/sistema/metodologia-atualizacao.md secao 0) e a
+--      regua de juros de mora. Multiplicar o CJCM por coeficiente aqui repetiria
+--      o erro de 19/08/2026, que inventou R$ 260 mil numa tela.
 --   2. Nao guarda os percentuais de liberacao (10/5/10/5/10). Aquilo e clausula
 --      do fundo, nao fato do processo. A view entrega os fatos em que o
 --      percentual se apoia.

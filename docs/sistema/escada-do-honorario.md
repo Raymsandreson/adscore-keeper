@@ -149,13 +149,28 @@ de conserto que já existe. A view é **detector, não filtro**.
 ## 5. O que as views deliberadamente NÃO fazem
 
 1. **Não calculam "honorário esperado naquela data".** O valor por decisão aqui é
-   **nominal** — o que a peça escreveu. Virar CJCM exige a data-base da correção,
-   que **não está gravada em lugar nenhum do banco** (ver
-   `metodologia-atualizacao.md`, seção 0). Aplicar coeficiente aqui repetiria o
-   erro de 19/08/2026, que inventou R$ 260 mil numa tela.
-   Prova de que a conta não fecha sozinha: no caso 107, os componentes nominais
-   corrigidos por `jm_atualizar` dão R$ 1.229.220,30; `jm_partes.condenacao_cjcm`
-   traz R$ 1.635.037,25. A diferença é juros de mora, cuja régua não está no banco.
+   **nominal** — o que a peça escreveu.
+
+   > **Correção de 03/09/2026.** A versão anterior deste texto dizia que "a
+   > data-base da correção não está gravada em lugar nenhum do banco". Está
+   > errado. Quem determina o termo inicial é **cada sentença ou acórdão**, e ele
+   > está em **`jm_decisoes.termo_inicial_jcm`** — preenchido em **435 das 439
+   > decisões (99,1%)**; em `jm_partes.termo_inicial_jcm`, em 799 de 1.222 partes
+   > (65,4%). Em 32% das decisões o termo é a própria data da decisão; nas outras
+   > 68% é anterior (data do acidente, do ajuizamento, da citação) — por isso a
+   > coluna existe separada e **não** pode ser substituída por `data_decisao`.
+
+   O que continua faltando é outra coisa: a **data FINAL** até a qual a Tab. Aux
+   corrigiu o `condenacao_cjcm` (ver `metodologia-atualizacao.md`, seção 0). Sem
+   ela não dá para saber se aquele CJCM está velho, nem completar a correção até
+   hoje. Aplicar coeficiente sobre o CJCM repetiria o erro de 19/08/2026, que
+   inventou R$ 260 mil numa tela.
+
+   Para o valor NOMINAL da decisão o caminho está aberto: `jm_atualizar(valor,
+   jm_decisoes.termo_inicial_jcm, ramo)` corrige da data que a própria peça
+   mandou. Falta só a régua de **juros de mora** — no caso 107 o nominal
+   corrigido dá R$ 1.229.220,30 contra R$ 1.635.037,25 de `condenacao_cjcm`, e a
+   diferença é juros.
 2. **Não guardam os percentuais 10/5/10/5/10.** Aquilo é cláusula do fundo, não
    fato do processo. As views entregam os fatos em que o percentual se apoia.
 3. **Granularidade é o PROCESSO.** A carteira é `(processo × cliente)`; o
@@ -169,7 +184,7 @@ de conserto que já existe. A view é **detector, não filtro**.
 | # | Falta | Sem isso |
 |---|---|---|
 | 1 | Ler as peças dos **65 degraus** marcados `ATINGIDO_SEM_VALOR` nos 32 casos | a reestimativa apoia em número velho |
-| 2 | A **data-base da correção** do CJCM | não dá para converter valor nominal da decisão em valor de hoje |
+| 2 | A **data final** da correção da Tab. Aux (o termo INICIAL já existe em `jm_decisoes.termo_inicial_jcm`), e a régua de **juros de mora** | não dá para converter valor nominal da decisão em valor de hoje |
 | 3 | Os **percentuais do contrato do fundo** gravados em algum lugar (hoje só na aba Simulador) | a liberação continua sendo conta de planilha, não do sistema |
 | 4 | `0100419-74.2021.5.01.0281`: `hs = R$ 20.576.341,93` contra condenação nominal de R$ 1.756.900,58 | valor improvável — detector aponta, a peça decide. Não filtrar na tela |
 
