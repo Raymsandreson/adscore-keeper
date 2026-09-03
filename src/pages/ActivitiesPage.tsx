@@ -309,6 +309,13 @@ const ActivitiesPage = () => {
   // Desativados na aba Times somem dos seletores de assessor (filterAssignableMembers).
   useInactiveUserIds();
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  /**
+   * Eixo do calendário. 'prazo' = dia para o qual a atividade foi marcada (deadline, caindo
+   * pra notification_date). 'conclusao' = dia em que ela foi de fato concluída (completed_at),
+   * independente de quando estava marcada. Sessão apenas: não persiste entre recargas, porque
+   * o modo força Status=Concluída e voltar assim depois de um F5 seria surpresa.
+   */
+  const [calendarDateMode, setCalendarDateMode] = useState<'prazo' | 'conclusao'>('prazo');
   const [leadSearch, setLeadSearch] = useState('');
   const [searchedLeads, setSearchedLeads] = useState<LeadOption[]>([]);
 
@@ -610,6 +617,40 @@ const ActivitiesPage = () => {
       .catch(() => setLeadGroupsRaw(null));
   }, []);
 
+  /**
+   * No modo "Por conclusão" o recorte vai para o SERVIDOR: só as concluídas dentro do mês
+   * exibido no calendário. Sem isso a busca traria as 5.000 mais recentes por created_at e
+   * qualquer mês passado apareceria pela metade. startOfMonth/endOfMonth são locais; o
+   * toISOString converte para o instante certo (completed_at é timestamptz).
+   */
+  const completedRange = useMemo(() => {
+    if (calendarDateMode !== 'conclusao') return null;
+    return {
+      start: startOfMonth(calendarMonth).toISOString(),
+      end: endOfMonth(calendarMonth).toISOString(),
+    };
+  }, [calendarDateMode, calendarMonth]);
+
+  /**
+   * Troca o eixo do calendário. Ao entrar em "Por conclusão" o chip de Status passa a dizer
+   * "Concluída" — é o que realmente vale ali — e a seleção anterior fica guardada para
+   * voltar intacta quando o usuário retorna para "Por prazo". Os dias marcados são zerados
+   * porque um dia escolhido em um eixo quer dizer outra coisa no outro.
+   */
+  const statusAntesDaConclusaoRef = useRef<string[] | null>(null);
+  const handleCalendarDateMode = (next: 'prazo' | 'conclusao') => {
+    if (next === calendarDateMode) return;
+    if (next === 'conclusao') {
+      statusAntesDaConclusaoRef.current = filterStatus;
+      setFilterStatus(['concluida']);
+    } else if (statusAntesDaConclusaoRef.current) {
+      setFilterStatus(statusAntesDaConclusaoRef.current);
+      statusAntesDaConclusaoRef.current = null;
+    }
+    setSelectedCalDays([]);
+    setCalendarDateMode(next);
+  };
+
   const getFilterParams = () => ({
     // 'atrasada' é situação derivada (prazo vencido), não um status do banco.
     // Quando está selecionada, o hook busca TODAS as vencidas não concluídas no servidor,
@@ -631,6 +672,9 @@ const ActivitiesPage = () => {
     // Sem isso, o teto padrão de 500 corta pendentes antigas quando "Todos" está ativo
     // (as mais recentes 500 enchem com concluídas e a lista perde pendentes).
     limit: 5000,
+    // Modo "Por conclusão" manda no status e desliga o caminho de atrasadas: perguntar
+    // "o que foi feito nesse dia" só tem resposta dentro das concluídas.
+    ...(completedRange ? { status: 'concluida', overdue: false, completedBetween: completedRange } : {}),
   });
 
   // Re-sync from localStorage when the storage key changes (e.g. user logs in after mount).
@@ -657,7 +701,9 @@ const ActivitiesPage = () => {
 
   useEffect(() => {
     fetchActivities(getFilterParams());
-  }, [fetchActivities, filterStatus, filterType, filterAssignee, filterCreatedBy, filterLead, filterContact, filterWorkflow, filterCase]);
+    // completedRange entra nas dependências porque no modo "Por conclusão" virar o mês do
+    // calendário muda o recorte no servidor — não é mais só um filtro de tela.
+  }, [fetchActivities, filterStatus, filterType, filterAssignee, filterCreatedBy, filterLead, filterContact, filterWorkflow, filterCase, completedRange]);
 
   useEffect(() => {
     if (viewMode === 'blocks') setOpenFilterKey(null);
@@ -2655,20 +2701,32 @@ const ActivitiesPage = () => {
     return eachDayOfInterval({ start, end });
   }, [calendarMonth]);
 
+  /**
+   * Dia em que a atividade cai no calendário, conforme o eixo escolhido.
+   * - 'prazo': deadline, caindo pra notification_date quando não há prazo (ex.: concluídas
+   *   sem prazo definido mas com data de notificação). Colunas de data pura — slice basta.
+   * - 'conclusao': completed_at, que é timestamptz. Precisa virar dia LOCAL via format:
+   *   um slice(0,10) no ISO jogaria tudo concluído depois das 21h para o dia seguinte.
+   */
+  const dateKeyDaAtividade = useCallback((a: LeadActivity): string | null => {
+    if (calendarDateMode === 'conclusao') {
+      return a.completed_at ? format(parseISO(a.completed_at), 'yyyy-MM-dd') : null;
+    }
+    const raw = a.deadline || (a as any).notification_date || null;
+    return raw ? raw.slice(0, 10) : null;
+  }, [calendarDateMode]);
+
   const activitiesByDate = useMemo(() => {
     const map: Record<string, LeadActivity[]> = {};
     activities.forEach(a => {
-      // Usa deadline como chave principal; cai pra notification_date quando não há prazo
-      // (ex: atividades concluídas sem prazo definido mas com data de notificação)
-      const raw = a.deadline || (a as any).notification_date || null;
-      const key = raw ? raw.slice(0, 10) : null;
+      const key = dateKeyDaAtividade(a);
       if (key) {
         if (!map[key]) map[key] = [];
         map[key].push(a);
       }
     });
     return map;
-  }, [activities]);
+  }, [activities, dateKeyDaAtividade]);
 
   // Stats
   const stats = useMemo(() => {
@@ -2706,8 +2764,7 @@ const ActivitiesPage = () => {
     if (!term) {
       if (selectedCalDays.length > 0) {
         list = list.filter(a => {
-          const raw = a.deadline || a.notification_date;
-          const dateKey = raw ? raw.slice(0, 10) : null;
+          const dateKey = dateKeyDaAtividade(a);
           return dateKey ? selectedCalDays.includes(dateKey) : false;
         });
       } else if (viewMode === 'list' && !filterStatus.includes('atrasada') && !filterInExecution && filterCase.length === 0) {
@@ -2717,9 +2774,11 @@ const ActivitiesPage = () => {
         // Atividades sem nenhuma data continuam visíveis (não têm lugar no calendário).
         const monthPrefix = format(calendarMonth, 'yyyy-MM');
         list = list.filter(a => {
-          const raw = a.deadline || a.notification_date;
-          const dateKey = raw ? raw.slice(0, 10) : null;
-          return !dateKey || dateKey.startsWith(monthPrefix);
+          const dateKey = dateKeyDaAtividade(a);
+          // No eixo de conclusão, "sem data" quer dizer "não foi concluída" — some da lista.
+          // No eixo de prazo, atividade sem nenhuma data continua visível (não tem lugar no calendário).
+          if (!dateKey) return calendarDateMode !== 'conclusao';
+          return dateKey.startsWith(monthPrefix);
         });
       }
     }
@@ -2749,7 +2808,7 @@ const ActivitiesPage = () => {
       const rb = priorityRank[b.priority || 'normal'] ?? 2;
       return ra - rb;
     });
-  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus, filterHasDocs, activityIdsWithDocs, filterInExecution, execTodayMap, searchText, availableCases]);
+  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, calendarDateMode, dateKeyDaAtividade, filterStatus, filterHasDocs, activityIdsWithDocs, filterInExecution, execTodayMap, searchText, availableCases]);
 
   // A busca sem teto (filtro Atrasada) pode trazer milhares de linhas; o DOM não aguenta
   // todos os cards de uma vez — renderiza em lotes e revela o resto sob demanda.
@@ -2757,7 +2816,7 @@ const ActivitiesPage = () => {
   const [renderLimit, setRenderLimit] = useState(RENDER_BATCH);
   useEffect(() => {
     setRenderLimit(RENDER_BATCH);
-  }, [filterStatus, filterType, filterAssignee, filterCreatedBy, filterLead, filterContact, filterWorkflow, filterCase, selectedCalDays, calendarMonth, viewMode]);
+  }, [filterStatus, filterType, filterAssignee, filterCreatedBy, filterLead, filterContact, filterWorkflow, filterCase, selectedCalDays, calendarMonth, calendarDateMode, viewMode]);
 
   // --- Seleção múltipla para passar atividades a outro assessor ---------------
   // Só alcança o que está renderizado na tela (displayedActivities até o
@@ -4586,7 +4645,7 @@ const ActivitiesPage = () => {
         </div>
 
         {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterCreatedBy.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || filterWorkflow.length > 0 || selectedCalDays.length > 0 || filterHasDocs || filterInExecution || searchText) && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterCreatedBy([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setFilterWorkflow([]); setSelectedCalDays([]); setFilterHasDocs(false); setFilterInExecution(false); setSearchText(''); }}>
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setCalendarDateMode('prazo'); statusAntesDaConclusaoRef.current = null; setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterCreatedBy([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setFilterWorkflow([]); setSelectedCalDays([]); setFilterHasDocs(false); setFilterInExecution(false); setSearchText(''); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
         )}
@@ -5111,6 +5170,13 @@ const ActivitiesPage = () => {
                     {format(parseISO(selectedCalDay), "dd/MM")}
                   </Badge>
                 )}
+                {/* Com o calendário fechado, o eixo ativo continua visível: sem isso o mesmo
+                    número no mesmo dia significaria duas coisas diferentes sem aviso. */}
+                {calendarDateMode === 'conclusao' && (
+                  <Badge className="text-[10px] h-4 px-1.5 bg-green-600 hover:bg-green-600">
+                    por conclusão
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-1">
                 {/* Stats mini preview when collapsed */}
@@ -5137,6 +5203,32 @@ const ActivitiesPage = () => {
                     <ChevronRight className="h-3.5 w-3.5" />
                   </Button>
                 </div>
+
+                {/* Eixo do calendário: o dia em que a atividade foi MARCADA para fazer
+                    (prazo) ou o dia em que ela foi REALMENTE concluída. */}
+                <div className="px-3 pb-2 flex gap-1">
+                  {([
+                    { key: 'prazo' as const, label: 'Por prazo', hint: 'Cada dia mostra o que estava MARCADO para aquele dia (prazo).' },
+                    { key: 'conclusao' as const, label: 'Por conclusão', hint: 'Cada dia mostra o que foi CONCLUÍDO naquele dia, não importa para quando estava marcado.' },
+                  ]).map(opt => (
+                    <Button
+                      key={opt.key}
+                      variant={calendarDateMode === opt.key ? 'default' : 'outline'}
+                      size="sm"
+                      title={opt.hint}
+                      className="h-6 flex-1 px-1 text-[10px]"
+                      onClick={(e) => { e.stopPropagation(); handleCalendarDateMode(opt.key); }}
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+                {calendarDateMode === 'conclusao' && (
+                  <div className="px-3 pb-2 -mt-1 text-[10px] leading-tight text-muted-foreground">
+                    Mostrando o que foi <strong className="text-green-600">concluído</strong> em cada dia de {format(calendarMonth, 'MMMM', { locale: ptBR })}, independente do prazo marcado.
+                  </div>
+                )}
+
                 <div className="px-3 pb-2">
                   <div className="grid grid-cols-7 gap-0.5 text-center">
                     {weekDays.map(d => (

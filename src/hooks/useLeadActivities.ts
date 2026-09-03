@@ -107,6 +107,10 @@ export function useLeadActivities() {
     limit?: number;
     /** Busca também TODAS as atrasadas (prazo vencido, não concluídas), paginando sem teto de linhas. */
     overdue?: boolean;
+    /** Recorte pelo DIA EM QUE FOI CONCLUÍDA (completed_at), não pelo prazo. Instantes ISO.
+     *  Precisa vir do banco: a busca normal traz as N mais recentes por created_at, então
+     *  filtrar completed_at no cliente mentiria em qualquer dia que não fosse hoje. */
+    completedBetween?: { start: string; end: string };
   }) => {
     setLoading(true);
     try {
@@ -194,7 +198,23 @@ export function useLeadActivities() {
       // Busca normal (limitada). Com overdue ativo e nenhum status real selecionado, ela é
       // dispensável — as atrasadas já cobrem tudo que a tela vai exibir.
       let rows: LeadActivity[] = [];
-      if (!filters?.overdue || statusVals.length > 0) {
+      if (filters?.completedBetween) {
+        // Modo "Por conclusão" do calendário: o eixo é completed_at, não deadline.
+        // Pagina em blocos de 1000 — um mês de concluídas do time inteiro passa do teto.
+        const PAGE = 1000;
+        for (let from = 0; ; from += PAGE) {
+          const { data, error } = await buildQuery()
+            .eq('status', 'concluida')
+            .gte('completed_at', filters.completedBetween.start)
+            .lte('completed_at', filters.completedBetween.end)
+            .order('completed_at', { ascending: false })
+            .range(from, from + PAGE - 1);
+          if (error) throw error;
+          const chunk = (data || []) as LeadActivity[];
+          rows.push(...chunk);
+          if (chunk.length < PAGE) break;
+        }
+      } else if (!filters?.overdue || statusVals.length > 0) {
         let query = buildQuery().order('created_at', { ascending: false });
         if (statusVals.length === 1) query = query.eq('status', statusVals[0]);
         else if (statusVals.length > 1) query = query.in('status', statusVals);
@@ -205,7 +225,7 @@ export function useLeadActivities() {
         rows = (data || []) as LeadActivity[];
       }
 
-      if (filters?.overdue) {
+      if (filters?.overdue && !filters?.completedBetween) {
         // Todas as vencidas não concluídas, em blocos de 1000 (PostgREST corta acima disso).
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
