@@ -13,7 +13,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
-import { useSharedWithMe } from '@/hooks/useSharedWithMe';
+import { useSharedWithMe, sharedConversationKey, type ShareMark } from '@/hooks/useSharedWithMe';
 import { useProfileNames } from '@/hooks/useProfileNames';
 import { Share2, ClipboardList } from 'lucide-react';
 import {
@@ -147,28 +147,36 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     }, 400);
     return () => window.clearTimeout(timeoutId);
   }, [search, onServerSearch]);
-  const { items: sharedWithMe, sharedByMe } = useSharedWithMe();
+  const { marksByKey } = useSharedWithMe();
   const { fetchProfileNames, getDisplayName } = useProfileNames();
+  // Sub-filtros do chip "Compartilhadas": direção e contraparte.
+  const [sharedDirection, setSharedDirection] = useState<'all' | 'in' | 'out'>('all');
+  const [sharedPerson, setSharedPerson] = useState<string>('all');
 
-  // Phones (current instance) shared with me OR shared by me with others
-  const sharedPhonesAll = useMemo(() => {
-    const inst = (selectedInstanceName || '').trim().toLowerCase();
-    const all = [...sharedWithMe, ...sharedByMe];
-    return new Set(
-      all
-        .filter(s => !inst || (s.instance_name || '').trim().toLowerCase() === inst)
-        .map(s => s.phone)
-    );
-  }, [sharedWithMe, sharedByMe, selectedInstanceName]);
+  // Compartilhamentos que envolvem esta pessoa — recebidos E enviados, de
+  // QUALQUER instância. Recortar pela instância selecionada escondia justamente
+  // a conversa compartilhada por quem atende em outra instância.
+  const shareMarkOf = (conv: WhatsAppConversation): ShareMark | undefined =>
+    marksByKey.get(sharedConversationKey(conv.phone, conv.instance_name));
 
-  const sharedUnreadPhones = useMemo(() => {
-    const inst = (selectedInstanceName || '').trim().toLowerCase();
-    return new Set(
-      sharedWithMe
-        .filter(s => !s.acknowledged_at && (!inst || (s.instance_name || '').trim().toLowerCase() === inst))
-        .map(s => s.phone)
-    );
-  }, [sharedWithMe, selectedInstanceName]);
+  const sharedUnackKeys = useMemo(
+    () => new Set(Array.from(marksByKey.values()).filter(m => m.unacknowledged).map(m => m.key)),
+    [marksByKey]
+  );
+
+  // Pessoas que aparecem nos compartilhamentos, para o filtro "quem compartilhou".
+  const sharePeople = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const mark of marksByKey.values()) {
+      for (const id of mark.people) counts.set(id, (counts.get(id) || 0) + 1);
+    }
+    return Array.from(counts.entries()).map(([id, count]) => ({ id, count }));
+  }, [marksByKey]);
+
+  useEffect(() => {
+    if (sharePeople.length === 0) return;
+    fetchProfileNames(sharePeople.map(p => p.id));
+  }, [sharePeople, fetchProfileNames]);
 
   useEffect(() => {
     setSearch('');
@@ -459,7 +467,18 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     if (quickFilter === 'unanswered' && !isUnanswered(c)) return false;
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
     if (quickFilter === 'groups' && !isGroupConversation(c)) return false;
-    if (quickFilter === 'shared' && !sharedPhonesAll.has(c.phone)) return false;
+    if (quickFilter === 'shared') {
+      const mark = shareMarkOf(c);
+      if (!mark) return false;
+      if (sharedDirection === 'in' && mark.incoming.length === 0) return false;
+      if (sharedDirection === 'out' && mark.outgoing.length === 0) return false;
+      if (sharedPerson !== 'all') {
+        const matchesPerson =
+          (sharedDirection !== 'out' && mark.incoming.some(s => s.shared_by === sharedPerson)) ||
+          (sharedDirection !== 'in' && mark.outgoing.some(s => s.shared_with === sharedPerson));
+        if (!matchesPerson) return false;
+      }
+    }
     if (quickFilter === 'activity_pending' && !phonesWithPendingActivity.has(c.phone)) return false;
     // Filtros de atribuição (só fazem sentido para WhatsApp API: cloud_gerencia)
     if (quickFilter === 'mine') {
@@ -519,7 +538,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     }
 
     return true;
-  }), [conversations, search, quickFilter, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls, sharedPhonesAll, phonesWithPendingActivity]);
+  }), [conversations, search, quickFilter, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls, marksByKey, sharedDirection, sharedPerson, phonesWithPendingActivity]);
 
   // Sort conversations based on mode
   const sortedFiltered = useMemo(() => {
@@ -616,7 +635,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     unanswered: conversations.filter(c => isUnanswered(c)).length,
     calls: conversations.filter(c => hasCalls(c)).length,
     groups: conversations.filter(c => isGroupConversation(c)).length,
-    shared: conversations.filter(c => sharedPhonesAll.has(c.phone)).length,
+    shared: conversations.filter(c => !!shareMarkOf(c)).length,
     activity_pending: conversations.filter(c => phonesWithPendingActivity.has(c.phone)).length,
     mine: conversations.filter(c => {
       if (!ehInstanciaCloud(c.instance_name)) return false;
@@ -744,7 +763,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
                       )}>
                         {counts[f.key]}
                       </span>
-                      {f.key === 'shared' && sharedUnreadPhones.size > 0 && (
+                      {f.key === 'shared' && sharedUnackKeys.size > 0 && (
                         <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background animate-pulse" />
                       )}
                     </button>
@@ -769,6 +788,43 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
                     </button>
                   ))}
                 </div>
+
+                {/* Sub-filtros das compartilhadas: direção e contraparte */}
+                {quickFilter === 'shared' && (
+                  <div className="flex items-center gap-1 flex-wrap px-0.5">
+                    {([
+                      { key: 'all' as const, label: 'Todas' },
+                      { key: 'in' as const, label: 'Comigo' },
+                      { key: 'out' as const, label: 'Eu compartilhei' },
+                    ]).map(d => (
+                      <button
+                        key={d.key}
+                        onClick={() => setSharedDirection(d.key)}
+                        className={cn(
+                          "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors",
+                          sharedDirection === d.key
+                            ? "bg-secondary text-secondary-foreground"
+                            : "bg-muted/50 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        )}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                    <Select value={sharedPerson} onValueChange={setSharedPerson}>
+                      <SelectTrigger className="h-6 w-[150px] text-[10px]">
+                        <SelectValue placeholder="Quem compartilhou" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all" className="text-xs">Qualquer pessoa</SelectItem>
+                        {sharePeople.map(p => (
+                          <SelectItem key={p.id} value={p.id} className="text-xs">
+                            {getDisplayName(p.id) || `${p.id.slice(0, 8)}…`} ({p.count})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 {/* Advanced filters - compact horizontal row */}
                 <div className="px-2 py-1 border-b flex flex-wrap gap-1 items-center">
@@ -979,6 +1035,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     const stage = board?.stages.find(s => s.id === info?.current_stage);
     const isSelected = selectedPhone === conv.phone && getConversationKey(conv.phone, conv.instance_name) === getConversationKey(selectedPhone || '', selectedInstanceName);
     const isLocked = privatePhones?.has(getConversationKey(conv.phone, conv.instance_name)) || false;
+    const shareMark = shareMarkOf(conv);
     const labelLookup = labelInfoByInstance.get((conv.instance_name || '').trim().toLowerCase());
     const conversationLabels = (conv.label_ids || [])
       .map((id) => labelLookup?.get(normalizeLabelId(id)))
@@ -1055,6 +1112,50 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
                 )}
               </div>
             </div>
+
+            {shareMark && (
+              <div className="flex items-center gap-1 mt-1 flex-wrap">
+                {shareMark.incoming.map(share => (
+                  <span
+                    key={`in-${share.id}`}
+                    className={cn(
+                      "text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1 max-w-[170px]",
+                      isSelected
+                        ? "bg-primary-foreground/20 text-primary-foreground"
+                        : share.acknowledged_at
+                          ? "bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
+                          : "bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-200"
+                    )}
+                    title={`Compartilhada com você em ${format(new Date(share.created_at), "dd/MM 'às' HH:mm", { locale: ptBR })}`}
+                  >
+                    <ArrowDownToLine className="h-2.5 w-2.5 flex-shrink-0" />
+                    <span className="truncate">
+                      de {getDisplayName(share.shared_by) || `${share.shared_by.slice(0, 8)}…`}
+                    </span>
+                    {!share.acknowledged_at && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-destructive flex-shrink-0" />
+                    )}
+                  </span>
+                ))}
+                {shareMark.outgoing.map(share => (
+                  <span
+                    key={`out-${share.id}`}
+                    className={cn(
+                      "text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1 max-w-[170px]",
+                      isSelected
+                        ? "bg-primary-foreground/20 text-primary-foreground"
+                        : "bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
+                    )}
+                    title={`Você compartilhou em ${format(new Date(share.created_at), "dd/MM 'às' HH:mm", { locale: ptBR })}`}
+                  >
+                    <ArrowUpFromLine className="h-2.5 w-2.5 flex-shrink-0" />
+                    <span className="truncate">
+                      para {getDisplayName(share.shared_with) || `${share.shared_with.slice(0, 8)}…`}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            )}
 
             {(conversationLabels.length > 0 || board || stage || ehInstanciaCloud(conv.instance_name)) && (
               <div className="flex items-center gap-1 mt-1 flex-wrap">

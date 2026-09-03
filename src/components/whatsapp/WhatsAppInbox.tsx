@@ -59,7 +59,8 @@ import { FocusDashboard } from './FocusDashboard/FocusDashboard';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import { getConversationSummaries } from '@/integrations/supabase/external-rpc';
 import { toast } from 'sonner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Lead } from '@/hooks/useLeads';
@@ -819,47 +820,105 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   // Fetch shared conversation records for this user
   useEffect(() => {
     if (!user) return;
+    let alive = true;
+
     const fetchShared = async () => {
-      const { data } = await supabase
+      // Compartilhadas COMIGO: alimentam também o cabeçalho do chat
+      // (identify_sender / can_reshare).
+      const { data: withMeData } = await supabase
         .from('whatsapp_conversation_shares')
         .select('phone, instance_name, identify_sender, can_reshare, shared_by')
         .eq('shared_with', user.id);
-      const shares = (data || []) as ConvShare[];
-      setSharedConvs(shares);
+      if (!alive) return;
+      const withMe = (withMeData || []) as ConvShare[];
+      setSharedConvs(withMe);
 
-      // Fetch messages for shared conversations that may not be in the user's instances
-      if (shares.length === 0) {
+      // Compartilhadas POR MIM: a sidebar precisa mostrar os dois lados. Uma
+      // conversa que eu compartilhei de uma instância que não estou vendo agora
+      // sumia da lista, e com ela sumia do filtro "Compartilhadas".
+      const { data: byMeData } = await supabase
+        .from('whatsapp_conversation_shares')
+        .select('phone, instance_name')
+        .eq('shared_by', user.id);
+      if (!alive) return;
+
+      const targets = new Map<string, { phone: string; instance_name: string }>();
+      for (const s of [...withMe, ...((byMeData || []) as { phone: string; instance_name: string }[])]) {
+        targets.set(getConversationKey(s.phone, s.instance_name), {
+          phone: s.phone,
+          instance_name: s.instance_name,
+        });
+      }
+
+      if (targets.size === 0) {
         setSharedMessages([]);
         return;
       }
 
-      const phones = [...new Set(shares.map(s => s.phone))];
-      // Egress: evitar select('*') (metadata jsonb pesado). Buscar só o que a
-      // construção da lista usa abaixo.
-      const { data: msgs } = await supabase
-        .from('whatsapp_messages')
-        .select('id, phone, contact_name, contact_id, lead_id, message_text, message_type, media_url, direction, read_at, created_at, instance_name')
-        .in('phone', phones)
-        .order('created_at', { ascending: false })
-        .limit(500);
+      // Fonte é o Supabase EXTERNO. O espelho no Cloud é sincronizado em lote e
+      // fica atrasado — conversa compartilhada que ainda não espelhou não tinha
+      // mensagem nenhuma aqui e simplesmente não aparecia na lista.
+      try {
+        await ensureExternalSession();
+      } catch (sessionError) {
+        console.error('External session failed (shares):', sessionError);
+      }
 
-      if (!msgs) { setSharedMessages([]); return; }
-
-      // Build conversations from messages — keyed by phone + instance_name to avoid
-      // collisions when the same phone exists across multiple WhatsApp instances.
       const convMap = new Map<string, WhatsAppConversation>();
-      for (const msg of msgs) {
-        // Only include messages from shared instances
-        const isShared = shares.some(
-          s => getConversationKey(s.phone, s.instance_name) === getConversationKey(msg.phone, msg.instance_name)
-        );
-        if (!isShared) continue;
 
-        const convKey = getConversationKey(msg.phone, msg.instance_name);
-        const existing = convMap.get(convKey);
-        if (!existing) {
-          convMap.set(convKey, {
-            phone: msg.phone,
+      // 1) Resumo por instância: uma RPC por instância envolvida, com
+      // last_message/unread_count já agregados pelo banco.
+      const instanceNames = Array.from(
+        new Set(Array.from(targets.values()).map(t => (t.instance_name || '').trim()).filter(Boolean))
+      );
+      const summaries = await getConversationSummaries(instanceNames).catch((e) => {
+        console.warn('[shares] resumo por instância falhou:', e);
+        return [] as Awaited<ReturnType<typeof getConversationSummaries>>;
+      });
+      if (!alive) return;
+
+      for (const summary of summaries) {
+        const key = getConversationKey(summary.phone, summary.instance_name);
+        if (!targets.has(key) || convMap.has(key)) continue;
+        convMap.set(key, {
+          phone: normalizeWhatsAppConversationPhone(summary.phone),
+          contact_name: summary.contact_name,
+          contact_id: summary.contact_id,
+          lead_id: summary.lead_id,
+          last_message: summary.last_message_text,
+          last_message_at: summary.last_message_at,
+          unread_count: Number(summary.unread_count) || 0,
+          messages: [],
+          instance_name: summary.instance_name,
+          label_ids: Array.isArray((summary as any).label_ids) ? (summary as any).label_ids : null,
+        });
+      }
+
+      // 2) O resumo devolve só a página mais recente de cada instância. Uma
+      // conversa compartilhada antiga fica fora dela — aí buscamos a última
+      // mensagem dessa conversa específica (1 linha por conversa faltante).
+      const missing = Array.from(targets.entries()).filter(([key]) => !convMap.has(key));
+      if (missing.length > 0) {
+        const rows = await Promise.all(
+          missing.map(async ([, t]) => {
+            const { data } = await (externalSupabase as any)
+              .from('whatsapp_messages')
+              .select('id, phone, contact_name, contact_id, lead_id, message_text, message_type, media_url, direction, read_at, created_at, instance_name')
+              .eq('phone', t.phone)
+              .ilike('instance_name', (t.instance_name || '').trim())
+              .order('created_at', { ascending: false })
+              .limit(1);
+            return (data || [])[0] || null;
+          })
+        );
+        if (!alive) return;
+
+        for (const msg of rows) {
+          if (!msg) continue;
+          const key = getConversationKey(msg.phone, msg.instance_name);
+          if (convMap.has(key)) continue;
+          convMap.set(key, {
+            phone: normalizeWhatsAppConversationPhone(msg.phone),
             contact_name: msg.contact_name,
             contact_id: msg.contact_id,
             lead_id: msg.lead_id,
@@ -869,21 +928,14 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
             messages: [msg as any],
             instance_name: msg.instance_name,
           });
-        } else {
-          existing.messages.push(msg as any);
-          if (!msg.read_at && msg.direction === 'inbound') existing.unread_count++;
-          if (!existing.contact_name && msg.contact_name) existing.contact_name = msg.contact_name;
-          if (!existing.contact_id && msg.contact_id) existing.contact_id = msg.contact_id;
-          if (!existing.lead_id && msg.lead_id) existing.lead_id = msg.lead_id;
-          if (new Date(msg.created_at).getTime() > new Date(existing.last_message_at).getTime()) {
-            existing.last_message = msg.message_text;
-            existing.last_message_at = msg.created_at;
-          }
         }
       }
+
       setSharedMessages(Array.from(convMap.values()));
     };
+
     fetchShared();
+    return () => { alive = false; };
   }, [user, hasLoaded]);
 
   // Filter out private conversations the user can't see and merge shared conversations
