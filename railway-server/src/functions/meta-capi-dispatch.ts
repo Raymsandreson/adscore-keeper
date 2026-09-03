@@ -39,14 +39,142 @@ function eventTimeSeguro(iso: string | null): number {
   return Math.min(Math.max(t, piso), agora);
 }
 
-/** Checa a credencial sem gastar evento: /me diz se o token vive. */
-async function probe() {
-  if (!CAPI_TOKEN || !CAPI_DATASET_ID) {
-    await registraStatusCredencial({
-      token_valido: false,
-      erro: 'META_CAPI_ACCESS_TOKEN ou META_CAPI_DATASET_ID ausente no ambiente',
+/**
+ * "(#100) Missing Permission" no dataset nao diz QUAL e o problema: pode ser
+ * escopo que falta no token, ou ativo que ninguem atribuiu ao usuario do
+ * sistema. `debug_token` separa os dois -- `scopes` traz as permissoes e
+ * `granular_scopes` traz, por permissao, os ids de ativo que o token realmente
+ * alcanca. Devolve frase pronta: quem le o painel precisa saber o que clicar,
+ * nao receber o erro cru da Meta.
+ */
+async function diagnosticaAcesso(dataset: string): Promise<{
+  diagnostico: string;
+  escopos?: string[];
+  ativos_alcancados?: string[];
+}> {
+  try {
+    const r = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/debug_token` +
+        `?input_token=${encodeURIComponent(CAPI_TOKEN)}&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+    );
+    const j: any = await r.json();
+    if (j?.error) return { diagnostico: `debug_token indisponivel: ${j.error.message}` };
+
+    const d = j?.data ?? {};
+    const escopos: string[] = Array.isArray(d.scopes) ? d.scopes : [];
+    const granular: Array<{ scope?: string; target_ids?: string[] }> = Array.isArray(d.granular_scopes)
+      ? d.granular_scopes
+      : [];
+    const alcancados = Array.from(new Set(granular.flatMap((g) => g.target_ids ?? [])));
+    const temEscopoAds = escopos.includes('ads_management') || escopos.includes('ads_read');
+
+    let diagnostico: string;
+    if (!temEscopoAds) {
+      diagnostico = 'falta ads_management no token: gerar de novo marcando essa permissao';
+    } else if (!alcancados.includes(String(dataset))) {
+      diagnostico =
+        `token tem ads_management mas nao alcanca o dataset ${dataset}: ` +
+        'Configuracoes do negocio -> Usuarios do sistema -> Atribuir ativos -> o conjunto de dados, acesso total';
+    } else {
+      diagnostico = 'debug_token diz que o token alcanca o dataset: a negativa vem de outro campo, nao de ativo';
+    }
+    return { diagnostico, escopos, ativos_alcancados: alcancados };
+  } catch (err) {
+    return { diagnostico: `debug_token falhou: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+/**
+ * Qual dataset as campanhas REALMENTE usam.
+ *
+ * O nome do conjunto de dados nao responde isso: "COMPRA ..." pode nao estar em
+ * anuncio ativo nenhum. Quem responde e o `promoted_object.pixel_id` dos
+ * conjuntos de anuncios ativos. Mandar conversao para dataset que nenhuma
+ * campanha usa devolve 200, enche o Gerenciador de Eventos e nao otimiza nada --
+ * a mesma classe de silencio do subcode 33 de julho, por outro caminho.
+ *
+ * Serve tambem de detector: quando trocarem de pixel de novo, isso mostra a
+ * troca em vez de deixar a fila alimentando um dataset orfao.
+ */
+async function inventario() {
+  const g = async (path: string) => {
+    const r = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
+        `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+    );
+    return (await r.json()) as any;
+  };
+
+  const contas = await g('me/adaccounts?fields=id,name,account_status&limit=50');
+  if (contas?.error) return { error: contas.error.message };
+
+  const porPixel: Record<string, { anuncios: number; contas: string[]; eventos: string[] }> = {};
+  const resultado: Array<Record<string, unknown>> = [];
+
+  for (const c of contas?.data ?? []) {
+    const ads = await g(
+      `${c.id}/adsets?fields=name,effective_status,optimization_goal,promoted_object&limit=200`,
+    );
+    if (ads?.error) {
+      resultado.push({ conta: c.name, id: c.id, erro: ads.error.message });
+      continue;
+    }
+    const ativos = (ads?.data ?? []).filter((a: any) => a.effective_status === 'ACTIVE');
+    const semPixel: string[] = [];
+    // Conjunto ativo sem pixel nao e erro: campanha de clique-para-WhatsApp
+    // otimiza por conversa, nao por evento de site. Mas precisa aparecer, senao
+    // a leitura fica "a CAPI cobre as campanhas" quando cobre uma fracao delas.
+    const metasSemPixel: Record<string, number> = {};
+
+    for (const a of ativos) {
+      const pid = a?.promoted_object?.pixel_id;
+      if (!pid) {
+        semPixel.push(a.name);
+        const meta = a?.optimization_goal || 'sem_objetivo';
+        metasSemPixel[meta] = (metasSemPixel[meta] ?? 0) + 1;
+        continue;
+      }
+      const slot = (porPixel[pid] ??= { anuncios: 0, contas: [], eventos: [] });
+      slot.anuncios += 1;
+      if (!slot.contas.includes(c.name)) slot.contas.push(c.name);
+      const ev = a?.promoted_object?.custom_event_type || a?.optimization_goal;
+      if (ev && !slot.eventos.includes(ev)) slot.eventos.push(ev);
+    }
+
+    resultado.push({
+      conta: c.name,
+      id: c.id,
+      status_conta: c.account_status,
+      conjuntos_total: (ads?.data ?? []).length,
+      conjuntos_ativos: ativos.length,
+      ativos_sem_pixel: semPixel.length,
+      objetivo_dos_sem_pixel: metasSemPixel,
     });
-    return { token_valido: false, erro: 'credencial não configurada no Railway' };
+  }
+
+  return { contas: resultado, uso_por_dataset: porPixel, dataset_configurado: CAPI_DATASET_ID };
+}
+
+/**
+ * Checa a credencial sem gastar evento: /me diz se o token vive.
+ *
+ * `datasetAlvo` serve para sondar um dataset diferente do configurado, sem
+ * mexer em env var -- serve para escolher entre dois candidatos antes de
+ * apontar a producao para um deles. Sondagem assim NAO grava em
+ * meta_capi_status: o status oficial e do dataset que esta em uso.
+ */
+async function probe(datasetAlvo?: string) {
+  const dataset = datasetAlvo || CAPI_DATASET_ID;
+  const persistir = !datasetAlvo;
+
+  if (!CAPI_TOKEN || !dataset) {
+    if (persistir) {
+      await registraStatusCredencial({
+        token_valido: false,
+        erro: 'META_CAPI_ACCESS_TOKEN ou META_CAPI_DATASET_ID ausente no ambiente',
+      });
+    }
+    return { token_valido: false, erro: 'credencial nao configurada no Railway' };
   }
 
   try {
@@ -55,44 +183,78 @@ async function probe() {
     );
     const j: any = await r.json();
     if (j?.error) {
-      await registraStatusCredencial({ token_valido: false, erro: `${j.error.code}: ${j.error.message}` });
+      if (persistir) {
+        await registraStatusCredencial({ token_valido: false, erro: `${j.error.code}: ${j.error.message}` });
+      }
       return { token_valido: false, erro: j.error.message, codigo: j.error.code };
     }
 
-    // Token vivo não basta: precisa enxergar o dataset. Foi exatamente essa a
-    // pegadinha de julho (subcode 33 = token válido SEM permissão no pixel).
+    // Token vivo nao basta: precisa enxergar o dataset. Foi exatamente essa a
+    // pegadinha de julho (subcode 33 = token valido SEM permissao no pixel).
+    //
+    // Só `id,name` aqui: pedir `owner_business` no mesmo fields devolve
+    // "(#100) Missing Permission" mesmo quando o acesso ao dataset existe, e aí
+    // o erro passa a mentir sobre a causa. Custou tempo em 03/09/2026.
     const rd = await fetch(
-      `https://graph.facebook.com/${GRAPH_VERSION}/${CAPI_DATASET_ID}?fields=id,name,owner_business&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+      `https://graph.facebook.com/${GRAPH_VERSION}/${dataset}?fields=id,name&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
     );
     const jd: any = await rd.json();
     if (jd?.error) {
-      await registraStatusCredencial({
-        token_valido: true,
-        app_id: j?.id ?? null,
-        erro: `token vivo mas sem acesso ao dataset ${CAPI_DATASET_ID}: ${jd.error.message}`,
-      });
-      return { token_valido: true, dataset_acessivel: false, erro: jd.error.message };
+      const diag = await diagnosticaAcesso(dataset);
+      if (persistir) {
+        await registraStatusCredencial({
+          token_valido: true,
+          app_id: j?.id ?? null,
+          erro: `token vivo mas sem acesso ao dataset ${dataset}: ${jd.error.message} | ${diag.diagnostico}`,
+        });
+      }
+      return { token_valido: true, dataset, dataset_acessivel: false, erro: jd.error.message, ...diag };
     }
 
-    await registraStatusCredencial({ token_valido: true, app_id: j?.id ?? null, erro: null });
-    return { token_valido: true, dataset_acessivel: true, dataset: jd?.name, identidade: j?.name ?? j?.id };
+    if (persistir) {
+      await registraStatusCredencial({ token_valido: true, app_id: j?.id ?? null, erro: null });
+    }
+    return {
+      token_valido: true,
+      dataset,
+      dataset_acessivel: true,
+      dataset_nome: jd?.name,
+      identidade: j?.name ?? j?.id,
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await registraStatusCredencial({ token_valido: false, erro: msg });
+    if (persistir) await registraStatusCredencial({ token_valido: false, erro: msg });
     return { token_valido: false, erro: msg };
   }
 }
 
 export const handler: RequestHandler = async (req, res) => {
   try {
-    const { modo, dry_run, limite, test_event_code } = (req.body || {}) as {
-      modo?: 'probe';
+    const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
+      modo?: 'probe' | 'inventario' | 'religar';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
+      dataset_id?: string;
     };
 
-    if (modo === 'probe') return res.status(200).json({ modo: 'probe', ...(await probe()) });
+    if (modo === 'probe') return res.status(200).json({ modo: 'probe', ...(await probe(dataset_id)) });
+    if (modo === 'inventario') return res.status(200).json({ modo: 'inventario', ...(await inventario()) });
+
+    // Religa o que foi congelado por erro sem volta, depois que a causa mudou
+    // (token novo, valor configurado). Sem isso a linha ficaria fora da fila
+    // para sempre e o evento se perderia em silencio -- justamente o que esta
+    // fila existe para impedir.
+    if (modo === 'religar') {
+      const { data, error: erroReligar } = await supabase
+        .from('meta_capi_events')
+        .update({ tentativas: 0, proxima_tentativa_em: null, motivo_skip: null } as any)
+        .eq('status', 'failed')
+        .gte('tentativas', MAX_TENTATIVAS)
+        .select('id');
+      if (erroReligar) return res.status(500).json({ error: erroReligar.message });
+      return res.status(200).json({ modo: 'religar', religados: data?.length ?? 0 });
+    }
 
     const tamanho = Math.min(Math.max(Number(limite) || LOTE_PADRAO, 1), 500);
     const agora = new Date().toISOString();
@@ -171,8 +333,21 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     // Falhou: backoff exponencial por linha, erro preservado para o painel.
+    //
+    // Congelar NAO e `proxima_tentativa_em = null`: o filtro da fila trata null
+    // como elegivel (e o estado de quem acabou de entrar), entao null devolvia a
+    // linha para a rodada seguinte -- o oposto do que a doc dizia. Congela-se
+    // esgotando `tentativas`, que e o que o filtro `.lt(MAX_TENTATIVAS)` exclui.
+    // Religar depois de corrigir a causa: { modo: 'religar' }.
+    const semVolta = r.credencial_morta || r.erro_definitivo;
+    const motivo = r.credencial_morta
+      ? 'credencial invalida: renovar token e religar'
+      : `recusado pela Meta, corpo precisa mudar: ${
+          (r.corpo as any)?.error?.error_user_title || (r.corpo as any)?.error?.message || 'erro 400'
+        }`;
+
     for (const f of fila as any[]) {
-      const tentativas = (f.tentativas || 0) + 1;
+      const tentativas = semVolta ? MAX_TENTATIVAS : (f.tentativas || 0) + 1;
       const esperaMin = Math.min(2 ** tentativas * 5, 240);
       await supabase
         .from('meta_capi_events')
@@ -182,8 +357,8 @@ export const handler: RequestHandler = async (req, res) => {
           http_status: r.http_status,
           fbtrace_id: r.fbtrace_id,
           resposta: r.corpo as any,
-          // Credencial morta não se resolve com retry: congela até alguém agir.
-          proxima_tentativa_em: r.credencial_morta
+          ...(semVolta ? { motivo_skip: motivo } : {}),
+          proxima_tentativa_em: semVolta
             ? null
             : new Date(Date.now() + esperaMin * 60_000).toISOString(),
         } as any)

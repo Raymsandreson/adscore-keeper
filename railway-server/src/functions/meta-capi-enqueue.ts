@@ -69,19 +69,39 @@ async function enfileiraUm(p: Pedido): Promise<ResultadoEnfileiramento> {
   const valorFinal = typeof p.valor === 'number' && p.valor > 0 ? p.valor : valor;
   const origemValor = typeof p.valor === 'number' && p.valor > 0 ? 'informado' : valor_origem;
 
+  // `Purchase` sem `value` a Meta RECUSA -- 400, subcode 2804009, "Missing Value
+  // for Purchase Event". Medido contra a Meta em 03/09/2026: nao e otimizacao
+  // degradada, o evento nao entra. Barrar aqui em vez de deixar falhar na rede
+  // faz a linha dizer o que consertar (produto no lead, ou preco no cadastro do
+  // produto) em vez de virar `failed` com erro cru. Eram 536 fechados com
+  // contato e sem valor nenhum.
+  let status = 'pending';
+  let motivo: string | null = null;
+  if (!utilizavel) {
+    status = 'skipped';
+    motivo = 'lead sem e-mail nem telefone — a Meta descartaria o evento';
+  } else if (eventName === 'Purchase' && !valorFinal) {
+    status = 'skipped';
+    motivo =
+      'Purchase exige value: lead sem produto e sem valor apurado — preencher o produto no lead, ou o preço no cadastro do produto';
+  }
+
   const linha = {
     event_id,
     event_name: eventName,
     lead_id: l.id,
     origem,
-    status: utilizavel ? 'pending' : 'skipped',
-    motivo_skip: utilizavel ? null : 'lead sem e-mail nem telefone — a Meta descartaria o evento',
+    status,
+    motivo_skip: motivo,
     user_data_hash,
     match_keys,
+    // Sem `lead_id` em claro: `external_id` no user_data ja e o hash desse mesmo
+    // id, e a coluna `lead_id` da fila guarda o vinculo aqui dentro. Mandar o
+    // identificador interno tambem em claro nao serve a Meta e contraria a
+    // minimizacao de dado.
     custom_data: {
       currency: 'BRL',
       ...(valorFinal ? { value: valorFinal } : {}),
-      lead_id: l.id,
     },
     action_source: 'system_generated',
     event_time: p.event_time || l.became_client_date || new Date().toISOString(),
@@ -104,8 +124,8 @@ async function enfileiraUm(p: Pedido): Promise<ResultadoEnfileiramento> {
   return {
     lead_id: l.id,
     event_id,
-    situacao: utilizavel ? 'enfileirado' : 'ignorado',
-    motivo: utilizavel ? undefined : linha.motivo_skip ?? undefined,
+    situacao: status === 'pending' ? 'enfileirado' : 'ignorado',
+    motivo: motivo ?? undefined,
   };
 }
 

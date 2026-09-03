@@ -157,3 +157,27 @@ group by 1,2,3,4;
 
 comment on view public.vw_meta_capi_saude is
   'Agregado diário da fila CAPI para o painel: volume, correspondência e procedência do valor. Sem dado pessoal.';
+
+-- ---------------------------------------------------------------------------
+-- Fechamento da superfície pública.
+--
+-- Duas armadilhas do Supabase que só aparecem depois de criar a tabela:
+--
+-- 1. View nasce SECURITY DEFINER. Sem `security_invoker = on` ela executa com o
+--    privilégio do dono (postgres) e passa por cima do RLS das tabelas base --
+--    ou seja, o RLS acima viraria enfeite para quem consultasse pela view.
+--    É a mesma dívida das 28 security_definer_view já catalogadas no Externo.
+--
+-- 2. As default privileges do projeto dão INSERT/UPDATE/DELETE/TRUNCATE a
+--    `anon` e `authenticated` em toda tabela nova do schema public. Hoje o RLS
+--    neutraliza; mas grant amplo + uma policy permissiva criada no futuro = furo
+--    silencioso. Quem lê e escreve aqui é só o service role do Railway.
+--
+-- Verificado em 03/09/2026: anon recebe 42501 na fila E na view; service_role lê.
+-- ---------------------------------------------------------------------------
+
+alter view public.vw_meta_capi_saude set (security_invoker = on);
+
+revoke all on public.meta_capi_events   from anon, authenticated;
+revoke all on public.meta_capi_status   from anon, authenticated;
+revoke all on public.vw_meta_capi_saude from anon, authenticated;
