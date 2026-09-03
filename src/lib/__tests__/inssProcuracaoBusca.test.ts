@@ -40,7 +40,7 @@ const { fakeClient, setDocs, resetTudo } = vi.hoisted(() => {
 
 vi.mock('../../../railway-server/src/lib/supabase', () => ({ supabase: fakeClient }));
 
-import { buscarProcuracaoDoCliente } from '../../../railway-server/src/lib/inss-procuracao';
+import { buscarProcuracaoDoCliente, padraoSemAcento } from '../../../railway-server/src/lib/inss-procuracao';
 
 const doc = (over: Record<string, unknown> = {}) => ({
   doc_token: 'tok-1',
@@ -125,5 +125,45 @@ describe('buscarProcuracaoDoCliente — só nome idêntico', () => {
   it('não busca por nome curto demais', async () => {
     setDocs([doc({ outorgante_name: 'ANA' })]);
     expect(await buscarProcuracaoDoCliente({ nomeSegurado: 'ANA' })).toBeNull();
+  });
+
+  it('casa o nome mesmo quando o ZapSign tem acento e o INSS não', async () => {
+    // O caso real de 03/09/2026: o requerimento veio "MATEUS BRUSTELLO
+    // ALCANTARA" e o documento está como "Mateus brustello Alcântara".
+    setDocs([doc({ outorgante_name: 'Mateus brustello Alcântara' })]);
+    expect((await buscarProcuracaoDoCliente({ nomeSegurado: 'MATEUS BRUSTELLO ALCANTARA' }))?.via)
+      .toBe('nome do segurado');
+  });
+});
+
+/**
+ * O bug de 03/09/2026 não estava na conferência em JS acima — que sempre
+ * removeu acento — e sim no filtro que a precede: o `ilike` do Postgres é
+ * sensível a acento, devolvia lista vazia, e o JS decidia sobre nada. Por isso
+ * o padrão é testado à parte: é ele que faz os candidatos chegarem.
+ */
+describe('padraoSemAcento', () => {
+  it('troca por curinga toda letra que aceita acento', () => {
+    expect(padraoSemAcento('MATEUS BRUSTELLO ALCANTARA')).toBe('M_T__S BR_ST_LL_ _L___T_R_');
+  });
+
+  it('o padrão casa as duas grafias', () => {
+    const like = (padrao: string, alvo: string) =>
+      new RegExp(`^${padrao.replace(/_/g, '.')}$`, 'i').test(alvo);
+    const p = padraoSemAcento('MATEUS BRUSTELLO ALCANTARA');
+    expect(like(p, 'Mateus brustello Alcântara')).toBe(true);
+    expect(like(p, 'MATEUS BRUSTELLO ALCANTARA')).toBe(true);
+  });
+
+  it('preserva comprimento e consoantes, então não vira busca por pedaço', () => {
+    const p = padraoSemAcento('MATEUS BRUSTELLO ALCANTARA');
+    const like = (alvo: string) => new RegExp(`^${p.replace(/_/g, '.')}$`, 'i').test(alvo);
+    expect(p).toHaveLength('MATEUS BRUSTELLO ALCANTARA'.length);
+    expect(like('MATEUS BRUSTELLO')).toBe(false);
+    expect(like('BRENDA KAROLYNE OLIVEIRA')).toBe(false);
+  });
+
+  it('neutraliza % para o nome não virar curinga aberto', () => {
+    expect(padraoSemAcento('ANA%SILVA')).not.toContain('%');
   });
 });

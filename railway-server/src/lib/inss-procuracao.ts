@@ -47,6 +47,27 @@ const norm = (s?: string | null) =>
 const digitos = (s?: string | null) => (s || '').replace(/\D/g, '');
 
 /**
+ * Padrão LIKE que atravessa acento.
+ *
+ * O nome chega do INSS SEM acento e no ZapSign está COM: dos 938 requerimentos
+ * com `nome_segurado`, exatamente 1 tem acento; do lado do ZapSign são 470
+ * outorgantes, 603 signatários e 133 representantes acentuados. Como o `ilike`
+ * do Postgres não normaliza acento, `ilike 'MATEUS BRUSTELLO ALCANTARA'`
+ * devolvia ZERO linhas para "Mateus brustello Alcântara" — e a conferência em
+ * JS, que removeria o acento, nunca rodava, porque recebia uma lista já vazia.
+ * Foi isso que deixou o Mateus sem a procuração na exigência de 03/09/2026,
+ * com o documento existindo no banco.
+ *
+ * Cada letra que aceita acento em português vira `_`, o curinga de UM
+ * caractere: o banco devolve as variantes e quem decide continua sendo a
+ * igualdade exata sem acento, logo abaixo. Casar pedaço de nome segue proibido
+ * — o padrão preserva o comprimento e as consoantes, e medido nos nomes reais
+ * traz 0 ou 1 linha. Vale porque `zapsign_documents` está em NFC (conferido),
+ * onde "â" ocupa um caractere só; em NFD seriam dois e o curinga não casaria.
+ */
+export const padraoSemAcento = (nome: string) => nome.replace(/%/g, '_').replace(/[aeioucn]/gi, '_');
+
+/**
  * Só procuração serve — mas a regra é excluir o que sabidamente NÃO é, e não
  * exigir a palavra no nome. `tipo_documento` é nulo em 2.006 dos 3.331
  * registros com PDF (nunca foram classificados) e `template_name` é nulo em
@@ -110,8 +131,10 @@ export async function buscarProcuracaoDoCliente(args: {
 
   const nome = norm(args.nomeSegurado);
   if (nome.length > 8) {
-    // `ilike` sem curinga é comparação exata sem diferenciar caixa; o acento é
-    // que não normaliza no Postgres, então a conferência final é em JS.
+    // A conferência que vale é a de baixo, em JS, que compara nome IDÊNTICO sem
+    // acento. O filtro do banco existe só para trazer os candidatos — e por isso
+    // usa `padraoSemAcento`: com `ilike` do nome cru ele devolvia zero linhas
+    // para quem tem acento, e o JS nunca chegava a decidir nada.
     //
     // `representante_name` entra como chave porque a procuração de menor é
     // lavrada assim: "OUTORGANTE: BENTO DA SILVA EMILIANO, MENOR, NESTE ATO
@@ -120,12 +143,12 @@ export async function buscarProcuracaoDoCliente(args: {
     // representante — então o requerimento casa por um lado ou pelo outro,
     // conforme em nome de quem ele foi protocolado. Continua sendo nome
     // IDÊNTICO: casar pedaço de nome segue proibido (ver o cabeçalho).
-    const nomeBruto = String(args.nomeSegurado);
+    const padrao = padraoSemAcento(String(args.nomeSegurado));
     const { data } = await supabase
       .from('zapsign_documents').select(COLUNAS)
       .or(
-        `outorgante_name.ilike.${nomeBruto},signer_name.ilike.${nomeBruto},` +
-        `representante_name.ilike.${nomeBruto}`,
+        `outorgante_name.ilike.${padrao},signer_name.ilike.${padrao},` +
+        `representante_name.ilike.${padrao}`,
       );
     const docs = (data as Doc[]) || [];
     const porOutorgante = docs.filter(
