@@ -192,6 +192,24 @@ async function formularios() {
     }
   }
 
+  // Gasto e resultado dos ultimos 30 dias: dimensiona o achado. "Pode haver lead
+  // parado na Meta" e diferente de "R$ X estao comprando lead que ninguem atende".
+  const gasto: Array<Record<string, unknown>> = [];
+  for (const c of contas?.data ?? []) {
+    const ins = await g(`${c.id}/insights?fields=spend,actions,cost_per_action_type&date_preset=last_30d`);
+    if (ins?.error) {
+      gasto.push({ conta: c.name, erro: ins.error.message });
+      continue;
+    }
+    const linha = (ins?.data ?? [])[0] || {};
+    const acoes = (linha.actions ?? []).filter((a: any) => String(a.action_type).includes('lead'));
+    gasto.push({
+      conta: c.name,
+      gasto_30d: linha.spend ?? '0',
+      leads_30d: acoes.map((a: any) => `${a.action_type}=${a.value}`),
+    });
+  }
+
   const resultado: Array<Record<string, unknown>> = [];
   for (const [pageId, dono] of paginas) {
     const f = await g(`${pageId}/leadgen_forms?fields=id,name,status,leads_count&limit=100`);
@@ -213,7 +231,7 @@ async function formularios() {
       detalhe: forms.sort((a: any, b: any) => (b.leads || 0) - (a.leads || 0)).slice(0, 15),
     });
   }
-  return { paginas: resultado };
+  return { paginas: resultado, gasto_por_conta: gasto };
 }
 
 /**
