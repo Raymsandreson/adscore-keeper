@@ -1,19 +1,22 @@
 import { supabase } from './supabase';
 import { alvosDeNome } from './inss-nome-indice';
 import { escolherPorNome } from './inss-nome-match';
-import { conferirNomeDoSegurado } from './inss-nome-confere';
+import { conferirNomeDoSegurado, normalizarNome } from './inss-nome-confere';
+import { padraoSemAcento } from './inss-procuracao';
 
 /**
  * Robô casamenteiro de processos INSS órfãos.
  *
  * Metáfora: é o detetive que recebe uma carta sem destinatário e tenta
- * descobrir o dono usando 6 pistas, em ordem do mais forte pro mais fraco:
+ * descobrir o dono usando 7 pistas, em ordem do mais forte pro mais fraco:
  *   0) processo já cadastrado com aquele nº
  *   1) custom field "Nº Requerimento INSS"
  *   2) título de atividade contém o nº (ou o prefixo "PREV 690" bate com lead)
  *   3) CPF do segurado = leads.cpf
  *   4) CPF do segurado = contacts.cpf → lead vinculado
  *   5) nome do segurado = lead_name/victim_name
+ *   6) nome do segurado = outorgante/representante de uma PROCURAÇÃO já
+ *      vinculada a um lead
  *
  * Usado pelo gmail-inss-sync (na hora que o e-mail chega) e pelo
  * match-inss-orphans (varredura periódica / botão manual).
@@ -28,7 +31,8 @@ export type MatchSource =
   | 'activity_title'
   | 'cpf_lead'
   | 'cpf_contact'
-  | 'name_lead';
+  | 'name_lead'
+  | 'zapsign_procuracao';
 
 export interface MatchInput {
   requerimento?: string | null;
@@ -235,6 +239,87 @@ export async function findInssOrphanMatch(input: MatchInput): Promise<MatchResul
       }
     } catch (e: any) {
       console.warn('[inss-matcher] índice de nomes falhou:', e?.message || e);
+    }
+  }
+
+
+  // 6) procuração do ZapSign — o segurado é outorgante ou representante de um
+  //    documento que JÁ está vinculado a um lead.
+  //
+  //    Entrou em 03/09/2026 depois de medir os 270 órfãos um a um: 138 têm
+  //    procuração assinada com o nome exato, ou seja, metade dos "sem dono" são
+  //    clientes do escritório cuja ficha de lead nunca casou. Nenhuma das cinco
+  //    pistas acima olha `zapsign_documents`.
+  //
+  //    Vem por último de propósito: quando o nome bate direto com o cadastro, a
+  //    pista 5 já resolveu — esta só roda no que sobrou, e por isso não muda o
+  //    resultado de nada que hoje funciona.
+  //
+  //    Continua sendo nome IDÊNTICO (sem acento), nunca semelhança, e exige
+  //    lead ÚNICO e vivo: documento que aponta para dois leads deixa o
+  //    requerimento órfão para conferência humana. É a mesma regra que já vale
+  //    para escolher a procuração que vai ao cliente (lib/inss-procuracao).
+  if (!leadId && nome.length >= 6) {
+    try {
+      const padrao = padraoSemAcento(nome);
+      const { data: docs } = await supabase
+        .from('zapsign_documents')
+        .select('doc_token, lead_id, outorgante_name, signer_name, representante_name')
+        .not('lead_id', 'is', null)
+        .or(
+          `outorgante_name.ilike.${padrao},signer_name.ilike.${padrao},` +
+          `representante_name.ilike.${padrao}`,
+        );
+      const alvo = normalizarNome(nome);
+      const casam = ((docs as any[]) || []).filter(
+        (d) =>
+          normalizarNome(d.outorgante_name) === alvo ||
+          normalizarNome(d.signer_name) === alvo ||
+          normalizarNome(d.representante_name) === alvo,
+      );
+      const candidatos = [...new Set(casam.map((d) => d.lead_id as string))];
+      if (candidatos.length === 1) {
+        // Lead apagado não serve: o requerimento ficaria pendurado num
+        // cadastro que sumiu das listas (ver os casos órfãos por soft-delete).
+        const { data: vivo } = await supabase
+          .from('leads')
+          .select('id, lead_name, victim_name')
+          .eq('id', candidatos[0])
+          .is('deleted_at', null)
+          .maybeSingle();
+        if (vivo?.id) {
+          // A procuração prova que o documento existe, não que o lead é desta
+          // pessoa: `zapsign_documents.lead_id` erra com frequência conhecida
+          // (632 dos 1.205 vínculos apontam para o lead que o próprio OCR da
+          // procuração criou, e não para o do atendimento). Sem esta conferência
+          // o matcher ligava o requerimento de VICENTE SILVA SALES ao lead
+          // "Patriciana de Araújo sales" e o de BIANCA CAROLINE SANTOS ao de
+          // "ANA FLÁVIA DOS REIS" — e a próxima novidade do INSS de um cliente
+          // sairia no grupo de outro. É a mesma trava que a pista 5 aplica
+          // quando o nome só bate com um contato.
+          const confere = conferirNomeDoSegurado(nome, {
+            leadName: vivo.lead_name,
+            victimName: vivo.victim_name,
+          });
+          if (confere.veredito === 'ok') {
+            leadId = vivo.id;
+            source = 'zapsign_procuracao';
+            console.log(
+              `[inss-matcher] "${nome}" → procuração ${casam[0].doc_token} do lead ${leadId}, ${confere.motivo}`,
+            );
+          } else {
+            console.log(`[inss-matcher] "${nome}" → procuração aponta lead que ${confere.motivo}`);
+          }
+        } else {
+          console.log(`[inss-matcher] "${nome}" → procuração aponta lead apagado, segue órfão`);
+        }
+      } else if (candidatos.length > 1) {
+        console.log(
+          `[inss-matcher] "${nome}" → ${candidatos.length} leads na procuração, segue órfão`,
+        );
+      }
+    } catch (e: any) {
+      console.warn('[inss-matcher] busca por procuração falhou:', e?.message || e);
     }
   }
 
