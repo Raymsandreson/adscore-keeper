@@ -37,13 +37,26 @@ export const handler: RequestHandler = async (req, res) => {
     // Motivos de falha agrupados: mostra se é uma causa só (credencial) ou várias.
     const { data: falhas } = await supabase
       .from('meta_capi_events')
-      .select('resposta')
+      .select('resposta, motivo_skip')
       .eq('status', 'failed')
       .limit(500);
 
+    // Ordem de preferencia importa: `error.message` da Meta e quase sempre
+    // "Invalid parameter", que nao diz o que consertar. A propria Meta manda a
+    // explicacao util em `error_user_title`/`error_user_msg` no mesmo corpo, e o
+    // despachante ja grava a frase acionavel em `motivo_skip`. Este card e o
+    // resumo que a pessoa le primeiro -- mostrar "Invalid parameter" aqui
+    // desperdica o unico lugar da tela onde o motivo aparece agrupado.
     const porMotivo: Record<string, number> = {};
     for (const f of (falhas as any[]) || []) {
-      const m = f?.resposta?.error?.message || f?.resposta?.erro || 'sem detalhe';
+      const e = f?.resposta?.error;
+      const m =
+        f?.motivo_skip ||
+        e?.error_user_title ||
+        e?.error_user_msg ||
+        e?.message ||
+        f?.resposta?.erro ||
+        'sem detalhe';
       porMotivo[String(m).slice(0, 160)] = (porMotivo[String(m).slice(0, 160)] || 0) + 1;
     }
 
