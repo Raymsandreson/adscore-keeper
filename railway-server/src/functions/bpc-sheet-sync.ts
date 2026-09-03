@@ -21,7 +21,9 @@ const OPERATOR_KEYWORDS: { keyword: string; operator: string }[] = [
 ];
 const SKIP_TABS = new Set(['BASE_UNIFICADA']);
 
-async function discoverSheetTabs(spreadsheetId: string): Promise<{ tab: string; operator: string }[]> {
+async function discoverSheetTabs(
+  spreadsheetId: string,
+): Promise<{ lidas: { tab: string; operator: string }[]; ignoradas: string[] }> {
   const lovableKey = process.env.LOVABLE_API_KEY;
   const gsKey = process.env.GOOGLE_SHEETS_API_KEY;
   if (!lovableKey || !gsKey) throw new Error('Missing connector keys');
@@ -33,13 +35,19 @@ async function discoverSheetTabs(spreadsheetId: string): Promise<{ tab: string; 
   const json: any = await resp.json();
   const titles: string[] = (json.sheets || []).map((s: any) => s.properties?.title).filter(Boolean);
   const found: { tab: string; operator: string }[] = [];
+  // Aba sem palavra-chave conhecida era descartada em silencio: atendente novo na
+  // planilha simplesmente nao existia para o sistema, e nada denunciava a perda.
+  // Agora volta na resposta para virar decisao (cadastrar a palavra-chave) em vez
+  // de sumico.
+  const ignoradas: string[] = [];
   for (const title of titles) {
     if (SKIP_TABS.has(title)) continue;
     const lower = String(title).toLowerCase();
     const match = OPERATOR_KEYWORDS.find((k) => lower.includes(k.keyword));
     if (match) found.push({ tab: title, operator: match.operator });
+    else ignoradas.push(title);
   }
-  return found;
+  return { lidas: found, ignoradas };
 }
 
 interface ParsedRow {
@@ -200,8 +208,11 @@ export const handler: RequestHandler = async (req, res) => {
 
     // 2) Descoberta dinâmica das abas + leitura em paralelo limitado (3 por vez)
     let SHEET_TABS: { tab: string; operator: string }[] = [];
+    let abasIgnoradas: string[] = [];
     try {
-      SHEET_TABS = await discoverSheetTabs(spreadsheetId);
+      const d = await discoverSheetTabs(spreadsheetId);
+      SHEET_TABS = d.lidas;
+      abasIgnoradas = d.ignoradas;
     } catch (e: any) {
       return ok({ success: false, error: `discover tabs: ${e?.message || e}` });
     }
@@ -263,6 +274,8 @@ export const handler: RequestHandler = async (req, res) => {
         unique_recent: uniqueRows.length,
         already_in_board: uniqueRows.length - toCreate.length,
         would_create: toCreate.length,
+        abas_lidas: SHEET_TABS.map((t) => `${t.tab} -> ${t.operator}`),
+        abas_ignoradas: abasIgnoradas,
         tab_errors: tabErrors,
         sample: toCreate.slice(0, 5).map((r) => ({
           name: r.name,
@@ -337,6 +350,9 @@ export const handler: RequestHandler = async (req, res) => {
       created: created.length,
       errors_count: errors.length,
       by_operator: byOperator,
+      // Tambem na execucao real: aba ignorada e lead que nao entrou, e isso
+      // precisa aparecer no log de quem roda, nao so no diagnostico.
+      abas_ignoradas: abasIgnoradas,
       tab_errors: tabErrors,
       errors: errors.slice(0, 20),
     });
