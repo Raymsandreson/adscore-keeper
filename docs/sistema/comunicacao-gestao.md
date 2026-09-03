@@ -101,6 +101,15 @@ A **foto de perfil do WhatsApp** aparece na lista de conversas, no cabeçalho do
 - **Quem é marcado com `@` ganha acesso a esta conversa do WhatsApp** e é notificado — inclusive quando a instância não é dele. Com "@todos" isso vale para todo mundo, e o sistema avisa quantas pessoas serão liberadas antes do envio. O acesso é revogável no diálogo de compartilhamento.
 - **Comentar mensagem do cliente**: "Comentar" numa bolha (ou o checkbox de seleção → "Comentar com a equipe", para várias de uma vez) cola as mensagens citadas no rascunho do chat interno, com autor e hora. Transcrição de áudio entra como texto; citação acima de 400 caracteres é cortada com "…". Na mensagem enviada, o trecho citado aparece em bloco separado com barra lateral.
 
+### Filtro "Compartilhadas" — os dois lados, todas as instâncias (03/09/2026)
+
+- O chip **Compartilhadas** na lista de conversas mostra **tudo que envolve você**: o que compartilharam com você e o que você compartilhou com alguém, de **qualquer instância** — não só da instância selecionada no topo.
+- Antes o chip cruzava os shares só da instância aberta e casava por **telefone solto**. Com "Raym" selecionado, conversa compartilhada por quem atende em outra instância nunca entrava: o filtro exibia **3 conversas onde existiam 37**. A identidade agora é **telefone + instância**, igual ao resto da inbox (`sharedConversationKey` em `src/hooks/useSharedWithMe.ts`).
+- **Marcação na própria linha**: `↓ de Fulano` (roxo) para o que recebi — com ponto vermelho enquanto não foi confirmada — e `↑ para Fulano` (azul) para o que eu compartilhei. Uma conversa pode ter as duas.
+- **Sub-filtros** aparecem quando o chip está ativo: **Todas / Comigo / Eu compartilhei** e um select **quem compartilhou**, com a contagem por pessoa. Conferido em 03/09/2026: 37 no total, 8 recebidas, 33 enviadas (4 têm os dois lados), e "Luana Barros" isolando 24.
+- **A lista busca as compartilhadas no Supabase Externo**, não no espelho Cloud: o espelho é sincronizado em lote e conversa ainda não espelhada simplesmente não aparecia. São a RPC de resumo por instância envolvida + a última mensagem daquela conversa quando o share ficou fora da página de resumos — no lugar do antigo `limit(500)` global de mensagens, que sozinho já derrubava conversa antiga da lista.
+
+
 ### Pendências do cliente — "Cliente ficou de" (desde 05/08/2026; leitura por IA desde 06/08/2026)
 
 Barra logo abaixo do "Progresso" do POP, dentro da conversa: **o que o CLIENTE ficou de fazer**. Quem monta a lista é a **IA lendo a conversa** — avaliar o escritório no Google, gravar o vídeo de depoimento, mandar um documento, comparecer na perícia. Antes disso não existia registro nenhum: atividade é tarefa do assessor e checklist é passo de POP; a promessa do cliente não tinha onde morar, e ninguém ia parar no meio do atendimento pra cadastrar à mão.
