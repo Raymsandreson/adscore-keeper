@@ -39,14 +39,71 @@ function eventTimeSeguro(iso: string | null): number {
   return Math.min(Math.max(t, piso), agora);
 }
 
-/** Checa a credencial sem gastar evento: /me diz se o token vive. */
-async function probe() {
-  if (!CAPI_TOKEN || !CAPI_DATASET_ID) {
-    await registraStatusCredencial({
-      token_valido: false,
-      erro: 'META_CAPI_ACCESS_TOKEN ou META_CAPI_DATASET_ID ausente no ambiente',
-    });
-    return { token_valido: false, erro: 'credencial não configurada no Railway' };
+/**
+ * "(#100) Missing Permission" no dataset nao diz QUAL e o problema: pode ser
+ * escopo que falta no token, ou ativo que ninguem atribuiu ao usuario do
+ * sistema. `debug_token` separa os dois -- `scopes` traz as permissoes e
+ * `granular_scopes` traz, por permissao, os ids de ativo que o token realmente
+ * alcanca. Devolve frase pronta: quem le o painel precisa saber o que clicar,
+ * nao receber o erro cru da Meta.
+ */
+async function diagnosticaAcesso(dataset: string): Promise<{
+  diagnostico: string;
+  escopos?: string[];
+  ativos_alcancados?: string[];
+}> {
+  try {
+    const r = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/debug_token` +
+        `?input_token=${encodeURIComponent(CAPI_TOKEN)}&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+    );
+    const j: any = await r.json();
+    if (j?.error) return { diagnostico: `debug_token indisponivel: ${j.error.message}` };
+
+    const d = j?.data ?? {};
+    const escopos: string[] = Array.isArray(d.scopes) ? d.scopes : [];
+    const granular: Array<{ scope?: string; target_ids?: string[] }> = Array.isArray(d.granular_scopes)
+      ? d.granular_scopes
+      : [];
+    const alcancados = Array.from(new Set(granular.flatMap((g) => g.target_ids ?? [])));
+    const temEscopoAds = escopos.includes('ads_management') || escopos.includes('ads_read');
+
+    let diagnostico: string;
+    if (!temEscopoAds) {
+      diagnostico = 'falta ads_management no token: gerar de novo marcando essa permissao';
+    } else if (!alcancados.includes(String(dataset))) {
+      diagnostico =
+        `token tem ads_management mas nao alcanca o dataset ${dataset}: ` +
+        'Configuracoes do negocio -> Usuarios do sistema -> Atribuir ativos -> o conjunto de dados, acesso total';
+    } else {
+      diagnostico = 'debug_token diz que o token alcanca o dataset: a negativa vem de outro campo, nao de ativo';
+    }
+    return { diagnostico, escopos, ativos_alcancados: alcancados };
+  } catch (err) {
+    return { diagnostico: `debug_token falhou: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+/**
+ * Checa a credencial sem gastar evento: /me diz se o token vive.
+ *
+ * `datasetAlvo` serve para sondar um dataset diferente do configurado, sem
+ * mexer em env var -- serve para escolher entre dois candidatos antes de
+ * apontar a producao para um deles. Sondagem assim NAO grava em
+ * meta_capi_status: o status oficial e do dataset que esta em uso.
+ */
+async function probe(datasetAlvo?: string) {
+  const dataset = datasetAlvo || CAPI_DATASET_ID;
+  const persistir = !datasetAlvo;
+
+  if (!CAPI_TOKEN || !dataset) {
+    if (persistir) {
+      await registraStatusCredencial({
+        token_valido: false,
+        erro: 'META_CAPI_ACCESS_TOKEN ou META_CAPI_DATASET_ID ausente no ambiente',
+      });
+    }
+    return { token_valido: false, erro: 'credencial nao configurada no Railway' };
   }
 
   try {
@@ -55,44 +112,62 @@ async function probe() {
     );
     const j: any = await r.json();
     if (j?.error) {
-      await registraStatusCredencial({ token_valido: false, erro: `${j.error.code}: ${j.error.message}` });
+      if (persistir) {
+        await registraStatusCredencial({ token_valido: false, erro: `${j.error.code}: ${j.error.message}` });
+      }
       return { token_valido: false, erro: j.error.message, codigo: j.error.code };
     }
 
-    // Token vivo não basta: precisa enxergar o dataset. Foi exatamente essa a
-    // pegadinha de julho (subcode 33 = token válido SEM permissão no pixel).
+    // Token vivo nao basta: precisa enxergar o dataset. Foi exatamente essa a
+    // pegadinha de julho (subcode 33 = token valido SEM permissao no pixel).
+    //
+    // Só `id,name` aqui: pedir `owner_business` no mesmo fields devolve
+    // "(#100) Missing Permission" mesmo quando o acesso ao dataset existe, e aí
+    // o erro passa a mentir sobre a causa. Custou tempo em 03/09/2026.
     const rd = await fetch(
-      `https://graph.facebook.com/${GRAPH_VERSION}/${CAPI_DATASET_ID}?fields=id,name,owner_business&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+      `https://graph.facebook.com/${GRAPH_VERSION}/${dataset}?fields=id,name&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
     );
     const jd: any = await rd.json();
     if (jd?.error) {
-      await registraStatusCredencial({
-        token_valido: true,
-        app_id: j?.id ?? null,
-        erro: `token vivo mas sem acesso ao dataset ${CAPI_DATASET_ID}: ${jd.error.message}`,
-      });
-      return { token_valido: true, dataset_acessivel: false, erro: jd.error.message };
+      const diag = await diagnosticaAcesso(dataset);
+      if (persistir) {
+        await registraStatusCredencial({
+          token_valido: true,
+          app_id: j?.id ?? null,
+          erro: `token vivo mas sem acesso ao dataset ${dataset}: ${jd.error.message} | ${diag.diagnostico}`,
+        });
+      }
+      return { token_valido: true, dataset, dataset_acessivel: false, erro: jd.error.message, ...diag };
     }
 
-    await registraStatusCredencial({ token_valido: true, app_id: j?.id ?? null, erro: null });
-    return { token_valido: true, dataset_acessivel: true, dataset: jd?.name, identidade: j?.name ?? j?.id };
+    if (persistir) {
+      await registraStatusCredencial({ token_valido: true, app_id: j?.id ?? null, erro: null });
+    }
+    return {
+      token_valido: true,
+      dataset,
+      dataset_acessivel: true,
+      dataset_nome: jd?.name,
+      identidade: j?.name ?? j?.id,
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await registraStatusCredencial({ token_valido: false, erro: msg });
+    if (persistir) await registraStatusCredencial({ token_valido: false, erro: msg });
     return { token_valido: false, erro: msg };
   }
 }
 
 export const handler: RequestHandler = async (req, res) => {
   try {
-    const { modo, dry_run, limite, test_event_code } = (req.body || {}) as {
+    const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
       modo?: 'probe';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
+      dataset_id?: string;
     };
 
-    if (modo === 'probe') return res.status(200).json({ modo: 'probe', ...(await probe()) });
+    if (modo === 'probe') return res.status(200).json({ modo: 'probe', ...(await probe(dataset_id)) });
 
     const tamanho = Math.min(Math.max(Number(limite) || LOTE_PADRAO, 1), 500);
     const agora = new Date().toISOString();
