@@ -92,3 +92,91 @@ importadores diferentes, não um.
    homologado de **R$ 50.000 em 6 parcelas** (13/11/2024). O app já sinaliza
    ("R$ 50.000 ≠ carteira"). Projeção 11,7× acima do acordo real — é detector,
    e a peça decide.
+
+---
+
+# Os dois importadores da aba Lançamentos (03/09/2026)
+
+Entregues em `scripts/`:
+
+| Arquivo | O que faz |
+|---|---|
+| `jurimetria-lancamentos-comum.mjs` | funções puras compartilhadas: parser de CSV, leitura de célula BR, classificação do rótulo, separação decisão × parcela |
+| `import-jurimetria-decisoes.mjs` | linhas **sem** `N° DA PARCELA` → `jm_decisoes` + `jm_valores` |
+| `import-jurimetria-parcelas.mjs` | linhas **com** `N° DA PARCELA` → `jm_pagamentos` |
+| `src/lib/__tests__/importJurimetriaLancamentos.test.ts` | 24 asserções sobre a lógica pura |
+
+Uso, igual ao `import-tab-aux.mjs` que já existia:
+
+```
+node scripts/import-jurimetria-decisoes.mjs --dry-run Lancamentos.csv
+node scripts/import-jurimetria-decisoes.mjs --sql saida.sql Lancamentos.csv
+```
+
+## O que a leitura do CSV de 03/09/2026 devolve
+
+| | |
+|---|---:|
+| Linhas úteis (com CNJ de 20 dígitos e cliente) | 2.926 |
+| → de **decisão** | 1.904 |
+| → de **parcela** | 1.022 |
+| Rótulos não mapeados | **0** |
+| Decisões de mérito distintas (cnj + tipo + instância + data) | **349** |
+| Linhas ignoradas por não serem decisão (SEM DECISÃO e afins) | 580 |
+| Parcelas: RECEBIDA / A_RECEBER | 711 / 311 |
+
+## Decisões de desenho, e o motivo de cada uma
+
+**`SEM DECISÃO` não vira decisão.** São 580 linhas cujo valor na planilha é
+projeção. Virassem decisão, a escada do honorário liberaria tranche sobre um
+número que ninguém julgou.
+
+**Decisão sem data não entra.** Sem data não há degrau na escada.
+
+**A data da parcela cai no campo do status.** `Pago` → `data_recebida`;
+`A receber` → `data_prevista`. Preencher os dois é o que faz o caixa mostrar
+como realizado o que ainda não entrou.
+
+**A data zero do Excel (30/12/1899) é lida como nulo.** Ela aparece em célula
+vazia formatada como data; gravada como termo inicial, faria a correção
+monetária render 126 anos.
+
+**Nenhum dos dois apaga.** Registro que está no banco e sumiu da planilha vai
+para o relatório como órfão. Isso importa agora por causa do achado abaixo.
+
+## O achado: parcelas viraram decisão na carga de 08/07/2026
+
+Das 95 `HOMOLOGAÇÃO DE ACORDO` em `jm_decisoes`:
+
+- **64** são repetição no mesmo processo
+- **52** casam com a data de uma parcela em `jm_pagamentos`
+
+O caso `0000352-23.2023.5.09.0665` tem doze "homologações" mensais (D0091 a
+D0102). É **um** acordo pago em doze vezes, não doze acordos. O mesmo em
+`0000034-39` (D0011–D0015), `0010054-02` (D0272–D0281), `0024921-34`
+(D0397–D0404), `0000407-35` (D0126–D0131).
+
+Isso infla `jm_decisoes` e, por tabela, `jm_valores` — e é a causa provável do
+"somar `jm_valores` direto infla ~2,6×" que a migration de 18/08 já registrava
+sem explicar.
+
+**Os scripts apontam, não apagam.** Limpar exige decidir caso a caso se a
+primeira homologação da série é a real (provavelmente é) e se as demais viram
+parcela. Fica para uma rodada dedicada, com aval.
+
+## Estado de `jm_pagamentos`
+
+Já tem **1.022 linhas** e bate com a planilha em **38 dos 40** processos. O
+delta é um processo novo (`1000113-66.2025.8.11.0037`) e uma parcela a mais no
+banco em `0000648-76.2023.5.23.0076`. O importador existe para manter em dia
+sem recarregar tudo.
+
+## Limite desta entrega
+
+O dry-run contra o banco exige `SUPABASE_SERVICE_ROLE_KEY`, que não está no
+`.env` (ele só tem as chaves do Cloud `gliigkupoebmlbwyvijp`). Sem ela os
+scripts leem e classificam a planilha, mas não comparam com o Externo.
+
+O `vitest` também não roda neste ambiente (`node_modules` ausente). As mesmas
+24 asserções do arquivo de teste foram exercitadas em Node puro e passaram —
+o teste vitest fica para o CI ou para a máquina do Raym.
