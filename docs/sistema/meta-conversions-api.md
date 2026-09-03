@@ -255,6 +255,37 @@ MATERN PREV 2  ->  LEAD_GENERATION x 3  +  QUALITY_LEAD x 1
 `QUALITY_LEAD` é a otimização **Conversion Leads**, que *espera* receber os
 estágios do funil do CRM de volta — e nunca recebeu nada nosso.
 
+### Valor da conversão — decidido em 03/09/2026
+
+`Purchase` **exige** `value` (a Meta recusa com `400`/`2804009`), então o valor
+deixou de ser opcional. Honorário médio que o escritório recebe, gravado em
+`products_services.price_range_min/max` — a coluna que a tela do app rotula
+"Preço Mín/Máx (R$)", lida só pelo `ProductFormDialog`:
+
+| Produto | ID | Faixa | Valor enviado | Fechados |
+|---|---|---|---|---|
+| BPC/LOAS Autista | `a1000003…` | 12.000–30.000 | **21.000** | 905 |
+| Salário Maternidade | `a1000001…` | 1.945 | 1.945 | 883 |
+| Indenização por Acidente de Trabalho | `a1000004…` | 250.000 | 250.000 | 379 |
+| Auxílio Acidente | `a1000002…` | 27.500 | 27.500 | 73 |
+
+O BPC usa faixa porque **o banco não sabe separar judicial (30.000) de
+administrativo (12.000)**: `case_type` tem 570 de 905 nulos e é texto livre sem
+menção a esfera; `legal_cases` × `inss_admin_processes` não é partição (184 leads
+têm os dois, que é o caminho normal ADM→JUD); `assigned_to_judicial` está
+preenchido em 44 de 905. A média de min/max resolve sem fingir precisão. Para
+enviar o valor certo por caso seria preciso primeiro marcar a esfera no CRM.
+
+`conversion_value` do lead tem prioridade sobre a faixa, e `valor_origem`
+distingue `informado` de `faixa_produto` — dá para auditar quanto do valor
+reportado é real e quanto é estimativa. Hoje: **0 leads** com valor apurado.
+
+**Fechado sem produto não vai à rede.** 536 fechados têm contato mas nenhum
+valor; o enqueue os grava `skipped` com o motivo apontando o conserto (produto no
+lead, ou preço no cadastro do produto) em vez de deixar a Meta recusar.
+
+---
+
 ### Cobertura da fila (03/09/2026)
 
 - fechados vivos: **3.165**
