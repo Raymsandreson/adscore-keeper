@@ -149,7 +149,7 @@ Variáveis no **Railway**:
 | Variável | O que é |
 |---|---|
 | `META_CAPI_ACCESS_TOKEN` | token da CAPI (Gerenciador de Eventos → Configurações → Gerar token) |
-| `META_CAPI_DATASET_ID` | id do conjunto de dados/pixel |
+| `META_CAPI_DATASET_ID` | id do conjunto de dados/pixel — hoje `1782109342966504`, ver seção abaixo |
 | `META_CAPI_VALOR_PADRAO` | opcional; fallback quando não há valor nem faixa |
 
 Aceita também os nomes antigos (`FACEBOOK_CAPI_ACCESS_TOKEN`,
@@ -184,12 +184,68 @@ em Usuários do sistema → Adicionar ativos → Fontes de dados).
 POST /functions/meta-capi-dispatch  { "dry_run": true }
 ```
 
+**Qual pixel as campanhas usam de verdade:**
+
+```
+POST /functions/meta-capi-dispatch  { "modo": "inventario" }
+```
+
+Lê os conjuntos de anúncios ativos das contas atribuídas ao token e agrupa por
+`pixel_id`. É o detector da próxima troca de pixel ou portfólio — sem ele, a
+fila alimenta dataset órfão sem ninguém notar. `{ "modo": "probe",
+"dataset_id": "..." }` sonda um candidato sem trocar env var nem sobrescrever o
+status oficial.
+
 **Enviar sem sujar a otimização:** `{ "test_event_code": "TESTxxxxx" }` — aparece
 em Gerenciador de Eventos → Testar eventos e não entra na otimização.
 
 **Credencial morta congela a fila** (`proxima_tentativa_em = null`) em vez de
 queimar tentativas contra um token que não vai voltar sozinho. Renovar o token
 e chamar *Enviar fila agora* destrava.
+
+---
+
+## Qual conjunto de dados recebe — medido em 03/09/2026
+
+Havia dois candidatos no portfólio WhatsJudd, ambos recebendo Pixel + CAPI e
+ambos acessíveis pelo token. **O nome não decide**: quem decide é o
+`promoted_object.pixel_id` dos conjuntos de anúncios *ativos*. Levantado com
+`{ "modo": "inventario" }`:
+
+| Conta | Conjuntos | Ativos | Ativos com pixel |
+|---|---|---|---|
+| Matern Prev 3 (`act_2459028114566447`) | 57 | 5 | **1** |
+| MATERN PREV 2 (`act_1473452273941428`) | 19 | 4 | **0** |
+
+```
+1782109342966504  (COMPRA GUIA MÃES ATÍPICAS)  -> 1 anúncio, Matern Prev 3, PURCHASE
+1570540998104531  (NOVO PIXEL GUIA MÃES ATÍPICAS) -> nenhuma campanha ativa
+```
+
+Logo o alvo é **`1782109342966504`**, e não o "NOVO PIXEL" que o nome sugeria —
+apontar para o outro seria alimentar dataset órfão: eventos entrando, painel
+verde, zero efeito em campanha. O evento que aquele conjunto otimiza (`PURCHASE`)
+é justamente o que o fechamento de lead dispara aqui.
+
+### O alcance real é 1 conjunto de anúncios, não 9
+
+Os outros 8 conjuntos ativos **não usam pixel**, e isso não é defeito:
+
+```
+Matern Prev 3  ->  LEAD_GENERATION x 4
+MATERN PREV 2  ->  LEAD_GENERATION x 3  +  QUALITY_LEAD x 1
+```
+
+`LEAD_GENERATION` otimiza por volume de lead e não consome evento de site.
+`QUALITY_LEAD` é a otimização **Conversion Leads**, que *espera* receber os
+estágios do funil do CRM de volta — e nunca recebeu nada nosso.
+
+### Cobertura da fila (03/09/2026)
+
+- fechados vivos: **3.165**
+- com telefone ou e-mail (correspondência possível): **2.118 (67%)**
+- os outros 1.047 viram `skipped` com motivo no painel, em vez de serem enviados
+  e descartados calados pela Meta, como antes
 
 ---
 
@@ -200,6 +256,13 @@ e chamar *Enviar fila agora* destrava.
   relatório. Decisão adiada de propósito.
 - **`meta_ad_accounts` com token morto** (`code 190, subcode 467 — user logged
   out`). É outra integração (leitura de campanhas), fora do escopo desta.
+- **Conversion Leads (`QUALITY_LEAD`).** Frente real, não viável hoje: a Meta
+  pede o *Meta Lead ID* de 15-17 dígitos guardado no CRM (telefone/e-mail como
+  alternativa), e a coluna `leads.facebook_lead_id` existe com **0 preenchidos em
+  23.426**; `adset_id` também zerado, `campaign_id` tem 714 e secou em
+  11/05/2026. Para destravar seria preciso capturar o `leadgen_id` do webhook de
+  Lead Ads na entrada. Só depois faz sentido mandar estágio de funil.
+  Documentação: `conversions-api/conversion-leads-integration`.
 - **CTWA / `business_messaging`.** Morto de fato: 400 leads com `ctwa_context` e
   **zero** com `ctwa_clid` preenchido, o mais recente de 28/04/2026. Os leads
   vêm de formulário (Lead Ads), então o caminho é Pixel/CAPI. `meta_capi_config`
