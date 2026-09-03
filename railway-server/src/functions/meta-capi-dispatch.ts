@@ -121,11 +121,17 @@ async function inventario() {
     }
     const ativos = (ads?.data ?? []).filter((a: any) => a.effective_status === 'ACTIVE');
     const semPixel: string[] = [];
+    // Conjunto ativo sem pixel nao e erro: campanha de clique-para-WhatsApp
+    // otimiza por conversa, nao por evento de site. Mas precisa aparecer, senao
+    // a leitura fica "a CAPI cobre as campanhas" quando cobre uma fracao delas.
+    const metasSemPixel: Record<string, number> = {};
 
     for (const a of ativos) {
       const pid = a?.promoted_object?.pixel_id;
       if (!pid) {
         semPixel.push(a.name);
+        const meta = a?.optimization_goal || 'sem_objetivo';
+        metasSemPixel[meta] = (metasSemPixel[meta] ?? 0) + 1;
         continue;
       }
       const slot = (porPixel[pid] ??= { anuncios: 0, contas: [], eventos: [] });
@@ -142,6 +148,7 @@ async function inventario() {
       conjuntos_total: (ads?.data ?? []).length,
       conjuntos_ativos: ativos.length,
       ativos_sem_pixel: semPixel.length,
+      objetivo_dos_sem_pixel: metasSemPixel,
     });
   }
 
