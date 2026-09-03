@@ -1,6 +1,6 @@
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
-import { descreverErro, enviarDocumentoAoGrupo } from '../lib/inss-zap';
+import { descreverErro, enviarDocumentoAoGrupo, LEGENDA_PROCURACAO } from '../lib/inss-zap';
 
 /**
  * Busca e vínculo manual da procuração de um lead.
@@ -107,9 +107,7 @@ export const handler: RequestHandler = async (req, res) => {
           group_jid,
           file_url: (doc as any).original_file_url,
           doc_name: 'procuracao-para-assinar.pdf',
-          caption:
-            'Segue a procuração para assinar. É só imprimir, assinar à caneta (a assinatura ' +
-            'precisa ficar parecida com a do seu documento), tirar foto e mandar aqui.',
+          caption: LEGENDA_PROCURACAO,
           instance_name: instance_name || null,
         });
         enviado = r.ok;

@@ -229,6 +229,41 @@ export async function enviarDocumentoUazapi(args: {
 }
 
 /**
+ * Legenda que acompanha o PDF da procuração — uma só, importada pelos três
+ * lugares que enviam (notify-inss-update, dispatch-inss-zap e o envio manual
+ * do inss-procuracao-vincular). Estava copiada nos três, e ela precisa ser
+ * idêntica em todos: é por esta frase que se audita, no espelho das mensagens,
+ * se o PDF chegou ao cliente — três cópias que divergem deixam a auditoria cega.
+ *
+ * O passo a passo é numerado e diz ONDE assinar porque a versão anterior ("é só
+ * imprimir, assinar à caneta") deixava em aberto justamente as duas coisas que o
+ * INSS recusa: assinatura fora da linha e imagem de assinatura colada. O rótulo
+ * da linha muda de modelo para modelo — "OUTORGANTE" quando o titular assina,
+ * "REPRESENTANTE GERAL" quando é a mãe pelo filho menor —, então o texto cita os
+ * dois; citar um só manda metade dos clientes procurar uma palavra que não está
+ * na folha deles.
+ */
+export const LEGENDA_PROCURACAO = [
+  '*PROCURAÇÃO PARA ASSINAR À MÃO* ✍️',
+  '',
+  'O INSS deixou de aceitar assinatura eletrônica neste pedido. Precisamos da sua assinatura feita à caneta, no papel.',
+  '',
+  '*Passo a passo:*',
+  '',
+  '*1.* Imprima o arquivo em anexo.',
+  '',
+  '*2.* No fim do documento tem uma linha em branco, logo acima da palavra *OUTORGANTE* (em alguns modelos aparece *REPRESENTANTE GERAL*). É exatamente ali que a assinatura deve ficar: em cima dessa linha, e em nenhum outro lugar da folha.',
+  '',
+  '*3.* Assine com caneta azul ou preta, o mais *parecido possível com a assinatura do seu RG ou CNH* — o INSS compara as duas.',
+  '',
+  '*4.* Tire foto de *todas as páginas*, com boa luz e a folha inteira aparecendo, e mande aqui nesta conversa.',
+  '',
+  '⚠️ Não vale assinatura digital, digitada ou colada como imagem. Tem que ser de próprio punho.',
+  '',
+  'Qualquer dúvida, é só responder por aqui.',
+].join('\n');
+
+/**
  * Manda o PDF da procuração ao grupo, com o mesmo rodízio de instâncias do
  * texto — o grupo tem várias instâncias-membro e só quem está dentro consegue
  * enviar.
