@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { RemoveScroll } from 'react-remove-scroll';
 import { Download, FileText, X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { bindDownload } from '@/lib/downloadFile';
@@ -112,7 +113,22 @@ export function MediaLightbox({ url, title = 'Visualização', onClose }: MediaL
   // inteiro. Como este overlay é portalado pro body, sem religar aqui o X, o fundo e os
   // botões de zoom ficam inclicáveis sempre que o visualizador for aberto de dentro de
   // um sheet/dialog (chat interno, ficha de atividade).
+  // RemoveScroll: o visualizador é portalado pro body, ou seja, FORA do
+  // conteúdo do Sheet/Dialog de onde ele foi aberto. O Radix trava a rolagem
+  // com o react-remove-scroll, que registra um `touchmove` não-passivo no
+  // document e dá preventDefault em tudo que não está dentro do painel dele —
+  // e o visualizador não está. Resultado no celular: o PDF aparecia, mas não
+  // rolava nem pra cima nem pra baixo (verificado na aba Documentos do
+  // processo, peça "Ata da Audiência", 03/09/2026).
+  //
+  // A trava é uma pilha: só o último cadeado montado é que cancela eventos.
+  // Montando o nosso aqui, o do Sheet sai de cena enquanto o visualizador está
+  // aberto, e quem decide o que rola passa a ser este painel — o de dentro rola,
+  // o fundo continua travado. Ao fechar, o cadeado do Sheet volta a valer.
+  // `forwardProps` faz o RemoveScroll pendurar os handlers no próprio div
+  // abaixo, sem criar um wrapper que quebraria o `fixed inset-0`.
   return createPortal(
+    <RemoveScroll forwardProps>
     <div
       data-media-lightbox="true"
       className="pointer-events-auto fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8 animate-in fade-in overflow-hidden"
@@ -259,7 +275,8 @@ export function MediaLightbox({ url, title = 'Visualização', onClose }: MediaL
           onClick={onImgClick}
         />
       )}
-    </div>,
+    </div>
+    </RemoveScroll>,
     document.body,
   );
 }
