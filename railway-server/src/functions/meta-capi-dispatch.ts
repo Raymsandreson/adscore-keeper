@@ -159,6 +159,64 @@ async function inventario() {
 }
 
 /**
+ * Formularios instantaneos das campanhas ativas e quantos leads eles ja
+ * coletaram.
+ *
+ * Existe porque `destination_type: ON_AD` quer dizer que o lead nasce DENTRO da
+ * Meta -- e o CRM nao tem nenhuma via de Lead Ads (`leads.facebook_lead_id`: 0
+ * preenchidos em 23.426). Ou alguem baixa CSV a mao, ou tem lead parado la que
+ * nunca virou atendimento. Isto mede qual das duas.
+ */
+async function formularios() {
+  const g = async (path: string) => {
+    const r = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
+        `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+    );
+    return (await r.json()) as any;
+  };
+
+  const contas = await g('me/adaccounts?fields=id,name&limit=50');
+  if (contas?.error) return { error: contas.error.message };
+
+  const paginas = new Map<string, string[]>();
+  for (const c of contas?.data ?? []) {
+    const ads = await g(`${c.id}/adsets?fields=name,effective_status,promoted_object,destination_type&limit=200`);
+    for (const a of ads?.data ?? []) {
+      if (a?.effective_status !== 'ACTIVE' || a?.destination_type !== 'ON_AD') continue;
+      const pid = a?.promoted_object?.page_id;
+      if (!pid) continue;
+      const lista = paginas.get(pid) ?? [];
+      if (!lista.includes(c.name)) lista.push(c.name);
+      paginas.set(pid, lista);
+    }
+  }
+
+  const resultado: Array<Record<string, unknown>> = [];
+  for (const [pageId, dono] of paginas) {
+    const f = await g(`${pageId}/leadgen_forms?fields=id,name,status,leads_count&limit=100`);
+    if (f?.error) {
+      resultado.push({ page_id: pageId, contas: dono, erro: f.error.message, codigo: f.error.code });
+      continue;
+    }
+    const forms = (f?.data ?? []).map((x: any) => ({
+      id: x.id,
+      nome: x.name,
+      status: x.status,
+      leads: x.leads_count ?? null,
+    }));
+    resultado.push({
+      page_id: pageId,
+      contas: dono,
+      formularios: forms.length,
+      leads_totais: forms.reduce((t: number, x: any) => t + (x.leads || 0), 0),
+      detalhe: forms.sort((a: any, b: any) => (b.leads || 0) - (a.leads || 0)).slice(0, 15),
+    });
+  }
+  return { paginas: resultado };
+}
+
+/**
  * Checa a credencial sem gastar evento: /me diz se o token vive.
  *
  * `datasetAlvo` serve para sondar um dataset diferente do configurado, sem
@@ -234,7 +292,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -243,6 +301,7 @@ export const handler: RequestHandler = async (req, res) => {
 
     if (modo === 'probe') return res.status(200).json({ modo: 'probe', ...(await probe(dataset_id)) });
     if (modo === 'inventario') return res.status(200).json({ modo: 'inventario', ...(await inventario()) });
+    if (modo === 'formularios') return res.status(200).json({ modo: 'formularios', ...(await formularios()) });
 
     // Religa o que foi congelado por erro sem volta, depois que a causa mudou
     // (token novo, valor configurado). Sem isso a linha ficaria fora da fila
