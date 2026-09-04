@@ -148,11 +148,12 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuthContext: () => ({ user: { id: 
 import { MentionsPanel } from '../MentionsPanel';
 import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 
-/** O painel abre direto nas menções — a aba "Chat" não existe mais. */
+/** O painel abre nas Conversas — as menções ficam atrás do clique na aba. */
 function renderMentionsTab(list: any[], seguindo: string[] = []) {
   mentions = list;
   followedThreads = new Set(seguindo);
   render(<MentionsPanel open onOpenChange={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: /^Menções/ }));
 }
 
 describe('MentionsPanel — cobrar resposta urgente', () => {
