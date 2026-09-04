@@ -61,17 +61,39 @@ export function prefixarRemetente(texto: string, quem: IdentidadeDoRemetente): s
 }
 
 /**
+ * Separa o prefixo `*Nome:*` do corpo da mensagem.
+ *
+ * Serve pra TELA: a bolha mostra quem assinou num cabeçalho (igual ao nome do
+ * participante num grupo) e o corpo sem a assinatura repetida. O nome volta
+ * como foi enviado — COM título de tratamento — porque é exatamente isso que o
+ * cliente leu do outro lado. Quem precisa casar com um membro da equipe usa
+ * `extractSenderName`, que tira o título.
+ *
+ * Sem prefixo devolve `{ nome: null, corpo: <texto intacto> }`: nunca chuta
+ * autoria. Mensagem que é só o prefixo devolve corpo vazio.
+ */
+export function separarPrefixoRemetente(
+  messageText: string | null | undefined
+): { nome: string | null; corpo: string } {
+  const texto = messageText || '';
+  const quebra = texto.indexOf('\n');
+  const primeira = (quebra === -1 ? texto : texto.slice(0, quebra)).trim();
+
+  const m = primeira.match(/^\*([^*:]{2,60}):\*$/);
+  if (!m) return { nome: null, corpo: texto };
+
+  const nome = m[1].trim();
+  if (!nome) return { nome: null, corpo: texto };
+
+  return { nome, corpo: quebra === -1 ? '' : texto.slice(quebra + 1) };
+}
+
+/**
  * Extrai o nome do prefixo `*Nome:*` da primeira linha. Devolve null quando a
  * mensagem não tem prefixo (envio anônimo, mensagem do agente de IA, mídia).
  */
 export function extractSenderName(messageText: string | null | undefined): string | null {
-  const first = (messageText || '').split('\n')[0]?.trim();
-  if (!first) return null;
-
-  const m = first.match(/^\*([^*:]{2,60}):\*$/);
-  if (!m) return null;
-
-  const nome = m[1].trim();
+  const nome = separarPrefixoRemetente(messageText).nome;
   if (!nome) return null;
 
   // Tira o título de tratamento: "Dra. Ana Souza" → "Ana Souza".
