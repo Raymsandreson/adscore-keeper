@@ -16,7 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Bell, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
-import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock, Settings2, ChevronsUp, ChevronsDown, Instagram, Smartphone } from 'lucide-react';
+import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock, Settings2, ChevronsUp, ChevronsDown, Instagram, Smartphone, SendHorizonal } from 'lucide-react';
 import { Check, CheckCheck, AlertTriangle } from 'lucide-react';
 import { deliveryBadge } from '@/lib/whatsappDeliveryStatus';
 import { janelaDeAtendimento, formatarRestante } from '@/lib/whatsapp24hWindow';
@@ -49,6 +49,7 @@ import { useAutoriaDasMensagens, idDaMensagemNoWhatsApp } from '@/hooks/useAutor
 import { AgendarMensagemDialog } from './AgendarMensagemDialog';
 import { descreverRepeticao, regraDaLinha } from '@/lib/mensagemAgendada';
 import { useMensagensAgendadas } from '@/hooks/useMensagensAgendadas';
+import { ContagemAteEnvio } from './ContagemAteEnvio';
 import { midiasDaMensagem, rotuloDaMidia, type MidiaDaMensagem } from '@/lib/midiaDaConversa';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
@@ -298,6 +299,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [showAgendar, setShowAgendar] = useState(false);
   const [perfilDoEnvio, setPerfilDoEnvio] = useState<{ full_name: string | null; treatment_title: string | null } | null>(null);
   const [cancelandoAgendada, setCancelandoAgendada] = useState<string | null>(null);
+  const [enviandoAgendada, setEnviandoAgendada] = useState<string | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
   const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
@@ -3096,6 +3098,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     }
   };
 
+  /** Adiantar a fila pela própria bolha: a mensagem sai no próximo minuto. */
+  const handleEnviarAgendadaAgora = async (id: string) => {
+    setEnviandoAgendada(id);
+    try {
+      await agendadas.enviarAgora(id);
+      toast.success('Na frente da fila — sai no próximo minuto');
+    } catch (e: any) {
+      toast.error('Não consegui adiantar: ' + (e?.message || 'erro desconhecido'));
+    } finally {
+      setEnviandoAgendada(null);
+    }
+  };
+
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
 
@@ -5568,6 +5583,18 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       ? <Loader2 className="h-3 w-3 animate-spin" />
                       : <Trash2 className="h-3 w-3" />}
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity self-center mr-1 text-muted-foreground hover:text-green-700"
+                    title="Enviar agora — não espera a hora marcada"
+                    disabled={enviandoAgendada === item.id}
+                    onClick={() => handleEnviarAgendadaAgora(item.id)}
+                  >
+                    {enviandoAgendada === item.id
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : <SendHorizonal className="h-3 w-3" />}
+                  </Button>
                   <button
                     type="button"
                     onClick={() => setShowAgendar(true)}
@@ -5577,6 +5604,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     <p className="mb-1 flex items-center gap-1 text-[10px] font-medium text-green-700 dark:text-green-400">
                       <CalendarClock className="h-3 w-3 shrink-0" />
                       {format(quando, "dd/MM 'às' HH:mm", { locale: ptBR })}
+                      <ContagemAteEnvio quando={quando} className="font-normal text-muted-foreground" />
                       {item.repeticao !== 'nenhuma' && (
                         <span className="font-normal text-muted-foreground">
                           · {descreverRepeticao(quando, regraDaLinha(item))}

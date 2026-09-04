@@ -26,12 +26,14 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2 } from 'lucide-react';
+import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare } from 'lucide-react';
+import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 
 const dbAny = db as unknown as SupabaseClient;
 
 interface Pendente {
-  id: string; group_name: string | null; pergunta: string | null; pergunta_autor: string | null;
+  id: string; group_jid: string; instance_name: string | null;
+  group_name: string | null; pergunta: string | null; pergunta_autor: string | null;
   resposta_sugerida: string; resposta_final: string | null; intencao: string | null;
   motivo_revisao: string | null; status: string; criado_em: string; enviado_em: string | null;
   atendente_id: string | null;
@@ -57,6 +59,20 @@ function nomeDoAtendente(p: Pendente): string | null {
 const quando = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 
+/**
+ * Abre a conversa do grupo no painel de baixo pra cima — o mesmo drawer do
+ * resto do sistema, com histórico ao vivo, mídia e resposta. Nunca redireciona.
+ */
+function abrirConversa(groupJid: string, instanceName: string | null, groupName: string | null) {
+  openWhatsAppChatSheet({
+    phone: groupJid,
+    instanceName,
+    contactName: groupName,
+    direction: 'bottom',
+    forceSheet: true,
+  });
+}
+
 /** Linha comum das três listas que saem de dom_respostas_pendentes. */
 function LinhaPendente({ p, onClick, rodape }: { p: Pendente; onClick?: () => void; rodape?: React.ReactNode }) {
   return (
@@ -66,6 +82,13 @@ function LinhaPendente({ p, onClick, rodape }: { p: Pendente; onClick?: () => vo
           <p className="text-xs font-medium flex-1 truncate">{p.group_name || '—'}</p>
           {p.intencao && <Badge variant="outline" className="text-[10px]">{p.intencao}</Badge>}
           <span className="text-[10px] text-muted-foreground whitespace-nowrap">{quando(p.criado_em)}</span>
+          <Button
+            size="icon" variant="ghost" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-primary"
+            title="Abrir a conversa do grupo"
+            onClick={(e) => { e.stopPropagation(); abrirConversa(p.group_jid, p.instance_name, p.group_name); }}
+          >
+            <MessagesSquare className="h-3.5 w-3.5" />
+          </Button>
         </div>
         <p className="text-[11px] text-muted-foreground truncate">
           <strong>{p.pergunta_autor || 'Cliente'}:</strong> {p.pergunta}
@@ -90,7 +113,7 @@ export function AtendenteVirtualPanel() {
     setCarregando(true);
     try {
       await ensureExternalSession();
-      const sel = 'id, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, dom_atendentes(nome)';
+      const sel = 'id, group_jid, instance_name, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, dom_atendentes(nome)';
       const [f, e, h, s] = await Promise.all([
         dbAny.from('dom_respostas_pendentes').select(sel)
           .eq('status', 'pendente').is('atendente_id', null)
@@ -209,6 +232,13 @@ export function AtendenteVirtualPanel() {
                   <p className="text-xs font-medium flex-1 truncate">{d.group_name || d.group_jid}</p>
                   {d.intencao && <Badge variant="outline" className="text-[10px]">{d.intencao}</Badge>}
                   <span className="text-[10px] text-muted-foreground whitespace-nowrap">{quando(d.criado_em)}</span>
+                  <Button
+                    size="icon" variant="ghost" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-primary"
+                    title="Abrir a conversa do grupo"
+                    onClick={() => abrirConversa(d.group_jid, null, d.group_name)}
+                  >
+                    <MessagesSquare className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
                 <p className="text-[11px] text-muted-foreground truncate">
                   <strong>Cliente:</strong> {d.pergunta}
@@ -243,6 +273,10 @@ export function AtendenteVirtualPanel() {
                 <Label className="text-xs">Resposta sugerida (dá para editar)</Label>
                 <Textarea className="text-xs min-h-[180px]" value={texto} onChange={e => setTexto(e.target.value)} />
               </div>
+              <Button size="sm" variant="outline" className="w-full text-xs gap-1"
+                onClick={() => abrirConversa(aberto.group_jid, aberto.instance_name, aberto.group_name)}>
+                <MessagesSquare className="h-3.5 w-3.5" />Abrir a conversa do grupo
+              </Button>
               <div className="flex gap-2">
                 <Button size="sm" className="text-xs gap-1 flex-1"
                   onClick={() => decidir(aberto, texto === aberto.resposta_sugerida ? 'aprovada' : 'editada')}>

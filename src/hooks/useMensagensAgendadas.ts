@@ -205,5 +205,25 @@ export function useMensagensAgendadas({ phone, instanceName }: Params) {
     await carregar();
   }, [carregar]);
 
-  return { itens, pendentes, encerradas, loading, salvando, agendar, cancelar, recarregar: carregar };
+  /**
+   * "Enviar agora": adianta a hora marcada para o passado, e o próximo tique do
+   * banco (`wa_agendadas_tick`, de minuto em minuto) leva a mensagem embora.
+   *
+   * NÃO chama o envio direto de propósito. O disparo do banco é quem grava a
+   * bolha, conta o envio, registra o resultado e respeita `pular_se_responder`.
+   * Um segundo caminho de envio aqui significaria duas verdades sobre a mesma
+   * mensagem — e mensagem dobrada se os dois rodassem juntos. O preço é a
+   * espera de até um minuto, que a tela diz em voz alta.
+   */
+  const enviarAgora = useCallback(async (id: string) => {
+    const { error } = await (db as any)
+      .from('whatsapp_mensagens_agendadas')
+      .update({ proximo_envio_at: new Date().toISOString(), atualizado_em: new Date().toISOString() })
+      .eq('id', id)
+      .eq('ativo', true);
+    if (error) throw error;
+    await carregar();
+  }, [carregar]);
+
+  return { itens, pendentes, encerradas, loading, salvando, agendar, cancelar, enviarAgora, recarregar: carregar };
 }

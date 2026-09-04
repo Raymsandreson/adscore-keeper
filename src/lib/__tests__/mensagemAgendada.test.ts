@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   descreverAgendamento,
+  faltaPara,
   listarProximosEnvios,
   proximoEnvio,
   validarAgendamento,
@@ -172,5 +173,32 @@ describe('validarAgendamento', () => {
   it('recusa limite antes do primeiro envio', () => {
     const r = regra({ repeticao: 'diaria', repetirAte: new Date(2026, 7, 25) });
     expect(validarAgendamento('oi', futuro, r, AGORA)).toMatch(/anterior ao primeiro envio/);
+  });
+});
+
+describe('faltaPara — quanto tempo ainda dá para cancelar', () => {
+  const agora = new Date('2026-09-04T15:00:00');
+
+  it('conta em segundos no último minuto, que é quando a pessoa precisa decidir rápido', () => {
+    expect(faltaPara(new Date('2026-09-04T15:00:42'), agora)).toBe('42s');
+  });
+
+  it('vira relógio minuto:segundo na janela de 5 minutos do atendente virtual', () => {
+    expect(faltaPara(new Date('2026-09-04T15:04:32'), agora)).toBe('4:32');
+    expect(faltaPara(new Date('2026-09-04T15:05:00'), agora)).toBe('5:00');
+  });
+
+  it('encurta para horas e dias quando o agendamento é longe', () => {
+    expect(faltaPara(new Date('2026-09-04T17:30:00'), agora)).toBe('2h30');
+    expect(faltaPara(new Date('2026-09-07T03:00:00'), agora)).toBe('2d12h');
+  });
+
+  it('devolve null depois da hora — quem manda aí é o disparo, não a contagem', () => {
+    expect(faltaPara(new Date('2026-09-04T15:00:00'), agora)).toBeNull();
+    expect(faltaPara(new Date('2026-09-04T14:59:00'), agora)).toBeNull();
+  });
+
+  it('não quebra com data inválida vinda do banco', () => {
+    expect(faltaPara('nao-e-data', agora)).toBeNull();
   });
 });

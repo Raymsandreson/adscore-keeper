@@ -234,3 +234,32 @@ export function validarAgendamento(
   }
   return null;
 }
+
+/**
+ * Quanto falta para a mensagem sair, em texto curto de relógio.
+ *
+ * Existe porque data absoluta ("04/09 às 17:00") não responde a pergunta que a
+ * pessoa faz olhando a bolha: *dá tempo de eu cancelar?*. Com janela de 5
+ * minutos — que é o caso do atendente virtual — a data absoluta é inútil e a
+ * contagem é a única leitura possível.
+ *
+ * Devolve null quando a hora já passou: aí quem manda é o disparo, não a
+ * contagem, e continuar contando negativo mentiria sobre o estado.
+ */
+export function faltaPara(alvo: Date | string, agora: Date = new Date()): string | null {
+  const destino = typeof alvo === 'string' ? new Date(alvo) : alvo;
+  const ms = destino.getTime() - agora.getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+
+  const seg = Math.floor(ms / 1000);
+  if (seg < 60) return `${seg}s`;
+
+  const min = Math.floor(seg / 60);
+  if (min < 60) return `${min}:${String(seg % 60).padStart(2, '0')}`;
+
+  const horas = Math.floor(min / 60);
+  if (horas < 24) return `${horas}h${String(min % 60).padStart(2, '0')}`;
+
+  const dias = Math.floor(horas / 24);
+  return `${dias}d${horas % 24}h`;
+}
