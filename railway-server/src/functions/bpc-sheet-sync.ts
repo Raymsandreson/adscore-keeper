@@ -9,6 +9,7 @@
 // agora saem da mesma linha do banco.
 import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
+import { normalizaLeadIdMeta } from '../lib/leadAdsSheet';
 
 const GATEWAY = 'https://connector-gateway.lovable.dev/google_sheets/v4';
 
@@ -145,7 +146,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     const phone = normalizePhone(rawPhone);
     if (phone.length < 10) continue;
     out.push({
-      facebook_lead_id: o['id'] || '',
+      facebook_lead_id: normalizaLeadIdMeta(o['id']),
       created_at: o['created_time'] || '',
       name: name.trim(),
       phone,
