@@ -67,14 +67,61 @@ const O_QUE_FAZER: Record<CausaFalha, string> = {
  */
 export function avisoDeFalhaNoEnvio(args: { zapErro?: string | null; tipo?: string | null }): string {
   const causa = classificarFalha(args.zapErro);
-  const assunto = args.tipo === 'indeferido'
-    ? ' Este é um INDEFERIMENTO: o prazo do cliente corre a partir de quando ele fica sabendo.'
-    : '';
+  const assunto = urgenciaDoTipo(args.tipo);
   const motivo = String(args.zapErro || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   return (
     '\n\n🚫 O CLIENTE NÃO FOI AVISADO — o robô tentou mandar a mensagem e o WhatsApp recusou.' +
     assunto +
     `\n${O_QUE_FAZER[causa]}` +
     (motivo ? `\nMotivo técnico: ${motivo}` : '')
+  );
+}
+
+/**
+ * Ênfase por tipo. Protocolo e exigência o cliente descobre depois sem prejuízo;
+ * deferimento e indeferimento são DECISÃO — num o prazo corre, no outro o
+ * cliente tem dinheiro a receber e não sabe. O aviso precisa separar os dois
+ * casos, senão vira mais uma linha igual às outras na atividade.
+ */
+function urgenciaDoTipo(tipo?: string | null): string {
+  if (tipo === 'indeferido') {
+    return ' Este é um INDEFERIMENTO: o prazo do cliente corre a partir de quando ele fica sabendo.';
+  }
+  if (tipo === 'deferido') {
+    return ' Este é um DEFERIMENTO: o benefício foi aprovado e o cliente ainda não sabe.';
+  }
+  return '';
+}
+
+/**
+ * O nome do segurado no requerimento não bate com nenhum nome do lead, então a
+ * mensagem iria para o grupo de OUTRO cliente e o robô se recusou a mandar.
+ *
+ * A recusa está certa — medido em 04/09/2026, de 38 eventos parados assim
+ * apenas 2 eram a mesma pessoa com grafia diferente (DANIELLE/DANIELE,
+ * RAINARA/RAYNARA); os outros 36 eram nomes de fato distintos. Afrouxar a
+ * checagem trocaria silêncio por decisão de INSS no grupo do cliente errado.
+ *
+ * Este texto vai DENTRO da descrição da atividade, no momento em que ela nasce
+ * — não como acréscimo depois. O aviso de vínculo suspeito já existia ali
+ * desde antes; o que faltava era dizer a urgência (deferimento e indeferimento
+ * são decisão, não andamento), lembrar que às vezes é só grafia, e avisar que
+ * um vínculo errado prende TODAS as próximas atualizações no mesmo lugar.
+ */
+export function avisoDeVinculoSuspeito(args: {
+  motivo?: string | null;
+  tipo?: string | null;
+}): string {
+  const motivo = String(args.motivo || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  return (
+    '\n\n🛑 O CLIENTE NÃO FOI AVISADO — o nome do segurado neste requerimento não bate com o ' +
+    'nome deste lead, e mandar assim colocaria a informação no grupo de outro cliente.' +
+    urgenciaDoTipo(args.tipo) +
+    '\nConfira de quem é este requerimento. Se for mesmo deste lead, corrija o nome no cadastro ' +
+    '(às vezes é só a grafia: DANIELLE contra DANIELE) e avise o cliente desta atualização por ' +
+    'aqui. Se não for, desvincule o protocolo na tela de Protocolos e ligue-o ao lead certo — ' +
+    'enquanto o vínculo estiver errado, TODAS as próximas atualizações deste requerimento vão ' +
+    'parar aqui também.' +
+    (motivo ? `\nO que não bateu: ${motivo}` : '')
   );
 }

@@ -19,7 +19,9 @@ export const CAPI_DATASET_ID =
   process.env.META_CAPI_DATASET_ID || process.env.FACEBOOK_PIXEL_ID || '';
 const VALOR_PADRAO = Number(process.env.META_CAPI_VALOR_PADRAO || 0);
 
-export type Origem = 'kanban' | 'pipeline' | 'planilha' | 'auto_enrich' | 'manual' | 'backfill' | 'zapsign';
+// 'reconcile' = o varredor que pega fechamento que nao passou por gatilho
+// nenhum (webhook de etiqueta, ZapSign, checkpoint). Ver meta-capi-reconcile.ts.
+export type Origem = 'kanban' | 'pipeline' | 'planilha' | 'auto_enrich' | 'manual' | 'backfill' | 'zapsign' | 'reconcile';
 export type ValorOrigem = 'informado' | 'faixa_produto' | 'padrao' | 'ausente';
 
 // Normalização, hash e regra de correspondência moram em `metaCapiNormalize`

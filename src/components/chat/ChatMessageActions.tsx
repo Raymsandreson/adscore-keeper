@@ -1,4 +1,4 @@
-import { Loader2, Reply, MessageCircleReply, Quote, Copy, Sparkles, Forward, AlertTriangle, ClipboardList } from 'lucide-react';
+import { Loader2, Reply, MessageCircleReply, Phone, Quote, Copy, Sparkles, Forward, AlertTriangle, ClipboardList } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -18,6 +18,13 @@ export interface ChatMessageActionsProps {
   onPrivateReply?: () => void;
   /** Título do "responder no privado" (traz o nome de quem escreveu). */
   privateReplyTitle?: string;
+  /**
+   * Ligar por voz para quem escreveu. A chamada abre no card global
+   * (CallOverlay), por cima da ficha — ninguém sai da tela onde estava.
+   */
+  onCall?: () => void;
+  /** Título do "ligar" (traz o nome de quem escreveu). */
+  callTitle?: string;
   /** Citar o texto no rascunho ("> …"), sem vínculo de resposta. */
   onQuote?: () => void;
   onCopy?: () => void;
@@ -42,6 +49,8 @@ export function ChatMessageActions({
   onReply,
   onPrivateReply,
   privateReplyTitle,
+  onCall,
+  callTitle,
   onQuote,
   onCopy,
   onAI,
@@ -78,6 +87,13 @@ export function ChatMessageActions({
       label: 'No privado',
       title: privateReplyTitle || 'Responder no privado (abre a conversa direta com quem escreveu)',
       run: onPrivateReply,
+    },
+    onCall && {
+      key: 'call',
+      icon: Phone,
+      label: 'Ligar',
+      title: callTitle || 'Ligar por voz para quem escreveu',
+      run: onCall,
     },
     onQuote && {
       key: 'quote',
