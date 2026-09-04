@@ -340,6 +340,7 @@ describe('MentionsPanel — menção do WhatsApp abre a conversa por cima', () =
         phone: '5511999998888',
         contactName: 'Keliane Souza',
         direction: 'bottom',
+        forceSheet: true,
       })
     );
     expect(navigateMock).not.toHaveBeenCalled();
