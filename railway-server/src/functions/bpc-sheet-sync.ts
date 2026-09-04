@@ -1,10 +1,15 @@
-// Sincroniza a planilha Google "Meta Lead Ads — BPC-LOAS Autismo" com o board BPC.
-// Lê as 8 abas por operador, dedup por (phone + board_id) nos últimos 30 dias,
-// e cria leads novos na primeira etapa. Idempotente — pode ser chamado a cada N minutos.
+// Sincroniza a planilha Google de Lead Ads de um board com o funil desse board.
+// Le as abas por operador, dedup por (phone + board_id) na janela pedida, e cria
+// os leads novos na primeira etapa. Idempotente — pode rodar a cada N minutos.
+//
+// A planilha vem de `kanban_boards.sheet_source_url`, NAO de constante. Ate
+// 04/09/2026 o id ficava fixo aqui e o `board_id` recebido so escolhia onde
+// gravar: chamar a funcao com o board "Acidente de Trabalho" lia a planilha do
+// BPC assim mesmo e criaria centenas de leads no funil errado. Fonte e destino
+// agora saem da mesma linha do banco.
 import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
 
-const SPREADSHEET_ID_DEFAULT = '1EXB6oFovhX2LOHsC2X20LFk-JVIkjk-NR5Er4cUn6Qw';
 const GATEWAY = 'https://connector-gateway.lovable.dev/google_sheets/v4';
 
 // Mapeamento por PALAVRA-CHAVE (não por nome exato).
@@ -173,6 +178,198 @@ async function ensureCustomField(boardId: string, fieldKey: string, displayName:
   }
 }
 
+interface BoardConfig {
+  id: string;
+  name: string;
+  stages: Array<{ id: string; name: string }> | null;
+  sheet_source_url: string | null;
+}
+
+function extrairIdDaPlanilha(url: string | null): string | null {
+  if (!url) return null;
+  const m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return m ? m[1] : null;
+}
+
+interface OpcoesSync {
+  spreadsheetIdOverride?: string;
+  sinceDays: number;
+  dryRun: boolean;
+}
+
+async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Record<string, unknown>> {
+  const boardId = board.id;
+  const falha = (error: string) => ({ success: false, board_id: boardId, board: board.name, error });
+
+  const stages = (board.stages as Array<{ id: string; name: string }>) || [];
+  if (!stages.length) return falha('board sem etapas');
+  const initialStageId = stages[0].id;
+
+  const spreadsheetId = (opts.spreadsheetIdOverride || extrairIdDaPlanilha(board.sheet_source_url) || '').trim();
+  if (!spreadsheetId) {
+    return falha('board sem planilha: sheet_source_url vazio ou sem id de planilha na URL');
+  }
+  const sinceMs = Date.now() - opts.sinceDays * 24 * 60 * 60 * 1000;
+
+  // 1) Descoberta dinamica das abas + leitura em paralelo limitado (3 por vez)
+  let SHEET_TABS: { tab: string; operator: string }[] = [];
+  let abasIgnoradas: string[] = [];
+  try {
+    const d = await discoverSheetTabs(spreadsheetId);
+    SHEET_TABS = d.lidas;
+    abasIgnoradas = d.ignoradas;
+  } catch (e: any) {
+    return falha(`discover tabs: ${e?.message || e}`);
+  }
+  const sheetRows: ParsedRow[] = [];
+  const tabErrors: { tab: string; error: string }[] = [];
+  for (let i = 0; i < SHEET_TABS.length; i += 3) {
+    const chunk = SHEET_TABS.slice(i, i + 3);
+    const results = await Promise.allSettled(chunk.map((t) => fetchTab(spreadsheetId, t)));
+    results.forEach((r, idx) => {
+      const meta = chunk[idx];
+      if (r.status === 'fulfilled') sheetRows.push(...r.value);
+      else tabErrors.push({ tab: meta.tab, error: String(r.reason?.message || r.reason).slice(0, 200) });
+    });
+    if (i + 3 < SHEET_TABS.length) await new Promise((r) => setTimeout(r, 300));
+  }
+
+  // 2) Filtra por janela de tempo (apenas leads recentes)
+  const recentRows = sheetRows.filter((r) => {
+    if (!r.created_at) return false;
+    const t = new Date(r.created_at).getTime();
+    return !isNaN(t) && t >= sinceMs;
+  });
+
+  // Dedup interno na propria planilha (mesmo telefone aparece em varias abas)
+  const seenKeys = new Set<string>();
+  const uniqueRows: ParsedRow[] = [];
+  for (const r of recentRows) {
+    if (seenKeys.has(r.phone_key)) continue;
+    seenKeys.add(r.phone_key);
+    uniqueRows.push(r);
+  }
+
+  // 3) Busca leads existentes no board pra dedup contra o banco
+  const { data: existing, error: existErr } = await ext
+    .from('leads')
+    .select('id, lead_phone')
+    .eq('board_id', boardId)
+    .not('lead_phone', 'is', null);
+  if (existErr) return falha(`dedup query: ${existErr.message}`);
+  const existingKeys = new Set<string>();
+  for (const l of existing || []) {
+    const k = phoneKey(String(l.lead_phone || '').replace(/\D/g, ''));
+    if (k) existingKeys.add(k);
+  }
+
+  // 4) Decide quem criar
+  const toCreate = uniqueRows.filter((r) => !existingKeys.has(r.phone_key));
+
+  // Contagem por aba. Sem ela, "li 8 abas" e promessa sem prova: uma aba pode
+  // voltar vazia (renomeada, range errado, permissao) que o total geral nao
+  // denuncia. `recentes` e antes do dedup por telefone; `novos` e depois, e a
+  // soma de `novos` fecha com would_create/created.
+  const porAba = SHEET_TABS.map((t) => ({
+    aba: t.tab,
+    operador: t.operator,
+    linhas: sheetRows.filter((r) => r.tab === t.tab).length,
+    recentes: recentRows.filter((r) => r.tab === t.tab).length,
+    novos: toCreate.filter((r) => r.tab === t.tab).length,
+  }));
+
+  const comum = {
+    success: true,
+    board_id: boardId,
+    board: board.name,
+    spreadsheet_id: spreadsheetId,
+    since_days: opts.sinceDays,
+    total_rows_in_sheet: sheetRows.length,
+    recent_rows: recentRows.length,
+    unique_recent: uniqueRows.length,
+    already_in_board: uniqueRows.length - toCreate.length,
+    abas_lidas: SHEET_TABS.map((t) => `${t.tab} -> ${t.operator}`),
+    abas_ignoradas: abasIgnoradas,
+    linhas_por_aba: porAba,
+    tab_errors: tabErrors,
+  };
+
+  if (opts.dryRun) {
+    return {
+      ...comum,
+      dry_run: true,
+      would_create: toCreate.length,
+      sample: toCreate.slice(0, 5).map((r) => ({
+        name: r.name,
+        phone: r.phone,
+        operator: r.operator,
+        created_at: r.created_at,
+      })),
+    };
+  }
+
+  // 5) Garante custom fields (1x so)
+  const fieldEstadoCivil = await ensureCustomField(boardId, 'estado_civil', 'Estado Civil');
+  const fieldRenda = await ensureCustomField(boardId, 'renda', 'Renda Familiar');
+  const fieldAcolhedor = await ensureCustomField(boardId, 'acolhedor', 'Acolhedor (Planilha)');
+
+  // 6) Insere
+  const created: string[] = [];
+  const errors: { row: string; error: string }[] = [];
+  const byOperator: Record<string, number> = {};
+
+  for (const r of toCreate) {
+    try {
+      const { data: ins, error: insErr } = await ext
+        .from('leads')
+        .insert({
+          lead_name: r.name,
+          lead_phone: r.phone,
+          board_id: boardId,
+          status: initialStageId,
+          source: `Planilha Meta Ads — ${r.operator || board.name}`,
+          notes: [
+            `Importado da planilha do board — aba ${r.tab}`,
+            r.form_name && `Form: ${r.form_name}`,
+            r.campaign_name && `Campanha: ${r.campaign_name}`,
+            r.ad_name && `Ad: ${r.ad_name}`,
+            r.form_lead_id && `form_lead_id: ${r.form_lead_id}`,
+          ]
+            .filter(Boolean)
+            .join('\n'),
+          created_at: r.created_at || new Date().toISOString(),
+        })
+        .select('id')
+        .single();
+      if (insErr) {
+        errors.push({ row: `${r.name} (${r.phone})`, error: insErr.message });
+        continue;
+      }
+      created.push(ins.id);
+      byOperator[r.operator] = (byOperator[r.operator] || 0) + 1;
+
+      // Custom field values (best-effort, sem falhar lead se der erro)
+      const cfInserts: Array<{ lead_id: string; field_id: string; value_text: string }> = [];
+      if (fieldEstadoCivil && r.estado_civil) cfInserts.push({ lead_id: ins.id, field_id: fieldEstadoCivil, value_text: r.estado_civil.slice(0, 500) });
+      if (fieldRenda && r.renda) cfInserts.push({ lead_id: ins.id, field_id: fieldRenda, value_text: r.renda.slice(0, 500) });
+      if (fieldAcolhedor && r.operator) cfInserts.push({ lead_id: ins.id, field_id: fieldAcolhedor, value_text: r.operator });
+      if (cfInserts.length) {
+        await ext.from('lead_custom_field_values').insert(cfInserts);
+      }
+    } catch (e) {
+      errors.push({ row: `${r.name} (${r.phone})`, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  return {
+    ...comum,
+    created: created.length,
+    errors_count: errors.length,
+    by_operator: byOperator,
+    errors: errors.slice(0, 20),
+  };
+}
+
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
@@ -188,187 +385,47 @@ export const handler: RequestHandler = async (req, res) => {
       dry_run?: boolean;
     };
 
-    if (!board_id) return ok({ success: false, error: 'board_id obrigatório' });
-
-    const spreadsheetId = (spreadsheet_id || SPREADSHEET_ID_DEFAULT).trim();
     const sinceDays = Math.max(1, Math.min(365, Number(since_days) || 7));
-    const sinceMs = Date.now() - sinceDays * 24 * 60 * 60 * 1000;
+    const dryRun = !!dry_run;
+    const COLUNAS = 'id, name, stages, sheet_source_url';
 
-    // 1) Board: pegar primeira etapa
-    const { data: board, error: boardErr } = await ext
-      .from('kanban_boards')
-      .select('id, name, stages')
-      .eq('id', board_id)
-      .maybeSingle();
-    if (boardErr) return ok({ success: false, error: `board: ${boardErr.message}` });
-    if (!board) return ok({ success: false, error: 'board não encontrado' });
-    const stages = (board.stages as Array<{ id: string; name: string }>) || [];
-    if (!stages.length) return ok({ success: false, error: 'board sem etapas' });
-    const initialStageId = stages[0].id;
-
-    // 2) Descoberta dinâmica das abas + leitura em paralelo limitado (3 por vez)
-    let SHEET_TABS: { tab: string; operator: string }[] = [];
-    let abasIgnoradas: string[] = [];
-    try {
-      const d = await discoverSheetTabs(spreadsheetId);
-      SHEET_TABS = d.lidas;
-      abasIgnoradas = d.ignoradas;
-    } catch (e: any) {
-      return ok({ success: false, error: `discover tabs: ${e?.message || e}` });
-    }
-    const sheetRows: ParsedRow[] = [];
-    const tabErrors: { tab: string; error: string }[] = [];
-    for (let i = 0; i < SHEET_TABS.length; i += 3) {
-      const chunk = SHEET_TABS.slice(i, i + 3);
-      const results = await Promise.allSettled(chunk.map((t) => fetchTab(spreadsheetId, t)));
-      results.forEach((r, idx) => {
-        const meta = chunk[idx];
-        if (r.status === 'fulfilled') sheetRows.push(...r.value);
-        else tabErrors.push({ tab: meta.tab, error: String(r.reason?.message || r.reason).slice(0, 200) });
+    // Um board: o formato da resposta e o de sempre, pra nao quebrar quem ja chama.
+    if (board_id) {
+      const { data, error } = await ext.from('kanban_boards').select(COLUNAS).eq('id', board_id).maybeSingle();
+      if (error) return ok({ success: false, error: `board: ${error.message}` });
+      if (!data) return ok({ success: false, error: 'board nao encontrado' });
+      const r = await sincronizaBoard(data as unknown as BoardConfig, {
+        spreadsheetIdOverride: spreadsheet_id,
+        sinceDays,
+        dryRun,
       });
-      if (i + 3 < SHEET_TABS.length) await new Promise((r) => setTimeout(r, 300));
+      return ok(r);
     }
 
-    // 3) Filtra por janela de tempo (apenas leads recentes)
-    const recentRows = sheetRows.filter((r) => {
-      if (!r.created_at) return false;
-      const t = new Date(r.created_at).getTime();
-      return !isNaN(t) && t >= sinceMs;
-    });
-
-    // Dedup interno na própria planilha (mesmo telefone aparece em várias abas)
-    const seenKeys = new Set<string>();
-    const uniqueRows: ParsedRow[] = [];
-    for (const r of recentRows) {
-      if (seenKeys.has(r.phone_key)) continue;
-      seenKeys.add(r.phone_key);
-      uniqueRows.push(r);
-    }
-
-    // 4) Busca leads existentes no board pra dedup contra o banco
-    // (busca todos do board com lead_phone preenchido — board BPC tem ~milhares,
-    //  mas pegamos só id e lead_phone, é leve)
-    const { data: existing, error: existErr } = await ext
-      .from('leads')
-      .select('id, lead_phone')
-      .eq('board_id', board_id)
-      .not('lead_phone', 'is', null);
-    if (existErr) return ok({ success: false, error: `dedup query: ${existErr.message}` });
-    const existingKeys = new Set<string>();
-    for (const l of existing || []) {
-      const k = phoneKey(String(l.lead_phone || '').replace(/\D/g, ''));
-      if (k) existingKeys.add(k);
-    }
-
-    // 5) Decide quem criar
-    const toCreate = uniqueRows.filter((r) => !existingKeys.has(r.phone_key));
-
-    // Contagem por aba. Sem ela, "li 8 abas" e promessa sem prova: uma aba pode
-    // voltar vazia (renomeada, range errado, permissao) que o total geral nao
-    // denuncia. `recentes` e antes do dedup por telefone; `novos` e depois, e a
-    // soma de `novos` fecha com would_create/created.
-    const porAba = SHEET_TABS.map((t) => ({
-      aba: t.tab,
-      operador: t.operator,
-      linhas: sheetRows.filter((r) => r.tab === t.tab).length,
-      recentes: recentRows.filter((r) => r.tab === t.tab).length,
-      novos: toCreate.filter((r) => r.tab === t.tab).length,
-    }));
-
-    if (dry_run) {
+    // Sem board: varre todo board com a planilha ligada. E assim que o cron chama.
+    if (spreadsheet_id) {
       return ok({
-        success: true,
-        dry_run: true,
-        spreadsheet_id: spreadsheetId,
-        since_days: sinceDays,
-        total_rows_in_sheet: sheetRows.length,
-        recent_rows: recentRows.length,
-        unique_recent: uniqueRows.length,
-        already_in_board: uniqueRows.length - toCreate.length,
-        would_create: toCreate.length,
-        abas_lidas: SHEET_TABS.map((t) => `${t.tab} -> ${t.operator}`),
-        abas_ignoradas: abasIgnoradas,
-        linhas_por_aba: porAba,
-        tab_errors: tabErrors,
-        sample: toCreate.slice(0, 5).map((r) => ({
-          name: r.name,
-          phone: r.phone,
-          operator: r.operator,
-          created_at: r.created_at,
-        })),
+        success: false,
+        error: 'spreadsheet_id so vale junto com board_id — na varredura cada board usa a planilha dele',
       });
     }
+    const { data, error } = await ext.from('kanban_boards').select(COLUNAS).eq('sheet_enabled', true);
+    if (error) return ok({ success: false, error: `boards: ${error.message}` });
+    const boards = (data || []) as unknown as BoardConfig[];
 
-    // 6) Garante custom fields (1x só)
-    const fieldEstadoCivil = await ensureCustomField(board_id, 'estado_civil', 'Estado Civil');
-    const fieldRenda = await ensureCustomField(board_id, 'renda', 'Renda Familiar');
-    const fieldAcolhedor = await ensureCustomField(board_id, 'acolhedor', 'Acolhedor (Planilha)');
-
-    // 7) Insere em lotes
-    const created: string[] = [];
-    const errors: { row: string; error: string }[] = [];
-    const byOperator: Record<string, number> = {};
-
-    for (const r of toCreate) {
-      try {
-        const { data: ins, error: insErr } = await ext
-          .from('leads')
-          .insert({
-            lead_name: r.name,
-            lead_phone: r.phone,
-            board_id,
-            status: initialStageId,
-            source: `Planilha Meta Ads — ${r.operator || 'BPC'}`,
-            notes: [
-              `Importado da planilha BASE_UNIFICADA / aba ${r.tab}`,
-              r.form_name && `Form: ${r.form_name}`,
-              r.campaign_name && `Campanha: ${r.campaign_name}`,
-              r.ad_name && `Ad: ${r.ad_name}`,
-              r.form_lead_id && `form_lead_id: ${r.form_lead_id}`,
-            ]
-              .filter(Boolean)
-              .join('\n'),
-            created_at: r.created_at || new Date().toISOString(),
-          })
-          .select('id')
-          .single();
-        if (insErr) {
-          errors.push({ row: `${r.name} (${r.phone})`, error: insErr.message });
-          continue;
-        }
-        created.push(ins.id);
-        byOperator[r.operator] = (byOperator[r.operator] || 0) + 1;
-
-        // Custom field values (best-effort, sem falhar lead se der erro)
-        const cfInserts: Array<{ lead_id: string; field_id: string; value_text: string }> = [];
-        if (fieldEstadoCivil && r.estado_civil) cfInserts.push({ lead_id: ins.id, field_id: fieldEstadoCivil, value_text: r.estado_civil.slice(0, 500) });
-        if (fieldRenda && r.renda) cfInserts.push({ lead_id: ins.id, field_id: fieldRenda, value_text: r.renda.slice(0, 500) });
-        if (fieldAcolhedor && r.operator) cfInserts.push({ lead_id: ins.id, field_id: fieldAcolhedor, value_text: r.operator });
-        if (cfInserts.length) {
-          await ext.from('lead_custom_field_values').insert(cfInserts);
-        }
-      } catch (e) {
-        errors.push({ row: `${r.name} (${r.phone})`, error: e instanceof Error ? e.message : String(e) });
-      }
+    const resultados: Record<string, unknown>[] = [];
+    for (const b of boards) {
+      resultados.push(await sincronizaBoard(b, { sinceDays, dryRun }));
+      // A API do Sheets tem cota por minuto e ja devolveu 429 numa leitura
+      // dupla: espacar os boards custa segundos e evita perder a varredura.
+      if (boards.indexOf(b) < boards.length - 1) await new Promise((r) => setTimeout(r, 5000));
     }
-
     return ok({
       success: true,
-      spreadsheet_id: spreadsheetId,
-      since_days: sinceDays,
-      total_rows_in_sheet: sheetRows.length,
-      recent_rows: recentRows.length,
-      unique_recent: uniqueRows.length,
-      already_in_board: uniqueRows.length - toCreate.length,
-      created: created.length,
-      errors_count: errors.length,
-      by_operator: byOperator,
-      // Tambem na execucao real: aba ignorada e lead que nao entrou, e isso
-      // precisa aparecer no log de quem roda, nao so no diagnostico.
-      abas_ignoradas: abasIgnoradas,
-      linhas_por_aba: porAba,
-      tab_errors: tabErrors,
-      errors: errors.slice(0, 20),
+      dry_run: dryRun,
+      boards_com_planilha: boards.length,
+      criados: resultados.reduce((n, r) => n + (Number(r.created) || 0), 0),
+      resultados,
     });
   } catch (err) {
     console.error('[bpc-sheet-sync] fatal:', err);

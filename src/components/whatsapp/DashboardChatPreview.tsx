@@ -53,6 +53,7 @@ import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrati
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
+import { blocoDoInterlocutor, montarLinhasDoEstilo } from '@/lib/tomDaConversa';
 import { useSugestaoAutomatica } from '@/hooks/useSugestaoAutomatica';
 import { useRelacionamentoDoContato } from '@/hooks/useRelacionamentoDoContato';
 import { RelacionamentoBar } from '@/components/whatsapp/RelacionamentoBar';
@@ -753,13 +754,19 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     const withText = (messages || []).filter(m => m && m.message_text && String(m.message_text).trim());
     const last = withText[withText.length - 1];
     const lastOutbound = [...withText].reverse().find(m => m.direction === 'outbound');
-    const lastClient = [...withText].reverse().find(m => m.direction !== 'outbound');
     return {
       pending: !!last && last.direction !== 'outbound',
       lastOutboundText: lastOutbound ? String(lastOutbound.message_text).trim() : '',
-      lastClientText: lastClient ? String(lastClient.message_text).trim() : '',
+      // O bloco inteiro sem resposta, não só a última mensagem — mesma regra da
+      // conversa completa (`WhatsAppChat`).
+      lastClientText: blocoDoInterlocutor(withText),
     };
   };
+  /** Como EU escrevo nesta conversa — exemplos reais para a sugestão soar minha. */
+  const comoEuEscrevoParaIA = useMemo(
+    () => montarLinhasDoEstilo((messages || []).slice(-40)),
+    [messages],
+  );
   /**
    * Quem é essa pessoa para nós — mesma cascata da conversa completa
    * (campo salvo → nome → IA lendo a conversa). Entra no prompt da sugestão.
@@ -818,6 +825,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     getState: buildReplyState,
     getPendenciasDoCliente: () => pendenciasDoClienteParaIA,
     getContextoDaRelacao: () => relacionamento.linhas,
+    getComoEuEscrevo: () => comoEuEscrevoParaIA,
   });
   const temSugestaoNoCampo = sugestaoCabeAqui && !!sugestaoAuto;
   /** Passa a sugestão para o campo, com o cursor no fim, pronta para editar ou enviar. */
@@ -2832,6 +2840,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                 getState={buildReplyState}
                 pendenciasDoCliente={pendenciasDoClienteParaIA}
                 contextoDaRelacao={relacionamento.linhas}
+                comoEuEscrevo={comoEuEscrevoParaIA}
                 onApply={setNewMessage}
               />
               {/* Instância controlada: sugestão focada numa mensagem específica (botão por bolha). */}
@@ -2840,6 +2849,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                 getState={buildReplyState}
                 pendenciasDoCliente={pendenciasDoClienteParaIA}
                 contextoDaRelacao={relacionamento.linhas}
+                comoEuEscrevo={comoEuEscrevoParaIA}
                 onApply={setNewMessage}
                 open={replySuggestOpen}
                 onOpenChange={setReplySuggestOpen}

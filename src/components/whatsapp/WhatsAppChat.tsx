@@ -84,6 +84,7 @@ import { abrirConfigDoAgente } from '@/lib/agentConfigSheet';
 import { WhatsAppAvatar } from './WhatsAppAvatar';
 import { AITextActions } from '@/components/ui/AITextActions';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
+import { blocoDoInterlocutor, montarLinhasDoEstilo } from '@/lib/tomDaConversa';
 import { useSugestaoAutomatica } from '@/hooks/useSugestaoAutomatica';
 import { useRelacionamentoDoContato } from '@/hooks/useRelacionamentoDoContato';
 import { RelacionamentoBar } from '@/components/whatsapp/RelacionamentoBar';
@@ -726,14 +727,22 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     const withText = (messages || []).filter((m: any) => m && m.message_text && String(m.message_text).trim());
     const last = withText[withText.length - 1];
     const lastOutbound = [...withText].reverse().find((m: any) => m.direction === 'outbound');
-    const lastClient = [...withText].reverse().find((m: any) => m.direction !== 'outbound');
     return {
       // Pendente quando a última mensagem com texto NÃO é do atendente.
       pending: !!last && last.direction !== 'outbound',
       lastOutboundText: lastOutbound ? String(lastOutbound.message_text).trim() : '',
-      lastClientText: lastClient ? String(lastClient.message_text).trim() : '',
+      // O bloco inteiro sem resposta, não só a última mensagem: quem escreve
+      // "Amor" / "Vamos pra outro lugar" / "Prea" / "Jeri" está fazendo UMA
+      // frase em quatro mensagens, e responder só a "Jeri" é responder fora
+      // do assunto.
+      lastClientText: blocoDoInterlocutor(withText),
     };
   };
+  /** Como EU escrevo nesta conversa — exemplos reais para a sugestão soar minha. */
+  const comoEuEscrevoParaIA = useMemo(
+    () => montarLinhasDoEstilo((messages || []).slice(-40)),
+    [messages],
+  );
   /**
    * O que o CLIENTE ficou de fazer, do jeito que a IA da sugestão lê. É isso que
    * diz de que lado está a obrigação: numa cobrança nossa ("pagar as parcelas
@@ -1311,6 +1320,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     getState: buildReplyState,
     getPendenciasDoCliente: () => pendenciasDoClienteParaIA,
     getContextoDaRelacao: () => relacionamento.linhas,
+    getComoEuEscrevo: () => comoEuEscrevoParaIA,
   });
   /** Passa a sugestão para o campo, com o cursor no fim, pronta para editar ou enviar. */
   const usarSugestao = () => {
@@ -5984,6 +5994,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 getState={buildReplyState}
                 pendenciasDoCliente={pendenciasDoClienteParaIA}
                 contextoDaRelacao={relacionamento.linhas}
+                comoEuEscrevo={comoEuEscrevoParaIA}
                 onApply={setNewMessage}
               />
             )}
@@ -5993,6 +6004,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               getState={buildReplyState}
               pendenciasDoCliente={pendenciasDoClienteParaIA}
               contextoDaRelacao={relacionamento.linhas}
+              comoEuEscrevo={comoEuEscrevoParaIA}
               onApply={(t) => { setInputMode('message'); setNewMessage(t); }}
               open={replySuggestOpen}
               onOpenChange={setReplySuggestOpen}
