@@ -22,7 +22,7 @@ import { externalSupabase, ensureExternalSession } from '@/integrations/supabase
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { Button } from '@/components/ui/button';
 import { AutoResizeTextarea } from '@/components/ui/auto-resize-textarea';
-import { Send, Loader2, AtSign, Users, UserRound, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Sparkles, Bell, BellRing, Reply, MessageSquarePlus, Forward, MessageCircleReply, Phone, X } from 'lucide-react';
+import { Send, Loader2, AtSign, Users, UserRound, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Sparkles, Bell, BellRing, Reply, MessageSquarePlus, Forward, MessageCircleReply, Phone, Search, X } from 'lucide-react';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -85,6 +85,8 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const call = useCallOptional();
   const callStatus = call?.status ?? 'idle';
   const [showCallPicker, setShowCallPicker] = useState(false);
+  const [callFilter, setCallFilter] = useState('');
+  const callSearchRef = useRef<HTMLInputElement>(null);
   const draftKey = `team-chat-draft-${entityType}-${entityId}`;
   const [inputText, setInputText] = useState(() => sessionStorage.getItem(draftKey) || '');
   const [sending, setSending] = useState(false);
@@ -233,10 +235,29 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     return out;
   }, [owners, messages, members, user?.id]);
 
+  /** A busca da lista de ligação — a equipe inteira não cabe numa rolagem. */
+  const filteredCallTargets = useMemo(() => {
+    const q = callFilter.trim().toLowerCase();
+    if (!q) return callTargets;
+    return callTargets.filter(t =>
+      t.name.toLowerCase().includes(q) || (t.detail || '').toLowerCase().includes(q)
+    );
+  }, [callTargets, callFilter]);
+
   /** Liga e fecha a lista — o card da chamada (CallOverlay) abre por cima. */
   const callPerson = (userId: string, name: string) => {
     setShowCallPicker(false);
+    setCallFilter('');
     call?.startCall(userId, name);
+  };
+
+  /** Abre/fecha a lista já com o cursor na busca. */
+  const toggleCallPicker = () => {
+    setShowCallPicker(open => {
+      if (open) { setCallFilter(''); return false; }
+      requestAnimationFrame(() => callSearchRef.current?.focus());
+      return true;
+    });
   };
 
   const handleInputChange = (value: string) => {
@@ -1190,14 +1211,47 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
       {/* Para quem ligar — some sozinha depois que a chamada começa. */}
       {call && showCallPicker && (
         <div className="mx-3 mb-1 border rounded-lg bg-card shadow-lg max-h-56 overflow-y-auto">
-          <div className="px-3 pt-1.5 pb-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-            Ligar por voz — a chamada abre aqui mesmo, sem sair da ficha
-          </div>
-          {callTargets.length === 0 ? (
-            <div className="px-3 py-2 text-[11px] text-muted-foreground">
-              Ninguém da equipe disponível para ligar.
+          {/* Cabeçalho e busca ficam fixos: a lista rola por baixo deles. */}
+          <div className="sticky top-0 z-10 bg-card border-b px-3 pt-1.5 pb-1.5">
+            <div className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+              Ligar por voz — a chamada abre aqui mesmo, sem sair da ficha
             </div>
-          ) : callTargets.map(target => (
+            <div className="mt-1 flex items-center gap-1.5 rounded border px-2 py-1">
+              <Search className="h-3 w-3 text-muted-foreground shrink-0" />
+              <input
+                ref={callSearchRef}
+                value={callFilter}
+                onChange={e => setCallFilter(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') { e.preventDefault(); setShowCallPicker(false); setCallFilter(''); }
+                  // Enter liga para o primeiro da lista — buscar e ligar sem tirar a mão do teclado.
+                  if (e.key === 'Enter' && filteredCallTargets[0]) {
+                    e.preventDefault();
+                    callPerson(filteredCallTargets[0].userId, filteredCallTargets[0].name);
+                  }
+                }}
+                placeholder="Buscar quem ligar…"
+                className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+              />
+              {callFilter && (
+                <button
+                  type="button"
+                  onClick={() => { setCallFilter(''); callSearchRef.current?.focus(); }}
+                  className="p-0.5 rounded hover:bg-accent text-muted-foreground shrink-0"
+                  title="Limpar busca"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          </div>
+          {filteredCallTargets.length === 0 ? (
+            <div className="px-3 py-2 text-[11px] text-muted-foreground">
+              {callTargets.length === 0
+                ? 'Ninguém da equipe disponível para ligar.'
+                : `Ninguém com "${callFilter.trim()}" na equipe.`}
+            </div>
+          ) : filteredCallTargets.map(target => (
             <button
               key={target.userId}
               type="button"
@@ -1296,7 +1350,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
                   : 'Ligar por voz para alguém da equipe (a chamada abre por cima desta tela)'
               }
               disabled={callStatus !== 'idle'}
-              onClick={() => setShowCallPicker(v => !v)}
+              onClick={toggleCallPicker}
             >
               <Phone className="h-4 w-4" />
             </Button>

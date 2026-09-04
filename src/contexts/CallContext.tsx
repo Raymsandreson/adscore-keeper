@@ -7,6 +7,7 @@ import {
   createPeerConnection,
   getMicStream,
   Ringtone,
+  RINGBACK,
   CallRecorder,
   type CallSignalEvent,
   type CallSignalPayload,
@@ -70,6 +71,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
   // timeout de estabelecimento da conexão do lado de quem atende (callee)
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ringtoneRef = useRef<Ringtone | null>(null);
+  // Toque de quem está LIGANDO. Criado só no clique (o navegador exige gesto
+  // do usuário para abrir o AudioContext).
+  const ringbackRef = useRef<Ringtone | null>(null);
   // gravação da chamada (mistura os dois lados) p/ transcrição posterior
   const recorderRef = useRef<CallRecorder | null>(null);
   const recordingActiveRef = useRef(false);
@@ -137,6 +141,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       connectTimeoutRef.current = null;
     }
     try { ringtoneRef.current?.stop(); } catch { /* noop */ }
+    try { ringbackRef.current?.stop(); } catch { /* noop */ }
     // Fecha a gravação ANTES de derrubar os streams e guarda o áudio p/ resumo.
     if (recordingActiveRef.current && recorderRef.current) {
       recordingActiveRef.current = false;
@@ -197,6 +202,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       const st = pc.connectionState;
       if (st === 'connected') {
         ringtoneRef.current?.stop();
+        ringbackRef.current?.stop();
         if (ringTimeoutRef.current) { clearTimeout(ringTimeoutRef.current); ringTimeoutRef.current = null; }
         if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null; }
         setStatus('connected');
@@ -251,6 +257,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       sendSignal('offer', { sdp: offer });
+
+      // "tuu… tuu…" enquanto o outro lado não atende.
+      if (!ringbackRef.current) ringbackRef.current = new Ringtone(RINGBACK);
+      ringbackRef.current.start();
 
       ringTimeoutRef.current = setTimeout(() => {
         if (statusRef.current === 'calling') {
@@ -391,6 +401,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
         const p = payload as CallSignalPayload;
         const pc = pcRef.current;
         if (!pc || !p.sdp) return;
+        // Atendeu: para o "tuu…" na hora, mesmo que o áudio leve 1s para abrir.
+        ringbackRef.current?.stop();
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(p.sdp));
           for (const c of pendingCandidatesRef.current) {
@@ -442,6 +454,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
       cleanup({ silent: true });
       ringtoneRef.current?.stop();
       ringtoneRef.current = null;
+      ringbackRef.current?.stop();
+      ringbackRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myId]);

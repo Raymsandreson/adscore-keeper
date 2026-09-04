@@ -20,13 +20,53 @@ export function getMicStream(): Promise<MediaStream> {
   return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
 }
 
+/** Como um toque soa: frequência, volume, onde cada bipe cai no ciclo. */
+export interface RingtoneOptions {
+  /** Frequência do tom, em Hz. */
+  freq?: number;
+  /** Volume de pico (0–1). */
+  volume?: number;
+  /** Início de cada bipe dentro do ciclo, em segundos. */
+  offsets?: number[];
+  /** Duração de cada bipe, em segundos. */
+  duration?: number;
+  /** Tamanho do ciclo, em ms. */
+  periodMs?: number;
+}
+
+/**
+ * Chamada SAINDO ("tuu… tuu…"): 1 segundo de tom e 4 de silêncio, o padrão
+ * brasileiro. Sem isso quem liga fica no escuro até o outro atender — não dá
+ * pra saber se está chamando ou se travou.
+ */
+export const RINGBACK: RingtoneOptions = {
+  freq: 425,
+  volume: 0.07,
+  offsets: [0],
+  duration: 1,
+  periodMs: 5000,
+};
+
 /**
  * Toque de chamada gerado via WebAudio — sem depender de arquivo de áudio.
- * Dois bipes curtos repetidos, no padrão de telefone.
+ * Sem opções: dois bipes curtos repetidos, o toque de quem está RECEBENDO.
  */
 export class Ringtone {
   private ctx: AudioContext | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private readonly freq: number;
+  private readonly volume: number;
+  private readonly offsets: number[];
+  private readonly duration: number;
+  private readonly periodMs: number;
+
+  constructor(opts: RingtoneOptions = {}) {
+    this.freq = opts.freq ?? 480;
+    this.volume = opts.volume ?? 0.15;
+    this.offsets = opts.offsets ?? [0, 0.25];
+    this.duration = opts.duration ?? 0.18;
+    this.periodMs = opts.periodMs ?? 2000;
+  }
 
   start() {
     if (this.timer) return;
@@ -37,11 +77,10 @@ export class Ringtone {
       const beep = () => {
         if (!this.ctx) return;
         const now = this.ctx.currentTime;
-        this.playTone(now, 0.18);
-        this.playTone(now + 0.25, 0.18);
+        this.offsets.forEach((off) => this.playTone(now + off, this.duration));
       };
       beep();
-      this.timer = setInterval(beep, 2000);
+      this.timer = setInterval(beep, this.periodMs);
     } catch {
       // silencioso — ringtone é secundário
     }
@@ -52,9 +91,9 @@ export class Ringtone {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.value = 480;
+    osc.frequency.value = this.freq;
     gain.gain.setValueAtTime(0.0001, startAt);
-    gain.gain.exponentialRampToValueAtTime(0.15, startAt + 0.02);
+    gain.gain.exponentialRampToValueAtTime(this.volume, startAt + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
     osc.connect(gain);
     gain.connect(this.ctx.destination);
