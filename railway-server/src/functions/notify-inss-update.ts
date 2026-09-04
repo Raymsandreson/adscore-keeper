@@ -281,6 +281,23 @@ export const handler: RequestHandler = async (req, res) => {
               'procuração, gere uma nova por "Gerar Documento para Assinatura".',
           ].join('\n');
 
+    // Classificar antes de redigir a atividade: a descrição precisa saber se o
+    // evento é DECISÃO (deferimento, indeferimento) ou andamento para dar o
+    // peso certo ao aviso de vínculo suspeito. `classificarMensagemCliente` é
+    // pura e só depende de `resultado` e `pendencias`, já calculados acima.
+    const entrada = {
+      status: latest.to_status,
+      resultado,
+      despacho: latest.despacho,
+      // Só o lado do cliente vai para a IA e para o texto fixo; o que é nosso
+      // ficou na atividade.
+      pontosPendentes: pendencias.cliente,
+      nome: proc.nome_segurado,
+      beneficio: proc.benefit_type,
+      requerimento: proc.requerimento_number,
+    };
+    const tipoMensagem = classificarMensagemCliente(entrada);
+
     const activityDesc = [
       agendarPericia
         ? '📞 TAREFA DO ESCRITÓRIO: o INSS mandou AGENDAR a perícia. Ligue no 135 ou agende pelo Meu INSS. O cliente não foi avisado — quem marca somos nós; avise a data a ele depois de marcada.'
@@ -291,7 +308,7 @@ export const handler: RequestHandler = async (req, res) => {
       `\nAssunto do email: ${latest.email_subject}\nRecebido em: ${latest.email_received_at}`,
       caseInfo ? `\nCaso: ${caseInfo.case_number || ''} — ${caseInfo.title || ''}` : '',
       conferencia.veredito === 'conflito'
-        ? `\n⚠️ VÍNCULO SUSPEITO — a mensagem ao cliente foi BLOQUEADA.\n${conferencia.motivo}.\nConfira se este requerimento é mesmo deste lead antes de responder. Se não for, desvincule o protocolo na tela de Protocolos.`
+        ? avisoDeVinculoSuspeito({ motivo: conferencia.motivo, tipo: tipoMensagem })
         : '',
     ].filter(Boolean).join('\n');
 
@@ -328,18 +345,6 @@ export const handler: RequestHandler = async (req, res) => {
     // vira só sai entre 8h e 20h — ver lib/inss-mensagem-cliente. O que não pode
     // sair agora fica gravado como 'agendado' e o cron dispatch-inss-zap manda
     // quando a janela abrir; nada se perde e nada chega de madrugada.
-    const entrada = {
-      status: latest.to_status,
-      resultado,
-      despacho: latest.despacho,
-      // Só o lado do cliente vai para a IA e para o texto fixo; o que é nosso
-      // ficou na atividade.
-      pontosPendentes: pendencias.cliente,
-      nome: proc.nome_segurado,
-      beneficio: proc.benefit_type,
-      requerimento: proc.requerimento_number,
-    };
-    const tipoMensagem = classificarMensagemCliente(entrada);
     let zapPatch: Record<string, any> = { zap_status: 'silencio' };
     let sentToGroup = false;
     let procuracaoEnviada = false;
@@ -521,12 +526,13 @@ export const handler: RequestHandler = async (req, res) => {
     //
     // O José é avisado mesmo quando a atividade é de outra pessoa (pedido do
     // usuário): ele toca o pós-protocolo e decide se fala com o cliente à mão.
+    // Só o envio recusado entra aqui. O vínculo suspeito já é conhecido ANTES de
+    // a atividade nascer, então o aviso dele vai na própria descrição — repetir
+    // aqui daria dois avisos iguais na mesma atividade.
     const avisoDeNaoEntrega =
       zapPatch.zap_status === 'erro'
         ? avisoDeFalhaNoEnvio({ zapErro: zapPatch.zap_erro, tipo: tipoMensagem })
-        : zapPatch.zap_status === 'suspeito'
-          ? avisoDeVinculoSuspeito({ motivo: zapPatch.zap_erro, tipo: tipoMensagem })
-          : null;
+        : null;
 
     if (avisoDeNaoEntrega && atividade?.id) {
       await supabase
