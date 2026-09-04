@@ -117,9 +117,12 @@ Descartados na conferência, e por quê:
 - **CASO 396** e **Família 294** — movimentação datada em 16/09 e 21/09, no
   futuro. Ver a seção acima.
 
+Deployadas em 04/09/2026: `dom-contexto` (v1) e `dom-rascunho` (v1), ambas
+testadas contra grupo real do piloto.
+
 Falta:
-- **deploy** de `dom-contexto` (nunca subiu) e de `whatsapp-ai-agent-reply`
-  (produção roda v47, de 11/06/2026, sem nenhum código do Dom)
+- **deploy** de `whatsapp-ai-agent-reply` (produção roda v47, de 11/06/2026, sem
+  nenhum código do Dom). O arquivo do repo está pronto; só a publicação falta.
 - `is_active = true`
 - vincular os grupos do piloto em `whatsapp_conversation_agents` (o Dom só é
   consultado quando a conversa tem agente atribuído)
@@ -127,6 +130,47 @@ Falta:
   ninguém
 - atraso de 5 min por fila agendada (ver abaixo)
 - aviso proativo de movimentação nova (o Dom hoje só reage a mensagem)
+
+## `dom-rascunho` — o piloto rodando sem tocar em produção
+
+A integração definitiva do Dom mora dentro de `whatsapp-ai-agent-reply` (50 mil
+chars, ~5,9 mil chamadas/dia). Trocar aquele arquivo só para começar o piloto é
+apostar o caminho quente inteiro numa mudança que ninguém viu funcionar.
+
+No modo `rascunho` o Dom **não envia nada** — lê o contexto, escreve, e a
+resposta vai para `dom_respostas_pendentes`. Tudo o que o piloto precisa cabe
+numa função própria de ~210 linhas: `supabase/functions/_external/dom-rascunho/`.
+Ela chama a mesma `dom-contexto`, usa o mesmo prompt, grava na mesma fila, e não
+encosta na função de produção. Sai de cena quando a integração definitiva subir.
+
+Acionada por POST: `{}` varre todos os grupos ativos do piloto, `{group_jid}`
+roda um só, `{limite}` limita a rodada.
+
+### Primeira rodada — 04/09/2026, 6 rascunhos
+
+O que funcionou: resumo com fato real, data real e linguagem de cliente; e o
+marcador de revisão saindo sozinho (`[REVISAR: valor]` quando o Dom falou em
+R$ 600, `[REVISAR: depoimento]` num caso trabalhista).
+
+Três defeitos achados, **todos abertos**:
+
+1. **O gatilho dispara em qualquer inbound.** Cliente escreveu "Muito obrigada"
+   e o Dom respondeu com relatório de 7 processos. Falha de projeto do
+   `dom-rascunho`, não do prompt: ele precisa rascunhar só quando houve
+   pergunta de verdade.
+2. **Resposta desconectada da pergunta.** Cliente reclamou que o app da Caixa
+   estava travando; o Dom respondeu sobre declaração de Bolsa Família. Mesma
+   raiz do item 1 — o contexto do processo atropela o que foi dito.
+3. **O grupo não pertence a uma linha só.** Vários números da equipe estão
+   dentro do mesmo grupo (os rascunhos saíram com `Raym`, `Luiz Abraci` e
+   `Atendimento Previdenciário`). De qual número o Dom responde é decisão de
+   operação, não se resolve escolhendo o grupo.
+
+Menor, mas anotado: ele cita o número CNJ completo ao cliente. Não é erro, é
+ruído — cliente não usa esse número.
+
+O cron **não foi criado** por causa do item 1: um tick de 2 em 2 minutos hoje
+encheria a fila de resposta para "obrigada".
 
 ## O atraso de 5 minutos NÃO é `response_delay_seconds`
 
@@ -172,15 +216,22 @@ quem já roda hoje, o código é inerte.
 
 ## Pendência aberta (decisão do Raym)
 
-O `base_prompt` do Dom contém:
+### Resolvida em 04/09/2026 — a instrução das senhas
+
+O `base_prompt` mandava o Dom dizer ativamente ao cliente que podia mandar senha
+no grupo ("POIS É UM AMBIENTE SEGURO ONDE TODOS SE CONHECEM"). Grupo de WhatsApp
+não é canal seguro para credencial: fica no aparelho de cada participante, no
+backup em nuvem de cada um, e sobrevive à saída de qualquer um do grupo. Se for
+a senha do gov.br, é acesso ao Meu INSS do cliente.
+
+Substituída, com autorização do Raym, por:
 
 ```
-SEMPRE DEIXE CLARO QUE O CLIENTE PODE COMPARTILHAR SENHAS DENTRO DO GRUPO,
-POIS É UM AMBIENTE SEGURO ONDE TODOS SE CONHECEM E TÊM CONFIANÇA
+NUNCA peça senha, código de acesso ou dado bancário ao cliente, e NUNCA diga que
+é seguro mandar isso no grupo. Se precisar de senha (gov.br, Meu INSS), diga que
+a equipe vai chamar em conversa privada para tratar disso.
 ```
 
-O agente está instruído a dizer ativamente ao cliente que pode mandar senha no
-grupo. Grupo de WhatsApp não é canal seguro para credencial: fica no aparelho de
-cada participante, no backup em nuvem de cada um, e sobrevive à saída de
-qualquer um do grupo. Se for a senha do gov.br, é acesso ao Meu INSS do cliente.
-**O Dom não deve ser ligado com essa linha ativa.**
+### Aberta — de qual número o Dom responde
+
+Ver defeito 3 da primeira rodada, acima.
