@@ -90,7 +90,7 @@ Leu? Leia de novo, mais devagar. Agora sim, comece a gravar.
 >
 > Aqui é **[seu primeiro nome]**, do escritório. Estou passando para te dar uma notícia sobre o seu processo, e também para combinar alguns detalhes com você.
 >
-> Fica tranquilo, é tudo coisa boa. Vou te explicar com calma, passo a passo.
+> Não se preocupe, é tudo coisa boa. Vou te explicar com calma, passo a passo.
 
 ---
 
