@@ -18,6 +18,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { TeamDirectChatPanel } from './TeamDirectChatPanel';
 import { openTeamChatConversation, openTeamChatNewConversation, subscribeToTeamChatConversation, type TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
 import { startDirectConversationWith } from '@/lib/teamDirectMessages';
+import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -313,7 +314,15 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         break;
       }
       case 'whatsapp':
-        navigate(`/whatsapp?openChat=${encodeURIComponent(mention.entity_id)}`);
+        // A conversa inteira abre POR CIMA, de baixo pra cima, no mesmo drawer
+        // que o resto do app usa (DashboardChatPreview): histórico, mídia,
+        // resposta com IA, virar atividade. Mandar para /whatsapp tirava a
+        // pessoa da tela e fazia ela procurar a conversa de novo na inbox.
+        openWhatsAppChatSheet({
+          phone: mention.entity_id,
+          contactName: mention.entity_name,
+          direction: 'bottom',
+        });
         break;
       case 'case':
         // Onde a conversa mora desde 19/08/2026 — o dock do caso abre junto com
