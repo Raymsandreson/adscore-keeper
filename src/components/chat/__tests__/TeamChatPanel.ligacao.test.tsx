@@ -92,6 +92,33 @@ describe('TeamChatPanel — ligar por voz', () => {
     expect(startCall).toHaveBeenCalledWith('u-resp', 'Crisley Costa de Oliveira');
   });
 
+  it('a busca filtra quem ligar e o Enter liga para o primeiro', async () => {
+    render(<TeamChatPanel entityType="process" entityId="proc-1" />);
+
+    fireEvent.click(screen.getByTitle(/Ligar por voz para alguém da equipe/i));
+    const busca = await screen.findByPlaceholderText(/Buscar quem ligar/i);
+
+    fireEvent.change(busca, { target: { value: 'zul' } });
+    await waitFor(() => {
+      const alvos = screen.getAllByRole('button').filter(b => /^Ligar para /.test(b.getAttribute('title') || ''));
+      expect(alvos.length).toBe(1);
+      expect(alvos[0].getAttribute('title')).toBe('Ligar para Zulmira Teixeira');
+    });
+
+    fireEvent.keyDown(busca, { key: 'Enter' });
+    expect(startCall).toHaveBeenCalledWith('u-outro', 'Zulmira Teixeira');
+  });
+
+  it('busca sem resultado avisa em vez de mostrar lista vazia', async () => {
+    render(<TeamChatPanel entityType="process" entityId="proc-1" />);
+
+    fireEvent.click(screen.getByTitle(/Ligar por voz para alguém da equipe/i));
+    const busca = await screen.findByPlaceholderText(/Buscar quem ligar/i);
+    fireEvent.change(busca, { target: { value: 'ninguem-com-esse-nome' } });
+
+    expect(await screen.findByText(/Ninguém com "ninguem-com-esse-nome" na equipe/i)).toBeTruthy();
+  });
+
   it('a própria mensagem tem "ligar" para quem escreveu', () => {
     render(<TeamChatPanel entityType="process" entityId="proc-1" />);
 
