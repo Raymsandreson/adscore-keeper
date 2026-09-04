@@ -16,12 +16,13 @@ import {
   splitQuotedLines,
 } from '@/lib/teamChatMessageContext';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useCallOptional } from '@/contexts/CallContext';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { Button } from '@/components/ui/button';
 import { AutoResizeTextarea } from '@/components/ui/auto-resize-textarea';
-import { Send, Loader2, AtSign, Users, UserRound, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Sparkles, Bell, BellRing, Reply, MessageSquarePlus, Forward, MessageCircleReply, X } from 'lucide-react';
+import { Send, Loader2, AtSign, Users, UserRound, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Sparkles, Bell, BellRing, Reply, MessageSquarePlus, Forward, MessageCircleReply, Phone, X } from 'lucide-react';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -60,6 +61,12 @@ interface TeamChatPanelProps {
 
 const MEDIA_BUCKET = 'team-chat-media';
 
+/** Rótulo do papel exibido ao lado do nome (lista de @ e lista de ligação). */
+const ROLE_LABEL: Record<string, string> = {
+  responsavel: 'Responsável',
+  acolhedor: 'Acolhedor',
+};
+
 function formatDuration(seconds?: number | null) {
   const s = Math.max(0, Math.floor(seconds || 0));
   const m = Math.floor(s / 60);
@@ -73,6 +80,11 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const members = useTeamMembers();
   const navigate = useNavigate();
   const push = usePushNotifications();
+  // Ligação por voz: a mesma do Chat da Equipe (CallContext + CallOverlay).
+  // Opcional porque este painel também abre fora do provider (telão).
+  const call = useCallOptional();
+  const callStatus = call?.status ?? 'idle';
+  const [showCallPicker, setShowCallPicker] = useState(false);
   const draftKey = `team-chat-draft-${entityType}-${entityId}`;
   const [inputText, setInputText] = useState(() => sessionStorage.getItem(draftKey) || '');
   const [sending, setSending] = useState(false);
@@ -197,6 +209,36 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     );
   }, [members, mentionFilter, user?.id, ownerIds]);
 
+  /**
+   * Para quem dá pra ligar a partir desta ficha, na ordem em que a pessoa
+   * pensa: quem cuida do caso, quem já escreveu neste chat e, por último, o
+   * resto da equipe. Mesma fonte do "@" — a ligação é o mesmo repertório do
+   * chat interno, só que por voz.
+   */
+  const callTargets = useMemo(() => {
+    const out: { userId: string; name: string; detail: string | null }[] = [];
+    const seen = new Set<string>();
+    const add = (userId: string | null | undefined, name: string, detail?: string | null) => {
+      if (!userId || userId === user?.id || seen.has(userId)) return;
+      seen.add(userId);
+      out.push({ userId, name, detail: detail || null });
+    };
+    owners.forEach(o => add(
+      o.userId,
+      o.name,
+      [o.roles.map(r => ROLE_LABEL[r]).filter(Boolean).join(' · '), o.detail].filter(Boolean).join(' · '),
+    ));
+    messages.forEach(m => add(m.sender_id, m.sender_name || 'Alguém da equipe', 'escreveu neste chat'));
+    members.forEach(m => add(m.user_id, m.full_name || m.email || 'Sem nome', m.email));
+    return out;
+  }, [owners, messages, members, user?.id]);
+
+  /** Liga e fecha a lista — o card da chamada (CallOverlay) abre por cima. */
+  const callPerson = (userId: string, name: string) => {
+    setShowCallPicker(false);
+    call?.startCall(userId, name);
+  };
+
   const handleInputChange = (value: string) => {
     setInputText(value);
     sessionStorage.setItem(draftKey, value);
@@ -247,12 +289,6 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
       toast.warning(`@todos avisa ${everyoneElseIds.length} pessoas e libera o acesso desta conversa a elas.`);
     }
     inputRef.current?.focus();
-  };
-
-  /** Rótulo do papel exibido ao lado do nome no topo da lista de @. */
-  const ROLE_LABEL: Record<string, string> = {
-    responsavel: 'Responsável',
-    acolhedor: 'Acolhedor',
   };
 
   const insertMention = (member: TeamMember) => {
@@ -1030,6 +1066,12 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
                       }}
                       onPrivateReply={!isMe && msg.sender_id ? () => startPrivateReply(msg) : undefined}
                       privateReplyTitle={`Responder no privado (abre a conversa direta com ${msg.sender_name || 'quem escreveu'})`}
+                      onCall={
+                        call && !isMe && msg.sender_id
+                          ? () => callPerson(msg.sender_id, msg.sender_name || 'Membro da equipe')
+                          : undefined
+                      }
+                      callTitle={`Ligar por voz para ${msg.sender_name || 'quem escreveu'} (sem sair desta tela)`}
                       onQuote={() => quoteMessage(msg)}
                       onCopy={() => copyMessage(msg)}
                       onAI={() => replyWithAI(msg)}
@@ -1145,6 +1187,36 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
         </div>
       )}
 
+      {/* Para quem ligar — some sozinha depois que a chamada começa. */}
+      {call && showCallPicker && (
+        <div className="mx-3 mb-1 border rounded-lg bg-card shadow-lg max-h-56 overflow-y-auto">
+          <div className="px-3 pt-1.5 pb-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+            Ligar por voz — a chamada abre aqui mesmo, sem sair da ficha
+          </div>
+          {callTargets.length === 0 ? (
+            <div className="px-3 py-2 text-[11px] text-muted-foreground">
+              Ninguém da equipe disponível para ligar.
+            </div>
+          ) : callTargets.map(target => (
+            <button
+              key={target.userId}
+              type="button"
+              onClick={() => callPerson(target.userId, target.name)}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent/50 transition-colors text-left"
+              title={`Ligar para ${target.name}`}
+            >
+              <Phone className="h-3.5 w-3.5 text-primary shrink-0" />
+              <div className="min-w-0">
+                <div className="text-xs font-medium truncate">{target.name}</div>
+                {target.detail && (
+                  <div className="text-[10px] text-muted-foreground truncate">{target.detail}</div>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Input + ações ricas */}
       <div className="shrink-0 border-t bg-muted/30">
         {footerNote && (
@@ -1213,6 +1285,22 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
           >
             <Users className="h-4 w-4" />
           </Button>
+          {/* Ligar por voz — só existe dentro do CallProvider (fora dele, telão). */}
+          {call && (
+            <Button
+              type="button" size="icon" variant="ghost"
+              className={cn('h-8 w-8 shrink-0', showCallPicker ? 'text-primary bg-primary/10' : 'text-muted-foreground')}
+              title={
+                callStatus !== 'idle'
+                  ? 'Você já está em uma chamada'
+                  : 'Ligar por voz para alguém da equipe (a chamada abre por cima desta tela)'
+              }
+              disabled={callStatus !== 'idle'}
+              onClick={() => setShowCallPicker(v => !v)}
+            >
+              <Phone className="h-4 w-4" />
+            </Button>
+          )}
           <Button
             type="button" size="icon" variant="ghost"
             className="h-8 w-8 shrink-0 text-muted-foreground"

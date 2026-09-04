@@ -1318,6 +1318,12 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                           : undefined
                       }
                       privateReplyTitle={`Responder no privado (abre a conversa direta com ${msg.sender_name || 'o autor'})`}
+                      onCall={
+                        msg.sender_id && !isGoneUser(msg.sender_id)
+                          ? () => startCall(msg.sender_id, msg.sender_name || 'Membro da equipe')
+                          : undefined
+                      }
+                      callTitle={`Ligar por voz para ${msg.sender_name || 'o autor'}`}
                       onQuote={() => quoteMessage(msg)}
                       onCopy={() => copyMessageText(msg)}
                       onAI={() => replyWithAI(msg)}

@@ -464,3 +464,13 @@ export function useCall() {
   if (!ctx) throw new Error('useCall precisa estar dentro de <CallProvider>');
   return ctx;
 }
+
+/**
+ * Igual ao useCall, mas devolve null fora do <CallProvider> em vez de derrubar
+ * a tela. É o que o chat interno da ficha usa: ele também abre em rota sem o
+ * provider (o telão /tv/atividades abre o ProcessDetailSheet), e lá o botão de
+ * ligar simplesmente não aparece.
+ */
+export function useCallOptional() {
+  return useContext(CallContext) ?? null;
+}
