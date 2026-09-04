@@ -739,11 +739,6 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       lastClientText: blocoDoInterlocutor(withText),
     };
   };
-  /** Como EU escrevo nesta conversa — exemplos reais para a sugestão soar minha. */
-  const comoEuEscrevoParaIA = useMemo(
-    () => montarLinhasDoEstilo((messages || []).slice(-40)),
-    [messages],
-  );
   /**
    * O que o CLIENTE ficou de fazer, do jeito que a IA da sugestão lê. É isso que
    * diz de que lado está a obrigação: numa cobrança nossa ("pagar as parcelas
@@ -1259,6 +1254,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
   const messages = [...conversation.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  /**
+   * Como EU escrevo nesta conversa — exemplos reais para a sugestão soar minha.
+   *
+   * TEM que ficar DEPOIS de `messages`. Estava 500 linhas acima, e o array de
+   * dependências `[messages]` é avaliado no render, não dentro do callback:
+   * `const` lido antes da declaração, no mesmo escopo, é ReferenceError e
+   * derrubava a tela de conversa inteira. O build não pega (esbuild não checa
+   * TDZ) e nenhum teste cobre este render — só o `tsc` viu (TS2448).
+   */
+  const comoEuEscrevoParaIA = useMemo(
+    () => montarLinhasDoEstilo((messages || []).slice(-40)),
+    [messages],
   );
 
   /** Quem da equipe mandou cada envio — inclusive os áudios, que não têm assinatura no texto. */
