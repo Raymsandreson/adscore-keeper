@@ -34,6 +34,21 @@ const PASTA_TTS = 'inss-audio/tts';
 const VOICE_ID = process.env.INSS_AUDIO_VOICE_ID || 'FGY2WhTYpPnrIDTdsKH5';
 const MODEL_ID = process.env.INSS_AUDIO_MODEL || 'eleven_multilingual_v2';
 
+/**
+ * Ritmo da fala. O resto do projeto narra a 1.05–1.1 porque é locução de telão
+ * e de agente de vendas; aviso de INSS é o oposto — quem ouve é cliente idoso,
+ * muitas vezes uma vez só, e precisa entender o que tem que providenciar.
+ * Abaixo de 1.0 a ElevenLabs abre a pausa entre as palavras.
+ *
+ * 1.0 escolhido de ouvido em 04/09/2026, comparando 1.0, 0.9 e 0.8 do mesmo
+ * texto na mesma voz. Fica explícito em vez de omitido porque a omissão foi o
+ * que confundiu: o preview usado para julgar a voz rodava a 1.1, mais rápido do
+ * que a produção jamais gerou.
+ *
+ * Faixa aceita pela API: 0.7 a 1.2.
+ */
+const SPEED = Math.min(1.2, Math.max(0.7, Number(process.env.INSS_AUDIO_SPEED || 1.0)));
+
 
 /**
  * Busca no catálogo o áudio daquela chave. O catálogo guarda tanto o que a
@@ -43,7 +58,7 @@ const MODEL_ID = process.env.INSS_AUDIO_MODEL || 'eleven_multilingual_v2';
 async function doCatalogo(chave: string): Promise<AudioDaMensagem | null> {
   const { data, error } = await supabase
     .from('inss_audio_mensagens')
-    .select('audio_url, origem')
+    .select('audio_url, origem, voice_id')
     .eq('chave', chave)
     .eq('ativo', true)
     .maybeSingle();
@@ -52,6 +67,17 @@ async function doCatalogo(chave: string): Promise<AudioDaMensagem | null> {
     return null;
   }
   if (!data?.audio_url) return null;
+
+  // Gravado é voz humana: vale sempre. Já o que foi gerado por TTS envelhece
+  // quando a voz muda -- e como `chave` é UNIQUE, a linha velha seria servida
+  // para sempre sem ninguém perceber. Divergiu da voz atual, conta como
+  // ausente: o chamador regera e regrava por cima.
+  const gerado = (data as any).voice_id as string | null;
+  if (data.origem !== 'gravado' && gerado !== VOICE_ID) {
+    console.log(`[inss-audio] ${chave} foi gerado na voz ${gerado || '(desconhecida)'}, agora é ${VOICE_ID} — regerando`);
+    return null;
+  }
+
   return {
     url: data.audio_url,
     origem: data.origem === 'gravado' ? 'gravado' : 'tts_catalogo',
@@ -66,13 +92,21 @@ async function doCatalogo(chave: string): Promise<AudioDaMensagem | null> {
  * gera duas vezes, nem entre execuções diferentes. Mesmo padrão do
  * `telao-narrar`, que roda assim desde agosto.
  */
-export async function gerarTts(texto: string): Promise<{ url: string } | { erro: string }> {
+export async function gerarTts(
+  texto: string,
+  opts: { voiceId?: string; speed?: number } = {},
+): Promise<{ url: string } | { erro: string }> {
   const key = process.env.ELEVENLABS_API_KEY || '';
   if (!key) return { erro: 'sem ELEVENLABS_API_KEY' };
   const fala = textoParaFala(texto);
   if (fala.length < 10) return { erro: 'texto curto demais para narrar' };
 
-  const hash = createHash('sha1').update(`${MODEL_ID}|${VOICE_ID}|${fala}`).digest('hex').slice(0, 24);
+  const voz = opts.voiceId || VOICE_ID;
+  const speed = opts.speed ?? SPEED;
+
+  // Voz e ritmo entram no hash: trocar qualquer um dos dois gera arquivo novo em
+  // vez de servir o antigo calado.
+  const hash = createHash('sha1').update(`${MODEL_ID}|${voz}|${speed}|${fala}`).digest('hex').slice(0, 24);
   const caminho = `${PASTA_TTS}/${hash}.mp3`;
   const publica = () =>
     supabase.storage.from(BUCKET).getPublicUrl(caminho).data.publicUrl;
@@ -87,14 +121,14 @@ export async function gerarTts(texto: string): Promise<{ url: string } | { erro:
   geracoesNaJanela++;
 
   const res = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=mp3_44100_128`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voz}?output_format=mp3_44100_128`,
     {
       method: 'POST',
       headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text: fala,
         model_id: MODEL_ID,
-        voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+        voice_settings: { stability: 0.5, similarity_boost: 0.75, speed },
       }),
     },
   );
@@ -174,13 +208,21 @@ export async function resolverAudioDaMensagem(args: {
   if (roteiro) {
     const gerado = await gerarTts(roteiro);
     if ('url' in gerado) {
-      const { error } = await supabase.from('inss_audio_mensagens').insert({
-        chave,
-        audio_url: gerado.url,
-        texto_falado: roteiro,
-        origem: 'tts',
-        ativo: true,
-      } as any);
+      // upsert, não insert: `chave` é UNIQUE e a linha pode já existir de uma
+      // voz anterior. Sem isto a regravação bateria em 23505 e o áudio velho
+      // ficaria no lugar.
+      const { error } = await supabase.from('inss_audio_mensagens').upsert(
+        {
+          chave,
+          audio_url: gerado.url,
+          texto_falado: roteiro,
+          origem: 'tts',
+          voice_id: VOICE_ID,
+          ativo: true,
+          updated_at: new Date().toISOString(),
+        } as any,
+        { onConflict: 'chave' },
+      );
       if (error) console.warn(`[inss-audio] não guardei ${chave} no catálogo: ${error.message}`);
       return { url: gerado.url, origem: 'tts_catalogo', chave };
     }
