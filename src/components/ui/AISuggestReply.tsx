@@ -63,6 +63,19 @@ interface Props {
    */
   contextoDaRelacao?: string[];
   /**
+   * O que o processo andou — CNJ, fase e últimas movimentações do tribunal
+   * (`useAndamentoDoProcesso`). É o que impede a IA de responder "ainda não
+   * temos o número do processo" a quem já tem processo distribuído. Só no
+   * modo 'client'.
+   */
+  andamentoDoProcesso?: string[];
+  /**
+   * Como o dono da conta escreve NESTA conversa (`montarLinhasDoEstilo`) —
+   * exemplos reais das mensagens dele, para a sugestão sair com a voz dele e
+   * não em tom de atendimento.
+   */
+  comoEuEscrevo?: string[];
+  /**
    * Abre acima da pilha de avisos (z-120 do sonner). Usado quando a sugestão é
    * pedida de dentro de um popup de notificação — sem isto o diálogo abria
    * atrás do próprio popup que o chamou.
@@ -83,6 +96,8 @@ export function AISuggestReply({
   mode = 'client',
   pendenciasDoCliente,
   contextoDaRelacao,
+  andamentoDoProcesso,
+  comoEuEscrevo,
   elevated,
 }: Props) {
   const isTeam = mode === 'team';
@@ -98,7 +113,10 @@ export function AISuggestReply({
   };
 
   const [loading, setLoading] = useState(false);
-  const [tone, setTone] = useState<string>('cordial');
+  // Começa espelhando o tom da conversa. "Cordial e profissional" como padrão
+  // fazia a sugestão sair em tom de atendimento até numa conversa pessoal —
+  // quem quiser outro tom troca no seletor ao lado.
+  const [tone, setTone] = useState<string>('auto');
   const [instruction, setInstruction] = useState('');
   const [options, setOptions] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
@@ -115,6 +133,10 @@ export function AISuggestReply({
   pendClienteRef.current = pendenciasDoCliente;
   const relacaoRef = useRef<string[] | undefined>(contextoDaRelacao);
   relacaoRef.current = contextoDaRelacao;
+  const andamentoRef = useRef<string[] | undefined>(andamentoDoProcesso);
+  andamentoRef.current = andamentoDoProcesso;
+  const estiloRef = useRef<string[] | undefined>(comoEuEscrevo);
+  estiloRef.current = comoEuEscrevo;
 
   const generate = useCallback(async (ctx: string, toneKey: string, extra: string, target?: string, already?: string, clientMsg?: string) => {
     if (!ctx.trim()) {
@@ -133,6 +155,8 @@ export function AISuggestReply({
         ultimaDoInterlocutor: clientMsg,
         pendenciasDoCliente: pendClienteRef.current,
         contextoDaRelacao: relacaoRef.current,
+        andamentoDoProcesso: andamentoRef.current,
+        comoEuEscrevo: estiloRef.current,
       });
       if (!opts.length) {
         toast.error('Nenhuma sugestão retornada. Tente novamente.');

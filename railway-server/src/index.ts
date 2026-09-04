@@ -931,3 +931,68 @@ setTimeout(runCapiDispatch, 240_000);
 setInterval(runCapiDispatch, CAPI_DRENA_MS);
 setTimeout(runCapiProbe, 300_000);
 setInterval(runCapiProbe, CAPI_PROBE_MS);
+
+// ============================================================
+// CRON: planilhas de Lead Ads -> funil, a cada 10 min.
+//
+// `bpc-sheet-sync` existia e NUNCA teve quem a chamasse: não estava em nenhum
+// dos jobs do pg_cron do Externo nem em setInterval nenhum. Em 04/09/2026 isso
+// deu 620 leads pagos dos últimos 30 dias parados nas planilhas, zero no CRM.
+//
+// Chama sem `board_id`: a função varre todo board com `sheet_enabled = true` e
+// lê a planilha de cada um (`sheet_source_url`). Board novo entra na varredura
+// só de ligar a planilha no banco, sem mexer aqui.
+//
+// GATE: sai desligado de propósito. Ligar é `SHEET_LEAD_SYNC=on` no Railway,
+// porque a primeira rodada não importa "os leads novos" — importa tudo que está
+// dentro da janela e nunca entrou, e isso é um lote grande caindo de uma vez num
+// funil ativo. Quem opera decide a hora.
+//
+// Desligar de volta: tirar a env var (ou qualquer valor != 'on') e reiniciar.
+// Nada se perde — a rodada seguinte reimporta o que ficou, o dedup é por
+// telefone dentro do board.
+// ============================================================
+const SHEET_SYNC_INTERVAL_MS = 10 * 60 * 1000;
+const SHEET_SYNC_DIAS = 7;
+const SHEET_SYNC_LIGADO = (process.env.SHEET_LEAD_SYNC || '').toLowerCase() === 'on';
+
+async function runSheetLeadSync() {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/bpc-sheet-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: JSON.stringify({ since_days: SHEET_SYNC_DIAS, dry_run: false }),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    if (json?.error) {
+      console.error(`[cron:sheet-lead-sync] ${json.error}`);
+      return;
+    }
+    // Board que falhou não pode sumir no meio do JSON: planilha renomeada,
+    // permissão revogada ou cota do Sheets viram silêncio e o funil seca de novo.
+    const falhas = (json?.resultados || []).filter((r: any) => r?.success === false);
+    for (const f of falhas) console.error(`[cron:sheet-lead-sync] board "${f.board}": ${f.error}`);
+    const abasPerdidas = (json?.resultados || []).flatMap((r: any) =>
+      (r?.abas_ignoradas || []).map((a: string) => `${r.board}/${a}`),
+    );
+    if (abasPerdidas.length) {
+      console.warn(`[cron:sheet-lead-sync] abas sem operador conhecido (leads ficam de fora): ${abasPerdidas.join(', ')}`);
+    }
+    if (json?.criados > 0 || falhas.length) {
+      console.log(
+        `[cron:sheet-lead-sync] criados=${json.criados ?? 0} boards=${json.boards_com_planilha ?? 0} falhas=${falhas.length}`,
+      );
+    }
+  } catch (err) {
+    console.warn('[cron:sheet-lead-sync] failed:', err instanceof Error ? err.message : err);
+  }
+}
+
+if (SHEET_SYNC_LIGADO) {
+  // Escalonado dos demais crons de boot (60s/120s/180s/240s/300s).
+  setTimeout(runSheetLeadSync, 360_000);
+  setInterval(runSheetLeadSync, SHEET_SYNC_INTERVAL_MS);
+  console.log(`[cron:sheet-lead-sync] ligado — janela de ${SHEET_SYNC_DIAS} dias, a cada 10 min`);
+} else {
+  console.log('[cron:sheet-lead-sync] DESLIGADO (defina SHEET_LEAD_SYNC=on para ligar)');
+}

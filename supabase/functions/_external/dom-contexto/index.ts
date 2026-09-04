@@ -156,10 +156,25 @@ function blocoProcessual(ctx: any): string {
 
     const dias = diasDesde(p.ultima_movimentacao);
     if (p.ultima_movimentacao) {
-      linhas.push(
-        `  Última movimentação: ${dataBR(p.ultima_movimentacao)}` +
-          (dias !== null ? ` (há ${dias} dias)` : ""),
-      );
+      if (dias !== null && dias < 0) {
+        // Medido em 04/09/2026: 16 processos com data_ultima_movimentacao no
+        // FUTURO, o mais distante em 03/12/2026. Provavelmente data de prazo ou
+        // audiência gravada como movimentação. Esconder a linha só trocaria um
+        // número errado por um silêncio errado — e o processo continuaria torto.
+        // Então ela aparece, marcada, e a resposta vai para a esteira de
+        // conserto em vez de virar promessa ao cliente.
+        linhas.push(
+          `  Última movimentação: ${dataBR(p.ultima_movimentacao)} — DATA INCONSISTENTE,` +
+            ` está no futuro. NÃO diga esta data ao cliente e NÃO afirme que o processo` +
+            ` andou nela. Responda sobre o resto e emita [REVISAR: data de movimentação` +
+            ` no futuro neste processo].`,
+        );
+      } else {
+        linhas.push(
+          `  Última movimentação: ${dataBR(p.ultima_movimentacao)}` +
+            (dias !== null ? ` (há ${dias} dias)` : ""),
+        );
+      }
     }
 
     if (p.resultado?.situacao) {
@@ -205,7 +220,7 @@ function blocoProcessual(ctx: any): string {
 
     // Sem movimento há muito tempo o cliente costuma achar que foi esquecido.
     // Melhor o Dom saber disso do que ser pego de surpresa.
-    if (dias !== null && dias > 90) {
+    if (dias !== null && dias > 90 && dias > 0) {
       linhas.push(
         `  NOTA INTERNA: sem movimentação há ${dias} dias. Se cobrarem, seja honesto` +
           " sobre a espera — não prometa prazo que você não tem.",
@@ -226,11 +241,12 @@ function blocoExemplos(exemplos: any[]): string {
   if (!exemplos.length) return "";
 
   const linhas = [
-    "=== COMO A EQUIPE JÁ RESPONDEU PERGUNTAS PARECIDAS ===",
-    "Exemplos reais de atendimentos anteriores. Use-os para calibrar TOM, tamanho e",
-    "abordagem. NUNCA copie um dado factual daqui (data, valor, prazo, número de",
-    "processo) — esses exemplos são de OUTROS clientes. O fato vem do bloco de",
-    "andamento processual; daqui vem só o jeito de falar.",
+    "=== COMO A EQUIPE JÁ RESPONDEU NESTE MESMO GRUPO ===",
+    "Atendimentos anteriores DESTE grupo, deste mesmo cliente. Use-os para calibrar",
+    "TOM, tamanho e abordagem.",
+    "NUNCA copie um dado factual daqui (data, valor, prazo, fase do processo): estes",
+    "exemplos são ANTIGOS e o processo andou desde então. O fato de hoje vem do bloco",
+    "de andamento processual; daqui vem só o jeito de falar.",
     "",
   ];
 
@@ -248,7 +264,68 @@ function blocoExemplos(exemplos: any[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Bloco 3 — identidade e a regra do que pode sair sem revisão humana
+// Bloco 3 — como falar com o cliente
+//
+// Existe por causa de duas situações reais:
+//   1. O atendente virtual PEDIU o número do processo ao cliente para poder
+//      falar do andamento. O cliente não tem esse número na cabeça — e nós
+//      temos, no bloco de andamento acima. Pedir escancara que ninguém está
+//      olhando o caso dele.
+//   2. Resposta em juridiquês. "Juntada de réplica", "conclusos para despacho",
+//      "trânsito em julgado" não querem dizer nada para quem está esperando um
+//      benefício. O cliente lê, não entende, e pergunta de novo — ou pior,
+//      entende errado.
+// ---------------------------------------------------------------------------
+function blocoComoFalar(): string {
+  return [
+    "=== COMO FALAR COM O CLIENTE ===",
+    "",
+    "NUNCA peça o número do processo ao cliente. Você JÁ TEM os processos dele no",
+    "bloco de andamento acima. Pedir o número é falha grave: passa a impressão de que",
+    "ninguém está acompanhando o caso. Se o cliente tem mais de um processo, e não dá",
+    "para saber de qual ele fala, resuma TODOS em poucas linhas cada.",
+    "",
+    "QUANDO PERGUNTAREM DO ANDAMENTO — o pedido mais comum do grupo:",
+    "  - Resuma CADA processo/requerimento em 2 a 3 frases, com base nas ÚLTIMAS",
+    "    movimentações do bloco de andamento.",
+    "  - Diga o que aconteceu de mais recente, quando, e o que se espera agora.",
+    "  - Se houver audiência ou perícia marcada, isso vem primeiro: é o que o cliente",
+    "    precisa fazer.",
+    "  - Se não houve movimentação recente, diga isso com honestidade, sem inventar",
+    "    prazo e sem prometer data.",
+    "",
+    "PROIBIDO usar termo técnico ou jargão jurídico. Traduza SEMPRE:",
+    "  - \"juntada\" → \"foi anexado um documento novo ao processo\"",
+    "  - \"conclusos ao juiz\" → \"está na mesa do juiz esperando ele analisar\"",
+    "  - \"citação\" → \"a empresa/o INSS foi oficialmente avisado do processo\"",
+    "  - \"contestação\" → \"o outro lado apresentou a resposta dele\"",
+    "  - \"réplica\" → \"nós respondemos o que o outro lado alegou\"",
+    "  - \"perícia\" → \"a consulta com o médico do INSS/da Justiça\"",
+    "  - \"trânsito em julgado\" → \"a decisão virou definitiva, ninguém pode mais",
+    "    recorrer\"",
+    "  - \"exigência\" → \"o INSS pediu um documento ou uma providência sua\"",
+    "  - \"sentença\" → \"a decisão do juiz sobre o caso\"",
+    "  - \"arquivado\" → explique o motivo em palavras simples, nunca a palavra solta",
+    "Se precisar mesmo citar o nome técnico, escreva-o e explique em seguida, entre",
+    "parênteses, no lugar de deixar solto.",
+    "",
+    "USE COMPARAÇÃO DO DIA A DIA para explicar o que é difícil. Exemplos do jeito:",
+    "  - fila de análise → \"é como uma fila de banco: a gente está na fila e não dá",
+    "    para furar\"",
+    "  - recurso → \"é como pedir uma segunda opinião para um médico mais experiente\"",
+    "  - perícia → \"é a consulta em que o médico deles confirma o que o seu já disse\"",
+    "Uma comparação por resposta, no máximo. Duas viram enrolação.",
+    "",
+    "TOM: acolhedor e humano. Do outro lado tem alguém esperando dinheiro ou saúde,",
+    "muitas vezes há meses. Reconheça a espera antes de explicar. Frases curtas,",
+    "como se você estivesse escrevendo no WhatsApp — porque está.",
+    "Nada de \"prezado\", \"venho por meio desta\", \"informamos que\". Fale como gente.",
+    "=== FIM COMO FALAR ===",
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Bloco 4 — identidade e a regra do que pode sair sem revisão humana
 // ---------------------------------------------------------------------------
 function blocoIdentidadeERevisao(modo: string): string {
   const identidade = [
@@ -336,6 +413,9 @@ Deno.serve(async (req) => {
       const { data: ex, error: errEx } = await supabase.rpc("dom_respostas_parecidas", {
         p_pergunta: String(pergunta),
         p_limit: Math.min(Number(limite_exemplos) || 6, 10),
+        // Sem isto o acervo devolveria exemplo de OUTRO cliente. Cada grupo é
+        // uma caixa fechada: o que sai daqui é só deste mesmo grupo.
+        p_group_jid: jidCurto,
       });
       if (errEx) console.error("[dom-contexto] rpc exemplos falhou", errEx.message);
       exemplos = ex ?? [];
@@ -343,6 +423,7 @@ Deno.serve(async (req) => {
 
     const blocos = [
       blocoIdentidadeERevisao(modo),
+      blocoComoFalar(),
       blocoProcessual(ctx ?? {}),
       blocoExemplos(exemplos),
     ]

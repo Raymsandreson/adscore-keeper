@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle, Scale, Search, Timer, Reply, CornerDownRight, BellOff } from 'lucide-react';
+import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, ArrowLeft, MessageCircle, Scale, Search, Timer, Reply, CornerDownRight, BellOff, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -14,8 +14,13 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { TeamDirectChatPanel } from './TeamDirectChatPanel';
-import { openTeamChatConversation, subscribeToTeamChatConversation, type TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
+import { openTeamChatConversation, openTeamChatNewConversation, subscribeToTeamChatConversation, type TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
+import { startDirectConversationWith } from '@/lib/teamDirectMessages';
+import { useProfilesList } from '@/hooks/useProfilesList';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { resolveOpenActivityOfChain } from '@/lib/activityChatThread';
 
 interface MentionsPanelProps {
@@ -46,6 +51,30 @@ const entityLabels: Record<string, string> = {
   process: 'Processo',
   case: 'Caso',
 };
+
+const CHIP_BASE =
+  'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors inline-flex items-center justify-center gap-1';
+/** Desligado é sempre igual: sem cor, sem preenchimento. */
+const CHIP_OFF = 'bg-transparent text-muted-foreground border-border hover:bg-accent';
+/** Ligado é sempre preenchido — a cor só diz QUAL filtro está valendo. */
+const CHIP_ON = {
+  primary: 'bg-primary text-primary-foreground border-primary',
+  amber: 'bg-amber-500 text-white border-amber-500',
+  sky: 'bg-sky-500 text-white border-sky-500',
+  foreground: 'bg-foreground text-background border-foreground',
+  violet: 'bg-violet-500 text-white border-violet-500',
+  slate: 'bg-slate-500 text-white border-slate-500',
+};
+
+function iniciais(nome: string) {
+  return nome
+    .trim()
+    .split(/s+/)
+    .slice(0, 2)
+    .map(parte => parte[0] || '')
+    .join('')
+    .toUpperCase() || '?';
+}
 
 const entityColors: Record<string, string> = {
   lead: 'bg-blue-500/10 text-blue-600',
@@ -149,7 +178,12 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   // Trava de duplo clique da cobrança, por mensagem.
   const [nudgingId, setNudgingId] = useState<string | null>(null);
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'mentions' | 'chat'>('chat');
+  // O painel é a lista de Menções, e só. A conversa em si (Chat da Equipe) abre
+  // EMPILHADA por cima daqui, sempre por INTENT — menção de conversa direta,
+  // "no privado" da ficha, deep link, clique no toast. Não existe mais nem aba
+  // nem botão para ela: o que a aba "Chat" mostrava já chega pelas menções
+  // (privado / grupo / ficha).
+  const [chatView, setChatView] = useState(false);
   const [chatIntent, setChatIntent] = useState<TeamChatOpenIntent | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -160,11 +194,22 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   // São dimensões independentes do status — dá pra cruzar as duas.
   const [scopeFilter, setScopeFilter] = useState<'all' | MentionScope>('all');
   const [kindFilter, setKindFilter] = useState<'all' | 'nome' | 'todos'>('all');
+  // Buscar na caixa também acha PESSOA, não só menção: quem nunca te marcou não
+  // tem linha aqui, e antes o nome dela simplesmente não voltava nada.
+  const { user } = useAuthContext();
+  const profiles = useProfilesList();
+  const inactiveIds = useInactiveUserIds();
+  const [abrindoConversaCom, setAbrindoConversaCom] = useState<string | null>(null);
+
+  // Fechou o painel, some a pilha: reabrir pelo sino volta nas menções.
+  useEffect(() => {
+    if (!open) setChatView(false);
+  }, [open]);
 
   useEffect(() => {
     return subscribeToTeamChatConversation((intent) => {
       setChatIntent(intent);
-      setActiveTab('chat');
+      setChatView(true);
       onOpenChange(true);
     });
   }, [onOpenChange]);
@@ -339,6 +384,38 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
 
   const scopeCount = (s: MentionScope) => mentions.filter(m => m.scope === s).length;
 
+  // Gente do escritório que casa com o texto buscado (sem você e sem desativado).
+  const pessoasDaBusca = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (term.length < 2) return [];
+    return profiles
+      .filter(pf => pf.user_id !== user?.id && !inactiveIds.has(pf.user_id))
+      .filter(pf =>
+        (pf.full_name || '').toLowerCase().includes(term) ||
+        (pf.email || '').toLowerCase().includes(term)
+      )
+      .slice(0, 6);
+  }, [profiles, inactiveIds, user?.id, search]);
+
+  const abrirConversaCom = async (otherUserId: string) => {
+    if (!user?.id) return;
+    setAbrindoConversaCom(otherUserId);
+    try {
+      const convId = await startDirectConversationWith(otherUserId, user.id);
+      if (!convId) {
+        toast.error('Não consegui abrir a conversa.');
+        return;
+      }
+      // O próprio painel escuta esse intent e empilha o chat por cima.
+      openTeamChatConversation({ conversationId: convId, focusComposer: true });
+    } catch (e) {
+      console.error('[MentionsPanel] erro ao abrir conversa direta:', e);
+      toast.error('Não consegui abrir a conversa.');
+    } finally {
+      setAbrindoConversaCom(null);
+    }
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-[380px] sm:w-[420px] p-0 flex flex-col">
@@ -346,66 +423,52 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
           <SheetHeader>
             <SheetTitle className="text-sm flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                {activeTab === 'mentions' ? (
+              {chatView ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="w-8 h-8 rounded-full bg-primary/20 shrink-0"
+                  onClick={() => setChatView(false)}
+                  title="Voltar às menções"
+                >
+                  <ArrowLeft className="h-4 w-4 text-primary" />
+                </Button>
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
                   <AtSign className="h-4 w-4 text-primary" />
-                ) : (
-                  <MessageCircle className="h-4 w-4 text-primary" />
-                )}
-              </div>
+                </div>
+              )}
               <div className="flex-1 min-w-0">
-                <div className="truncate text-sm">Chat interno</div>
+                <div className="truncate text-sm">{chatView ? 'Chat interno' : 'Menções'}</div>
                 <div className="text-[10px] text-muted-foreground font-normal">
-                  {activeTab === 'mentions'
-                    ? (unreadCount > 0 ? `${unreadCount} não lida${unreadCount > 1 ? 's' : ''}` : 'Todas lidas')
-                    : 'Conversas diretas e em grupo'
+                  {chatView
+                    ? 'Conversas diretas e em grupo'
+                    : (unreadCount > 0 ? `${unreadCount} não lida${unreadCount > 1 ? 's' : ''}` : 'Todas lidas')
                   }
                 </div>
               </div>
-              {activeTab === 'mentions' && unreadCount > 0 && (
+              {!chatView && unreadCount > 0 && (
                 <Button variant="ghost" size="sm" className="text-xs h-7" onClick={markAllAsRead}>
                   <CheckCheck className="h-3.5 w-3.5 mr-1" /> Todas
                 </Button>
               )}
+              {!chatView && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-7 shrink-0"
+                  onClick={openTeamChatNewConversation}
+                  title="Começar conversa com alguém ou criar grupo"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Nova
+                </Button>
+              )}
             </SheetTitle>
           </SheetHeader>
-
-          {/* Tabs */}
-          <div className="flex gap-1 mt-3 p-0.5 bg-muted/60 rounded-lg">
-            <button
-              onClick={() => setActiveTab('mentions')}
-              className={cn(
-                'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all',
-                activeTab === 'mentions'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <AtSign className="h-3.5 w-3.5" />
-              Menções
-              {unreadCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold flex items-center justify-center">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('chat')}
-              className={cn(
-                'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all',
-                activeTab === 'chat'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <MessageCircle className="h-3.5 w-3.5" />
-              Chat
-            </button>
-          </div>
         </div>
 
         {/* Filtros das menções */}
-        {activeTab === 'mentions' && mentions.length > 0 && (
+        {!chatView && mentions.length > 0 && (
           <div className="shrink-0 px-3 py-2 border-b space-y-1.5">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -429,44 +492,23 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 </SelectContent>
               </Select>
             )}
+            {/* Um vocabulário só: chip apagado = desligado, chip aceso = ligado.
+                Nada de cor de identidade em filtro que não está valendo — era
+                isso que fazia parecer que tudo estava selecionado. */}
             <div className="flex gap-1">
-              <button
-                type="button"
-                onClick={() => setStatusFilter('all')}
-                className={cn(
-                  'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors',
-                  statusFilter === 'all'
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-transparent text-muted-foreground border-border hover:bg-accent'
-                )}
-              >
-                Todas
-              </button>
               <button
                 type="button"
                 onClick={() => setStatusFilter(v => (v === 'unread' ? 'all' : 'unread'))}
                 title="Menções que você ainda não abriu"
-                className={cn(
-                  'flex-1 h-6 rounded-full text-[10px] font-semibold border transition-colors',
-                  statusFilter === 'unread'
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/20'
-                )}
+                className={cn(CHIP_BASE, statusFilter === 'unread' ? CHIP_ON.primary : CHIP_OFF)}
               >
                 Não lidas{unreadCount > 0 ? ` (${unreadCount})` : ''}
               </button>
-            </div>
-            <div className="flex gap-1">
               <button
                 type="button"
                 onClick={() => setStatusFilter(v => (v === 'responder' ? 'all' : 'responder'))}
                 title="Marcaram você e você ainda não escreveu nada nessa conversa"
-                className={cn(
-                  'flex-1 h-6 rounded-full text-[10px] font-semibold border transition-colors inline-flex items-center justify-center gap-1',
-                  statusFilter === 'responder'
-                    ? 'bg-amber-500 text-white border-amber-500'
-                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/40 hover:bg-amber-500/20'
-                )}
+                className={cn(CHIP_BASE, statusFilter === 'responder' ? CHIP_ON.amber : CHIP_OFF)}
               >
                 <Timer className="h-3 w-3" /> Responder{responderCount > 0 ? ` (${responderCount})` : ''}
               </button>
@@ -474,12 +516,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 type="button"
                 onClick={() => setStatusFilter(v => (v === 'aguardando' ? 'all' : 'aguardando'))}
                 title="Você marcou alguém e ninguém respondeu depois"
-                className={cn(
-                  'flex-1 h-6 rounded-full text-[10px] font-semibold border transition-colors inline-flex items-center justify-center gap-1',
-                  statusFilter === 'aguardando'
-                    ? 'bg-sky-500 text-white border-sky-500'
-                    : 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/40 hover:bg-sky-500/20'
-                )}
+                className={cn(CHIP_BASE, statusFilter === 'aguardando' ? CHIP_ON.sky : CHIP_OFF)}
               >
                 <Reply className="h-3 w-3" /> Aguardando{aguardandoCount > 0 ? ` (${aguardandoCount})` : ''}
               </button>
@@ -502,12 +539,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                         : v === 'grupo' ? 'Marcaram você num grupo'
                           : 'Marcaram você no chat de uma atividade, lead, processo, contato ou POP'
                     }
-                    className={cn(
-                      'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors inline-flex items-center justify-center gap-1',
-                      scopeFilter === v
-                        ? 'bg-foreground text-background border-foreground'
-                        : 'bg-transparent text-muted-foreground border-border hover:bg-accent'
-                    )}
+                    className={cn(CHIP_BASE, scopeFilter === v ? CHIP_ON.foreground : CHIP_OFF)}
                   >
                     {icon} {label}{n > 0 ? ` (${n})` : ''}
                   </button>
@@ -520,12 +552,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 type="button"
                 onClick={() => setKindFilter(prev => (prev === 'nome' ? 'all' : 'nome'))}
                 title="Marcaram você pelo nome"
-                className={cn(
-                  'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors',
-                  kindFilter === 'nome'
-                    ? 'bg-violet-500 text-white border-violet-500'
-                    : 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/40 hover:bg-violet-500/20'
-                )}
+                className={cn(CHIP_BASE, kindFilter === 'nome' ? CHIP_ON.violet : CHIP_OFF)}
               >
                 Pelo nome
               </button>
@@ -533,21 +560,27 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 type="button"
                 onClick={() => setKindFilter(prev => (prev === 'todos' ? 'all' : 'todos'))}
                 title="Chamaram a equipe inteira com @todos — não era só com você"
-                className={cn(
-                  'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors',
-                  kindFilter === 'todos'
-                    ? 'bg-slate-500 text-white border-slate-500'
-                    : 'bg-slate-500/10 text-slate-600 dark:text-slate-300 border-slate-500/40 hover:bg-slate-500/20'
-                )}
+                className={cn(CHIP_BASE, kindFilter === 'todos' ? CHIP_ON.slate : CHIP_OFF)}
               >
                 @todos
               </button>
             </div>
+            {/* Só aparece quando há filtro valendo — é a saída óbvia de "voltei
+                a ver tudo", que antes era um chip verde sempre aceso. */}
+            {hasActiveFilter && (
+              <button
+                type="button"
+                onClick={limparFiltros}
+                className="w-full h-6 rounded-full text-[10px] font-medium border border-dashed border-border text-muted-foreground hover:bg-accent transition-colors inline-flex items-center justify-center gap-1"
+              >
+                <X className="h-3 w-3" /> Limpar filtros e ver tudo
+              </button>
+            )}
           </div>
         )}
 
         {/* Content */}
-        {activeTab === 'chat' ? (
+        {chatView ? (
           <div className="flex-1 min-h-0">
             <TeamDirectChatPanel
               intent={chatIntent}
@@ -556,6 +589,39 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
           </div>
         ) : (
           <ScrollArea className="flex-1">
+            {/* Buscar nome de gente abre conversa, não só filtra menção. Sem
+                isso, procurar por quem nunca te marcou não devolvia nada. */}
+            {pessoasDaBusca.length > 0 && (
+              <div className="border-b bg-muted/20">
+                <div className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Falar com
+                </div>
+                <div className="divide-y">
+                  {pessoasDaBusca.map(pf => (
+                    <button
+                      key={pf.user_id}
+                      type="button"
+                      disabled={abrindoConversaCom === pf.user_id}
+                      onClick={() => abrirConversaCom(pf.user_id)}
+                      className="w-full text-left px-4 py-2 hover:bg-accent/50 transition-colors flex items-center gap-3 disabled:opacity-60"
+                    >
+                      <Avatar className="h-7 w-7">
+                        <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
+                          {iniciais(pf.full_name || pf.email || '?')}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-medium truncate">{pf.full_name || pf.email}</div>
+                        <div className="text-[10px] text-muted-foreground truncate">Abrir conversa direta</div>
+                      </div>
+                      {abrindoConversaCom === pf.user_id
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+                        : <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {loading ? (
               <div className="flex items-center justify-center h-32">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -569,11 +635,13 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
               <div className="flex flex-col items-center justify-center h-40 text-muted-foreground text-xs text-center gap-2 px-6">
                 <Search className="h-8 w-8 opacity-30" />
                 <p>
-                  {statusFilter === 'responder'
-                    ? 'Nada pendente de resposta sua. 🎉'
-                    : statusFilter === 'aguardando'
-                      ? 'Ninguém te devendo resposta.'
-                      : 'Nenhuma menção com esse filtro.'}
+                  {pessoasDaBusca.length > 0
+                    ? 'Nenhuma menção com esse nome — mas dá pra abrir a conversa aí em cima.'
+                    : statusFilter === 'responder'
+                      ? 'Nada pendente de resposta sua. 🎉'
+                      : statusFilter === 'aguardando'
+                        ? 'Ninguém te devendo resposta.'
+                        : 'Nenhuma menção com esse filtro.'}
                 </p>
                 {hasActiveFilter && (
                   <Button

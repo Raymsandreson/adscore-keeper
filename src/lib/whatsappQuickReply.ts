@@ -1,6 +1,7 @@
 import { authClient, db, ensureExternalSession } from '@/integrations/supabase';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
+import { blocoDoInterlocutor } from '@/lib/tomDaConversa';
 import { ehInstanciaCloud } from '@/lib/cloudApiInstances';
 
 /**
@@ -173,11 +174,12 @@ export function pendenciaDaConversa(mensagens: MensagemDaConversa[]) {
   const comTexto = mensagens.filter(m => m.message_text && String(m.message_text).trim());
   const ultima = comTexto[comTexto.length - 1];
   const ultimaMinha = [...comTexto].reverse().find(m => m.direction === 'outbound');
-  const ultimaDele = [...comTexto].reverse().find(m => m.direction !== 'outbound');
   return {
     pending: !!ultima && ultima.direction !== 'outbound',
     lastOutboundText: ultimaMinha ? String(ultimaMinha.message_text).trim() : '',
-    lastClientText: ultimaDele ? String(ultimaDele.message_text).trim() : '',
+    // Todas as falas seguidas dele sem resposta, não só a última: quem manda
+    // quatro mensagens está fazendo uma frase só (`blocoDoInterlocutor`).
+    lastClientText: blocoDoInterlocutor(comTexto),
   };
 }
 

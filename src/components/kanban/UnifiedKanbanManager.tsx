@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useGroupReportsPending } from '@/hooks/useGroupReportsPending';
 import { usePageState } from '@/hooks/usePageState';
 import { generateLeadName } from '@/utils/generateLeadName';
+import { registrarFechamentoDeLead } from '@/services/metaCapiQueue';
 import { getStageType } from '@/utils/kanbanStageTypes';
 import { LeadAdvancedFilters, LeadFilters, emptyFilters, applyLeadFilters, normalizeLeadFilters, hasAnyLeadFilter } from './LeadAdvancedFilters';
 import { Card, CardContent } from '@/components/ui/card';
@@ -499,6 +500,10 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
             .from('leads')
             .update({ lead_status: 'closed', became_client_date: today } as any)
             .eq('id', leadId);
+
+          // Este caminho grava `lead_status` direto, sem passar pelo
+          // `updateLead`, então precisa avisar a Meta por conta própria.
+          registrarFechamentoDeLead(leadId, 'kanban');
 
           const { data: existingCases } = await externalSupabase
             .from('legal_cases')
@@ -1277,6 +1282,12 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
 
               // Auto-create legal case when closing
               if (newStatus === 'closed') {
+                // Idem caminho de arrastar o card: `lead_status` foi gravado
+                // acima via `externalSupabase`, longe do `updateLead`.
+                if ((currentLead as any)?.lead_status !== 'closed') {
+                  registrarFechamentoDeLead(leadId, 'kanban');
+                }
+
                 // Set became_client_date
                 await externalSupabase.from('leads').update({
                   became_client_date: new Date().toISOString().slice(0, 10),

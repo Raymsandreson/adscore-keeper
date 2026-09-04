@@ -1,21 +1,4 @@
-// send-whatsapp v28 (projeto externo kmedldlepwiityjsdahz)
-//
-// v28: AUTORIA DO ENVIO. Cada mensagem que sai daqui grava em
-// `whatsapp_message_authors` (externo) quem da equipe mandou. Antes, a única
-// pista de autor era o prefixo `*Nome:*` colado no TEXTO pelo client — áudio e
-// mídia saíam sem assinatura nenhuma e ninguém sabia quem tinha gravado o áudio
-// que o cliente ouviu.
-// O autor NÃO vem do body: vem do JWT do header Authorization, validado contra
-// o Supabase Cloud (`auth.getUser`). Ninguém assina no lugar de outro, e envio
-// automático (agente de IA, robô do INSS — que chamam com service/anon key)
-// fica corretamente SEM autor.
-// Grava em tabela própria, e não numa coluna de `whatsapp_messages`, porque a
-// linha da mensagem é disputada: o webhook da UazAPI insere a mesma mensagem e
-// venceu em 97,7% dos casos medidos (3.544/3.628 outbound em 48h) — a coluna
-// seria apagada pela corrida. Ver o comentário da migration
-// 20260904120000_whatsapp_message_authors.sql.
-// A gravação é best-effort e nunca derruba um envio: falha vira log.
-// ROLLBACK: index.v27.rollback.ts (espelho fiel da v27 deployada).
+// send-whatsapp v27 (projeto externo kmedldlepwiityjsdahz)
 //
 // v27: actions send_contact (UazAPI /send/contact, vCard clicável) e send_poll
 // (UazAPI /send/menu type=poll — não existe /send/poll). As duas entram no
@@ -272,99 +255,6 @@ async function resolveGroupLink(inst, link) {
     groupName: d?.Name || d?.name || d?.subject || ''
   };
 }
-/**
- * v28: cache user_id -> nome, vivo enquanto o isolate viver. Evita uma consulta
- * a `profiles` por mensagem enviada num atendimento inteiro.
- */
-const nomeDoAutorCache = new Map();
-/**
- * v28: token -> autor já validado. Um disparo em lote (lista de transmissão,
- * cobrança de pendências) usa o MESMO token em N mensagens; sem este cache
- * seriam N validações de JWT + N consultas a `profiles`.
- * O token da sessão expira em ~1h, então a entrada envelhece sozinha.
- */
-const autorPorTokenCache = new Map();
-/**
- * v28: quem está mandando, segundo o JWT — nunca segundo o body.
- *
- * O client chama o proxy do Cloud com o `Authorization` da sessão do usuário e
- * o proxy repassa o header pra cá. `auth.getUser(token)` valida o token contra
- * o próprio Cloud: token forjado ou expirado devolve null, e envio de robô
- * (service/anon key, sem usuário) também devolve null — que é o certo.
- */
-async function identificarAutor(req, cloudClient) {
-  const raw = req.headers.get('authorization') || '';
-  const token = raw.replace(/^Bearer\s+/i, '').trim();
-  if (!token || token.split('.').length !== 3) return null;
-  if (autorPorTokenCache.has(token)) return autorPorTokenCache.get(token);
-  try {
-    const { data, error } = await cloudClient.auth.getUser(token);
-    const u = data?.user;
-    if (error || !u?.id) {
-      // Também memoriza o "não é usuário" (anon/service key do robô), senão
-      // todo envio automático paga a validação de novo.
-      if (autorPorTokenCache.size < 200) autorPorTokenCache.set(token, null);
-      return null;
-    }
-    if (!nomeDoAutorCache.has(u.id)) {
-      const { data: p } = await cloudClient.from('profiles').select('full_name').eq('user_id', u.id).maybeSingle();
-      nomeDoAutorCache.set(u.id, p?.full_name || u.email || null);
-    }
-    const autor = {
-      user_id: u.id,
-      name: nomeDoAutorCache.get(u.id) || null
-    };
-    if (autorPorTokenCache.size < 200) autorPorTokenCache.set(token, autor);
-    return autor;
-  } catch (e) {
-    console.warn('[send-whatsapp] identificarAutor falhou:', e?.message);
-    return null;
-  }
-}
-/**
- * v28: grava a autoria da mensagem recém-enviada.
- *
- * `ignoreDuplicates` porque o mesmo external_message_id nunca muda de dono —
- * se já existe linha, a primeira é a boa. Sem eid (ex.: send_location, que não
- * devolve id) não há como amarrar a autoria: pula em silêncio.
- */
-async function registrarAutoria(cloudClient, extClient, req, dados) {
-  if (!dados?.eid) return;
-  try {
-    const autor = await identificarAutor(req, cloudClient);
-    if (!autor) return;
-    const { error } = await extClient.from('whatsapp_message_authors').upsert({
-      external_message_id: dados.eid,
-      phone: dados.phone || null,
-      instance_name: dados.instance_name || null,
-      sent_by_user_id: autor.user_id,
-      sent_by_name: autor.name
-    }, {
-      onConflict: 'external_message_id',
-      ignoreDuplicates: true
-    });
-    if (error) console.warn('[send-whatsapp] autoria não gravada:', error.code, error.message);
-  } catch (e) {
-    console.warn('[send-whatsapp] autoria não gravada:', e?.message);
-  }
-}
-/**
- * v28: roda a gravação da autoria FORA do caminho da resposta quando o runtime
- * permite (`EdgeRuntime.waitUntil`). Sem isso, o atendente esperaria dois
- * requests extras (validar JWT + gravar) pra ver a própria bolha aparecer.
- */
-function semSegurarResposta(p) {
-  // @ts-ignore — EdgeRuntime é global do runtime do Supabase, não do Deno padrão.
-  const rt = globalThis.EdgeRuntime;
-  if (rt && typeof rt.waitUntil === 'function') {
-    try {
-      rt.waitUntil(p);
-      return null;
-    } catch  {
-    /* cai no await abaixo */ }
-  }
-  return p;
-}
 Deno.serve(async (req)=>{
   if (req.method === 'OPTIONS') return new Response(null, {
     headers: cors
@@ -384,10 +274,6 @@ Deno.serve(async (req)=>{
         'Content-Type': 'application/json'
       };
       if (RAILWAY_API_KEY) headers['x-api-key'] = RAILWAY_API_KEY;
-      // v28: repassa a identidade de quem enviou para o Railway registrar a
-      // autoria (whatsapp_message_authors), como fazemos no caminho UazAPI.
-      const authDoUsuario = req.headers.get('authorization');
-      if (authDoUsuario) headers['Authorization'] = authDoUsuario;
       const r = await fetch(`${RAILWAY_URL}/functions/send-whatsapp-cloud`, {
         method: 'POST',
         headers,
@@ -657,14 +543,6 @@ Deno.serve(async (req)=>{
         external_message_id: eid
       };
       const sm = await saveMsg(cloudClient, extClient, row);
-      // v28: é aqui que a autoria do áudio/mídia passa a existir — o caption
-      // não carrega assinatura e o áudio nem caption tem.
-      const autoriaMidia = semSegurarResposta(registrarAutoria(cloudClient, extClient, req, {
-        eid,
-        phone: row.phone,
-        instance_name: row.instance_name
-      }));
-      if (autoriaMidia) await autoriaMidia;
       if (!sm) {
         const { data: em } = await extClient.from('whatsapp_messages').insert(row).select('id').single();
         return jsonResp({
@@ -797,12 +675,6 @@ Deno.serve(async (req)=>{
         }
       };
       const sm = await saveMsg(cloudClient, extClient, row);
-      const autoriaContato = semSegurarResposta(registrarAutoria(cloudClient, extClient, req, {
-        eid,
-        phone: row.phone,
-        instance_name: row.instance_name
-      }));
-      if (autoriaContato) await autoriaContato;
       return jsonResp({
         success: true,
         message_id: sm?.id,
@@ -870,12 +742,6 @@ Deno.serve(async (req)=>{
         }
       };
       const sm = await saveMsg(cloudClient, extClient, row);
-      const autoriaEnquete = semSegurarResposta(registrarAutoria(cloudClient, extClient, req, {
-        eid,
-        phone: row.phone,
-        instance_name: row.instance_name
-      }));
-      if (autoriaEnquete) await autoriaEnquete;
       return jsonResp({
         success: true,
         message_id: sm?.id,
@@ -982,12 +848,6 @@ Deno.serve(async (req)=>{
       external_message_id: eid
     };
     const sm = await saveMsg(cloudClient, extClient, row);
-    const autoriaTexto = semSegurarResposta(registrarAutoria(cloudClient, extClient, req, {
-      eid,
-      phone: row.phone,
-      instance_name: row.instance_name
-    }));
-    if (autoriaTexto) await autoriaTexto;
     if (!sm) {
       console.warn('Cloud save failed, saving to ext backup');
       const { data: em } = await extClient.from('whatsapp_messages').insert(row).select('id').single();
