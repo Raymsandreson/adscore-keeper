@@ -10,6 +10,28 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version"
 };
+// === RITMO HUMANO ==========================================================
+// Intervalo fixo entre as partes de uma mensagem e atraso sempre igual antes de
+// responder sao as duas assinaturas de robo mais faceis de notar: ninguem digita
+// em ritmo constante, e ninguem responde exatamente no mesmo segundo toda vez.
+//
+// `pausaDeDigitacao` deriva o intervalo do TAMANHO do texto, a ~200 caracteres
+// por minuto (velocidade de quem digita rapido no celular), com piso de 1,5s,
+// teto de 12s e variacao aleatoria de 25% para os lados. Uma parte de 40 chars
+// e uma de 280 deixam de levar o mesmo tempo.
+function comVariacao(ms, percentual = 0.25) {
+  const desvio = ms * percentual;
+  return Math.round(ms - desvio + Math.random() * desvio * 2);
+}
+
+function pausaDeDigitacao(texto, minimoSegundos) {
+  const chars = String(texto || "").length;
+  const base = (chars / 200) * 60 * 1000; // 200 caracteres por minuto
+  const piso = Math.max((minimoSegundos || 2) * 1000, 1500);
+  return comVariacao(Math.min(Math.max(base, piso), 12000));
+}
+// === FIM RITMO HUMANO ======================================================
+
 Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") return new Response(null, {
     headers: corsHeaders
@@ -282,7 +304,14 @@ Deno.serve(async (req)=>{
         "Content-Type": "application/json"
       }
     });
-    if (is_followup) {
+    // A janela de horario valia so para follow-up. Passa a valer tambem para
+    // resposta normal DO AGENTE DE CASO: escritorio nao responde processo as
+    // 3h47, e nada denuncia mais um robo do que estar sempre disponivel.
+    //
+    // Restrito a `contexto_processual` de proposito: esta funcao atende todos os
+    // agentes, e calar os outros a noite seria mudanca de comportamento que
+    // ninguem pediu.
+    if (is_followup || agent.contexto_processual) {
       const nowBrasilia = new Date(new Date().toLocaleString("en-US", {
         timeZone: "America/Sao_Paulo"
       }));
@@ -291,7 +320,7 @@ Deno.serve(async (req)=>{
       const windowEnd = agent.send_window_end_hour ?? 20;
       if (currentHour < windowStart || currentHour >= windowEnd) return new Response(JSON.stringify({
         skipped: true,
-        reason: `Follow-up outside window`
+        reason: is_followup ? `Follow-up outside window` : `Fora da janela de atendimento`
       }), {
         status: 200,
         headers: {
@@ -302,8 +331,11 @@ Deno.serve(async (req)=>{
     }
     const batchDelaySeconds = agent.response_delay_seconds || 0;
     if (batchDelaySeconds > 0 && !is_followup) {
-      console.log(`Batching delay: waiting ${batchDelaySeconds}s`);
-      await new Promise((resolve)=>setTimeout(resolve, batchDelaySeconds * 1000));
+      // Com variacao: responder sempre no mesmo segundo exato e relogio, nao
+      // pessoa. A janela de corte abaixo segue usando o valor configurado.
+      const esperaReal = comVariacao(batchDelaySeconds * 1000);
+      console.log(`Batching delay: waiting ${Math.round(esperaReal / 1000)}s`);
+      await new Promise((resolve)=>setTimeout(resolve, esperaReal));
       const cutoffTime = new Date(Date.now() - batchDelaySeconds * 1000).toISOString();
       const { data: newerMessages } = await supabase.from("whatsapp_messages").select("id, created_at").eq("phone", phone).eq("instance_name", instance_name).eq("direction", "inbound").gt("created_at", cutoffTime).order("created_at", {
         ascending: false
@@ -791,7 +823,10 @@ Deno.serve(async (req)=>{
       if (instance) {
         const baseUrl = instance.base_url || "https://abraci.uazapi.com";
         const token = instance.instance_token;
-        const delayBetween = (agent.split_delay_seconds || 2) * 1000;
+        // Era fixo para toda parte de toda mensagem. Agora sai do tamanho do
+        // texto que ACABOU de ser enviado (ver pausaDeDigitacao).
+        const pausaAposParte = (indice) =>
+          pausaDeDigitacao(messageParts[indice], agent.split_delay_seconds);
         const audioRequestPatterns = /\b(mand[ae]?\s+(um\s+)?[áa]udio|fal[ae]?\s+(pra\s+mim|comigo)|grav[ae]?\s+(um\s+)?[áa]udio|respond[ae]?\s+(em\s+|com\s+)?[áa]udio)\b/i;
         const clientRequestedAudio = message_type === "text" && message_text && audioRequestPatterns.test(message_text);
         const isInboundAudio = [
@@ -861,7 +896,7 @@ Deno.serve(async (req)=>{
                 });
                 if (sendRes.ok) sendSucceeded = true;
               }
-              if (ci < ttsChunks.length - 1) await new Promise((r)=>setTimeout(r, delayBetween));
+              if (ci < ttsChunks.length - 1) await new Promise((r)=>setTimeout(r, pausaDeDigitacao(ttsChunks[ci], agent.split_delay_seconds)));
             }
           } catch (_) {
             for(let i = 0; i < messageParts.length; i++){
@@ -877,7 +912,7 @@ Deno.serve(async (req)=>{
                 })
               });
               if (fallbackRes.ok) sendSucceeded = true;
-              if (i < messageParts.length - 1) await new Promise((r)=>setTimeout(r, delayBetween));
+              if (i < messageParts.length - 1) await new Promise((r)=>setTimeout(r, pausaAposParte(i)));
             }
           }
         } else {
@@ -895,7 +930,7 @@ Deno.serve(async (req)=>{
             });
             if (sendRes.ok) sendSucceeded = true;
             else console.error("UazAPI send error:", sendRes.status, await sendRes.text());
-            if (i < messageParts.length - 1) await new Promise((r)=>setTimeout(r, delayBetween));
+            if (i < messageParts.length - 1) await new Promise((r)=>setTimeout(r, pausaAposParte(i)));
           }
         }
       } else return new Response(JSON.stringify({

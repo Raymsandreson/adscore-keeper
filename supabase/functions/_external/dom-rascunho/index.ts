@@ -283,6 +283,25 @@ Deno.serve(async (req) => {
         .eq("group_jid", g.group_jid).eq("pergunta", pergunta).limit(1).maybeSingle();
       if (jaTem) { pulados.push({ grupo: g.group_jid, motivo: "já rascunhado" }); continue; }
 
+      // Rascunho gerado deixa rastro na fila; SILÊNCIO não deixa. Sem esta
+      // segunda checagem, um grupo parado num "obrigada" seria reclassificado a
+      // cada rodada do cron, para sempre: uma chamada de modelo a cada cinco
+      // minutos para reconfirmar a mesma decisão, e dom_decisoes inchando com a
+      // mesma linha repetida.
+      //
+      // Só decisão FINAL bloqueia. 'pulou' fica de fora de propósito: ela cobre
+      // tropeço passageiro (contexto indisponível, modelo fora do ar), e isso
+      // merece nova tentativa na rodada seguinte.
+      const { data: jaDecidiu } = await supabase
+        .from("dom_decisoes").select("id, decisao")
+        .eq("group_jid", g.group_jid).eq("pergunta", pergunta)
+        .in("decisao", ["silencio", "respondeu", "humano"])
+        .limit(1).maybeSingle();
+      if (jaDecidiu) {
+        pulados.push({ grupo: g.group_jid, motivo: `já decidido antes (${(jaDecidiu as any).decisao})` });
+        continue;
+      }
+
       // 3. Intenção antes de qualquer coisa cara.
       const ultimasTrocas = lista.slice(-6)
         .map((m) => `${m.daEquipe ? "EQUIPE" : "CLIENTE"}: ${m.texto.slice(0, 160)}`).join("\n");

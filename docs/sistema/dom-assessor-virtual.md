@@ -172,6 +172,68 @@ ruído — cliente não usa esse número.
 O cron **não foi criado** por causa do item 1: um tick de 2 em 2 minutos hoje
 encheria a fila de resposta para "obrigada".
 
+## Como ele decide: as 19 intenções
+
+`dom-rascunho` classifica a última mensagem do cliente num modelo barato
+(flash-lite) ANTES de gastar o modelo bom, e o grupo da intenção decide a ação:
+
+| Grupo | O que ele faz | Intenções |
+|---|---|---|
+| A | responde a pergunta | A1 andamento, A2 explicação, A3 problema prático, A4 o que ele precisa fazer |
+| B | acolhe, **sem falar de processo** | B5 desabafo, B6 notícia boa, B7 notícia ruim |
+| C | confirma curto | C8 entregando dado, C9 documento, C10 agendamento, C11 fato novo |
+| D | **cala** | D12 cumprimento, D13 agradecimento, D14 fora do caso, D15 mensagem da equipe |
+| E | chama humano | E16 reclamação, E17 dinheiro/prazo, E18 quer pessoa, E19 assunto novo |
+
+Mais `conversa_encerrada`: quando a última mensagem só reconhece o que já foi
+dito, ninguém responde de volta. O Dom é convidado na conversa, não dono dela.
+
+## Cron: `dom_rascunho_tick`, de 5 em 5 minutos
+
+Agendado no Externo em 04/09/2026. O custo **não escala com a frequência,
+escala com a conversa**: antes de qualquer chamada de modelo a função pula todo
+grupo cuja última mensagem já foi decidida — `dom_respostas_pendentes` cobre o
+rascunho gerado, `dom_decisoes` cobre o silêncio. Rodada em grupo parado é só
+leitura de banco.
+
+Essa segunda checagem existe porque rascunho deixa rastro e silêncio não. Sem
+ela, um grupo parado num "obrigada" seria reclassificado a cada cinco minutos,
+para sempre. Só decisão FINAL bloqueia: `pulou` fica de fora de propósito,
+porque cobre tropeço passageiro que merece nova tentativa.
+
+`dom-avisar-atendente` **não** está no cron. Ele manda mensagem no WhatsApp
+pessoal de alguém, e isso começa por decisão humana, não por agendador.
+
+Rollback: `select cron.unschedule('dom_rascunho_tick');`
+
+## `dom-avisar-atendente` — a reclamação chega em alguém
+
+Quando a intenção é do grupo E, `dom-rascunho` sorteia o atendente pelo rodízio
+e grava `atendente_id` na fila. Esta função avisa a pessoa no privado, com nome
+do grupo, quem falou, o que foi dito, por que caiu no colo dela e o link de
+convite do grupo.
+
+`dry_run` é TRUE quando ausente — para valer é `POST { "dry_run": false }`. O
+link falha sozinho (só existe se a instância for admin do grupo) mas o aviso sai
+mesmo assim. `notificado_em` só é marcado depois do envio dar certo: marcar
+antes transformaria falha de rede em reclamação que ninguém veria de novo.
+
+## Ritmo humano
+
+Aplicado em `whatsapp-ai-agent-reply` (repo — **efeito só no deploy dela**):
+
+- **Intervalo entre as partes** sai do tamanho do texto, a ~200 caracteres por
+  minuto, com piso de 1,5s, teto de 12s e variação de 25%. Era fixo para toda
+  parte de toda mensagem — uma de 40 chars levava o mesmo tempo que uma de 280.
+- **Atraso antes de responder** ganha a mesma variação. Responder sempre no
+  mesmo segundo exato é relógio, não pessoa.
+- **Janela 8h–20h** passa a valer também para resposta normal, mas **só para
+  quem tem `contexto_processual`**. A função atende todos os agentes, e calar os
+  outros à noite seria mudança que ninguém pediu.
+
+Já estavam prontos e ligados: quebra de mensagem em partes, resposta em áudio
+quando o cliente manda áudio, e pausa de 45 min quando um humano responde.
+
 ## O atraso de 5 minutos NÃO é `response_delay_seconds`
 
 `response_delay_seconds` está implementado como `await setTimeout()` **dentro**
