@@ -100,6 +100,13 @@ describe('avisoDeVinculoSuspeito', () => {
     expect(t).toMatch(/Se não for/);
   });
 
+  it('dá o caminho de desvincular, que é o conserto quando o lead está errado', () => {
+    const t = avisoDeVinculoSuspeito({ motivo: CONFLITO_REAL, tipo: 'indeferido' });
+    expect(t).toMatch(/desvincule o protocolo na tela de Protocolos/);
+    // sem esta frase a pessoa conserta o sintoma e o requerimento continua preso
+    expect(t).toMatch(/TODAS as próximas atualizações/);
+  });
+
   it('lembra da grafia, que foi 2 dos 38 casos medidos', () => {
     expect(avisoDeVinculoSuspeito({ motivo: CONFLITO_GRAFIA })).toMatch(/grafia/);
   });

@@ -99,11 +99,14 @@ function urgenciaDoTipo(tipo?: string | null): string {
  *
  * A recusa está certa — medido em 04/09/2026, de 38 eventos parados assim
  * apenas 2 eram a mesma pessoa com grafia diferente (DANIELLE/DANIELE,
- * RAINARA/RAYNARA); os outros 36 eram nomes de fato distintos. O defeito nunca
- * foi a checagem, e sim ela não avisar ninguém: ficava num `console.warn` e a
- * atividade nascia muda. Entre 16/06 e 03/09 isso engoliu 17 indeferimentos e
- * 7 deferimentos — clientes com decisão do INSS na mão sem ninguém saber que
- * não foram avisados.
+ * RAINARA/RAYNARA); os outros 36 eram nomes de fato distintos. Afrouxar a
+ * checagem trocaria silêncio por decisão de INSS no grupo do cliente errado.
+ *
+ * Este texto vai DENTRO da descrição da atividade, no momento em que ela nasce
+ * — não como acréscimo depois. O aviso de vínculo suspeito já existia ali
+ * desde antes; o que faltava era dizer a urgência (deferimento e indeferimento
+ * são decisão, não andamento), lembrar que às vezes é só grafia, e avisar que
+ * um vínculo errado prende TODAS as próximas atualizações no mesmo lugar.
  */
 export function avisoDeVinculoSuspeito(args: {
   motivo?: string | null;
@@ -116,8 +119,9 @@ export function avisoDeVinculoSuspeito(args: {
     urgenciaDoTipo(args.tipo) +
     '\nConfira de quem é este requerimento. Se for mesmo deste lead, corrija o nome no cadastro ' +
     '(às vezes é só a grafia: DANIELLE contra DANIELE) e avise o cliente desta atualização por ' +
-    'aqui. Se não for, encontre o lead certo — o requerimento está vinculado ao lead errado, e ' +
-    'todas as próximas atualizações dele vão parar aqui também.' +
+    'aqui. Se não for, desvincule o protocolo na tela de Protocolos e ligue-o ao lead certo — ' +
+    'enquanto o vínculo estiver errado, TODAS as próximas atualizações deste requerimento vão ' +
+    'parar aqui também.' +
     (motivo ? `\nO que não bateu: ${motivo}` : '')
   );
 }
