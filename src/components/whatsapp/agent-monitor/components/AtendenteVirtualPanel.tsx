@@ -85,10 +85,17 @@ const FAMILIAS: { chave: string; rotulo: string; casa: (i: string | null) => boo
  * Abre a conversa do grupo no painel de baixo pra cima — o mesmo drawer do
  * resto do sistema, com histórico ao vivo, mídia e resposta. Nunca redireciona.
  */
-function abrirConversa(groupJid: string, instanceName: string | null, groupName: string | null) {
+function abrirConversa(groupJid: string, _instanceName: string | null, groupName: string | null) {
   openWhatsAppChatSheet({
     phone: groupJid,
-    instanceName,
+    // SEM instância, de propósito. Em grupo, CADA instância nossa grava a sua
+    // cópia da mesma mensagem: quem enviou grava `outbound`, as outras gravam a
+    // MESMA mensagem como `inbound`. Fixar uma instância mostra um espelho só —
+    // e se a resposta que saiu não tiver espelho naquela instância, ela
+    // simplesmente não aparece, que foi o que aconteceu no PREV 291.
+    // Sem filtro, todos os espelhos chegam em `dedupeMirroredMessages`, que
+    // junta e decide o `direction` olhando o conjunto.
+    instanceName: null,
     contactName: groupName,
     direction: 'bottom',
     forceSheet: true,
