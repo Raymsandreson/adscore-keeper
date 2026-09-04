@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X, FileText, Zap, Layers, Volume2 } from 'lucide-react';
 import { AgentKnowledgeDocs } from './AgentKnowledgeDocs';
 import { HandoffConfigSection, type HandoffConfig } from './HandoffConfigSection';
+import { AtendenteDeCasoSection } from './AtendenteDeCasoSection';
 import { toast } from 'sonner';
 
 interface AIAgent {
@@ -649,6 +650,9 @@ export function WhatsAppAIAgents() {
                     </div>
                   )}
                 </div>
+
+                {/* Atende grupo de caso — o antigo "Atendente Virtual" */}
+                <AtendenteDeCasoSection agentId={editingAgent.id} />
 
                 {/* Audio response */}
                 <div className="border rounded-lg p-3 space-y-2">
