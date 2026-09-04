@@ -125,3 +125,110 @@ export function avisoDeVinculoSuspeito(args: {
     (motivo ? `\nO que não bateu: ${motivo}` : '')
   );
 }
+
+/**
+ * O que aconteceu com a mensagem ao cliente, dito na atividade.
+ *
+ * Pedido do usuário (04/09/2026): já que a atividade é sempre criada — medido,
+ * 51 de 51 eventos em falha têm uma —, ela é o lugar certo para explicar por
+ * que o cliente não recebeu. Antes disso só 6 dos 13 desfechos explicavam:
+ * `silencio` (52 eventos), `retroativo` (26), `repetido` e `expirado` não
+ * diziam nada, e quem abria a atividade não tinha como saber se o cliente
+ * já sabia da atualização ou não.
+ *
+ * Devolve `null` para os desfechos cujo texto JÁ está na descrição desde que
+ * ela nasce (vínculo suspeito, perícia do escritório, pendência só nossa) e
+ * para o deferimento, que tem roteiro próprio — repetir daria dois avisos
+ * iguais na mesma atividade.
+ */
+export function explicarDestinoDaMensagem(args: {
+  zapStatus?: string | null;
+  zapErro?: string | null;
+  tipo?: string | null;
+}): string | null {
+  const st = args.zapStatus || '';
+  const motivo = String(args.zapErro || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+
+  switch (st) {
+    case 'enviado':
+      return '\n\n✅ O CLIENTE JÁ FOI AVISADO no grupo, com este mesmo conteúdo em linguagem simples.';
+
+    case 'agendado':
+      return (
+        '\n\n🕗 A MENSAGEM ESTÁ PRONTA E SAI SOZINHA na próxima janela de 8h às 20h — o cliente ' +
+        'ainda não foi avisado. Não precisa mandar à mão; se for urgente, mande e a duplicata é ' +
+        'só o incômodo de duas mensagens.'
+      );
+
+    case 'silencio':
+      return (
+        '\n\n🔇 ESTE EVENTO NÃO VIRA MENSAGEM. O status não é protocolo, exigência nem conclusão, ' +
+        'então não há o que contar ao cliente. Nada a fazer.'
+      );
+
+    case 'retroativo':
+      return (
+        '\n\n🕰️ O CLIENTE NÃO FOI AVISADO — este evento é anterior à ativação do aviso automático, ' +
+        'e o robô não dispara mensagem de coisa velha para não assustar quem já resolveu o assunto. ' +
+        'Se ele ainda não souber, avise por aqui.'
+      );
+
+    case 'repetido':
+      return (
+        '\n\n🔁 O CLIENTE JÁ FOI AVISADO deste mesmo tipo de atualização neste requerimento. O robô ' +
+        'não repete para não virar spam no grupo. Se o conteúdo mudou e importa, mande à mão.'
+      );
+
+    case 'expirado':
+      return (
+        '\n\n⌛ O CLIENTE NÃO FOI AVISADO — a mensagem ficou tempo demais na fila e deixou de valer ' +
+        `automaticamente${motivo ? ` (${motivo})` : ''}. Confira se ele já soube e, se não, avise por aqui.`
+      );
+
+    case 'vinculo_retroativo':
+      return (
+        '\n\n🔗 ESTE REQUERIMENTO ACABOU DE GANHAR DONO. O robô ligou o requerimento a este lead pelo ' +
+        'nome do segurado — antes disso o e-mail do INSS não era tarefa de ninguém. O CLIENTE NÃO FOI ' +
+        'AVISADO: confira se o requerimento é mesmo deste lead e, se for, avise-o do que está escrito ' +
+        'acima. Daqui para frente as atualizações deste requerimento saem sozinhas.'
+      );
+
+    case 'sem_grupo':
+      return (
+        '\n\n📵 O CLIENTE NÃO FOI AVISADO — este lead não tem grupo de WhatsApp confiável vinculado' +
+        `${motivo ? ` (${motivo})` : ''}.\n` +
+        'Vincule o grupo certo ao lead (ficha do lead → WhatsApp → vincular grupo) e avise o cliente ' +
+        'desta atualização por aqui. Depois de vinculado, as próximas mensagens saem sozinhas.'
+      );
+
+    case 'erro':
+      return avisoDeFalhaNoEnvio({ zapErro: args.zapErro, tipo: args.tipo });
+
+    // Já ditos na descrição desde que ela nasce, ou com roteiro próprio.
+    case 'suspeito':
+    case 'so_equipe':
+    case 'pericia_escritorio':
+    case 'so_escritorio':
+      return null;
+
+    default:
+      return null;
+  }
+}
+
+/**
+ * O PDF da procuração existe mas não foi junto, porque a mensagem não saiu.
+ * Fica no MESMO bloco do destino da mensagem: até 04/09/2026 era um `update`
+ * separado que relia a descrição original, então dois avisos no mesmo evento se
+ * apagavam — nunca foi observado em dado real, mas o desenho permitia.
+ */
+export function avisoDeProcuracaoNaoEntregue(zapStatus?: string | null): string {
+  const motivo =
+    zapStatus === 'agendado'
+      ? 'a mensagem ficou agendada para a janela de 8h às 20h e o PDF vai junto com ela'
+      : `a mensagem não saiu (${zapStatus})`;
+  return (
+    `\n\n📎 O PDF DA PROCURAÇÃO AINDA NÃO CHEGOU AO CLIENTE: ${motivo}. ` +
+    'Se precisar adiantar, mande o link acima no grupo.'
+  );
+}

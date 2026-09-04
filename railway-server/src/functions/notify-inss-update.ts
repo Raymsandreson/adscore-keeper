@@ -12,7 +12,11 @@ import {
   donoDaAtualizacaoInss,
   type DonoAtividade,
 } from '../lib/inss-roteamento';
-import { avisoDeFalhaNoEnvio, avisoDeVinculoSuspeito } from '../lib/inss-falha-envio';
+import {
+  avisoDeVinculoSuspeito,
+  explicarDestinoDaMensagem,
+  avisoDeProcuracaoNaoEntregue,
+} from '../lib/inss-falha-envio';
 import { mandarAudioDaMensagem } from '../lib/inss-audio';
 import { conferirNomeDoSegurado } from '../lib/inss-nome-confere';
 import {
@@ -452,49 +456,70 @@ export const handler: RequestHandler = async (req, res) => {
       }
     }
 
-    // 2.1) Sem grupo confiável, quem precisa agir é gente: o aviso vai na
-    // atividade que acabou de nascer. Pedido do usuário (31/08/2026): na dúvida
-    // sobre qual é o grupo, não arrisca mandar — avisa para vincularem o grupo
-    // ao lead. São 102 dos 623 leads com requerimento INSS sem vínculo, e sem
-    // este aviso a falha só aparecia no `zap_erro`, que ninguém lê.
-    if (zapPatch.zap_status === 'vinculo_retroativo' && atividade?.id) {
-      await supabase
-        .from('lead_activities')
-        .update({
-          description:
-            `${atividade.description || activityDesc}\n\n` +
-            '🔗 ESTE REQUERIMENTO ACABOU DE GANHAR DONO. O robô ligou o requerimento a este lead pelo ' +
-            'nome do segurado — antes disso o e-mail do INSS não era tarefa de ninguém. O CLIENTE NÃO ' +
-            'FOI AVISADO: confira se o requerimento é mesmo deste lead e, se for, avise-o do que está ' +
-            'escrito acima. Daqui para frente as atualizações deste requerimento saem sozinhas.',
-        })
-        .eq('id', atividade.id);
-    }
+    // 2.1) O que a atividade precisa dizer sobre a mensagem ao cliente.
+    //
+    // Um bloco só e UM update só. Antes eram três `update` separados, cada um
+    // relendo `atividade.description` original: dois avisos no mesmo evento se
+    // apagavam. Nunca foi observado em dado real, porque na prática os
+    // desfechos são excludentes, mas `sem_grupo` junto de procuração pendente
+    // já bastava para perder um dos dois.
+    //
+    // E agora TODO desfecho se explica, não só os que dão trabalho. Quem abre a
+    // atividade precisa saber se o cliente já sabe da atualização — a resposta
+    // "não" tem motivos muito diferentes entre si (nunca vai virar mensagem,
+    // sai sozinha às 8h, o WhatsApp recusou), e cada um pede uma atitude
+    // diferente de quem lê.
+    const blocos: string[] = [];
 
     // Deferimento: ninguém recebe zap, e as DUAS pessoas do fluxo previdenciário
     // precisam saber (pedido do usuário, 04/09/2026) — Luana, que protocolou, e
-    // José, que toca o pós-protocolo. A atividade que já nasceu ficou com o
-    // dono de sempre; aqui ela ganha o roteiro e sai uma irmã para quem faltou.
-    if (zapPatch.zap_status === 'so_equipe' && atividade?.id) {
-      const roteiro =
-        '\n\n🎉 O INSS APROVOU ESTE PEDIDO. O cliente NÃO foi avisado pelo robô: quem dá a ' +
-        'notícia é uma pessoa.\nFale com ele no grupo, confira os valores e combine o que o ' +
-        'escritório precisa para acompanhar o pagamento. Se for preciso acessar o Meu INSS do ' +
-        'cliente, combine isso por voz com ele — não peça senha por escrito no grupo.';
+    // José, que toca o pós-protocolo.
+    const roteiroDeferimento =
+      zapPatch.zap_status === 'so_equipe'
+        ? '\n\n🎉 O INSS APROVOU ESTE PEDIDO. O cliente NÃO foi avisado pelo robô: quem dá a ' +
+          'notícia é uma pessoa.\nFale com ele no grupo, confira os valores e combine o que o ' +
+          'escritório precisa para acompanhar o pagamento. Se for preciso acessar o Meu INSS do ' +
+          'cliente, combine isso por voz com ele — não peça senha por escrito no grupo.'
+        : null;
+    if (roteiroDeferimento) blocos.push(roteiroDeferimento);
+
+    const destinoDaMensagem = explicarDestinoDaMensagem({
+      zapStatus: zapPatch.zap_status,
+      zapErro: zapPatch.zap_erro,
+      tipo: tipoMensagem,
+    });
+    if (destinoDaMensagem) blocos.push(destinoDaMensagem);
+
+    // O PDF existe mas não chegou ao cliente. Quem abre a atividade precisa
+    // saber que o anexo ficou por conta dela.
+    if (procuracao && !procuracaoEnviada) {
+      blocos.push(avisoDeProcuracaoNaoEntregue(zapPatch.zap_status));
+    }
+
+    const acrescimo = blocos.join('');
+    if (acrescimo && atividade?.id) {
       await supabase
         .from('lead_activities')
-        .update({ description: `${atividade.description || activityDesc}${roteiro}` })
+        .update({ description: `${atividade.description || activityDesc}${acrescimo}` })
         .eq('id', atividade.id);
+    }
 
-      const avisar: DonoAtividade[] = [ASSESSOR_INSS, ASSESSOR_PROTOCOLO].filter(
-        (p) => p.id !== dono.id,
-      );
+    // Irmã para o José quando a atividade é de outra pessoa: no deferimento
+    // (que ele toca depois do protocolo) e no envio recusado (que ele decide se
+    // vira conversa à mão).
+    const precisaDoJose =
+      zapPatch.zap_status === 'so_equipe' || zapPatch.zap_status === 'erro';
+    if (precisaDoJose && atividade?.id) {
+      const avisar: DonoAtividade[] =
+        zapPatch.zap_status === 'so_equipe'
+          ? [ASSESSOR_INSS, ASSESSOR_PROTOCOLO].filter((p) => p.id !== dono.id)
+          : [ASSESSOR_INSS].filter((p) => p.id !== dono.id);
       for (const pessoa of avisar) {
         const { error } = await supabase.from('lead_activities').insert({
           lead_id: leadId,
           title: activityTitle,
           description:
-            `${activityDesc}${roteiro}\n\n👥 ${dono.name} recebeu esta mesma tarefa — ` +
+            `${activityDesc}${acrescimo}\n\n👥 ${dono.name} recebeu esta mesma tarefa — ` +
             'combinem quem fala com o cliente para ele não ser procurado duas vezes.',
           activity_type: 'notificacao',
           status: 'pendente',
@@ -510,93 +535,11 @@ export const handler: RequestHandler = async (req, res) => {
           action_source_detail: 'Robô do INSS',
         } as any);
         if (error) {
-          console.warn(`[notify-inss-update] atividade de deferimento para ${pessoa.name} falhou: ${error.message}`);
-        }
-      }
-    }
-
-    // Dois desfechos em que o cliente NÃO foi avisado e o robô não pode
-    // resolver sozinho: o WhatsApp recusou o envio, ou o nome do segurado não
-    // bate com o do lead e mandar poria a informação no grupo de outro cliente.
-    //
-    // Os dois eram mudos — viviam num `console.warn` e numa coluna que ninguém
-    // lê, enquanto o desfecho mais seguro (`sem_grupo`) já gritava na atividade.
-    // A assimetria era o defeito. Medido em 04/09/2026: 38 parados por nome
-    // divergente (17 indeferimentos, 7 deferimentos) e 2 por envio recusado.
-    //
-    // O José é avisado mesmo quando a atividade é de outra pessoa (pedido do
-    // usuário): ele toca o pós-protocolo e decide se fala com o cliente à mão.
-    // Só o envio recusado entra aqui. O vínculo suspeito já é conhecido ANTES de
-    // a atividade nascer, então o aviso dele vai na própria descrição — repetir
-    // aqui daria dois avisos iguais na mesma atividade.
-    const avisoDeNaoEntrega =
-      zapPatch.zap_status === 'erro'
-        ? avisoDeFalhaNoEnvio({ zapErro: zapPatch.zap_erro, tipo: tipoMensagem })
-        : null;
-
-    if (avisoDeNaoEntrega && atividade?.id) {
-      await supabase
-        .from('lead_activities')
-        .update({ description: `${atividade.description || activityDesc}${avisoDeNaoEntrega}` })
-        .eq('id', atividade.id);
-
-      if (dono.id !== ASSESSOR_INSS.id) {
-        const { error } = await supabase.from('lead_activities').insert({
-          lead_id: leadId,
-          title: activityTitle,
-          description:
-            `${activityDesc}${avisoDeNaoEntrega}\n\n👥 ${dono.name} recebeu esta mesma tarefa — ` +
-            'combinem quem fala com o cliente para ele não ser procurado duas vezes.',
-          activity_type: 'notificacao',
-          status: 'pendente',
-          priority: 'normal',
-          assigned_to: ASSESSOR_INSS.id,
-          assigned_to_name: ASSESSOR_INSS.name,
-          deadline: new Date().toISOString().slice(0, 10),
-          case_id: proc.case_id,
-          case_title: formatLabel(caseInfo?.case_number, caseInfo?.title) || null,
-          process_id: process?.id || null,
-          process_title: process ? formatLabel(process.process_number, process.title) || null : null,
-          action_source: 'system',
-          action_source_detail: 'Robô do INSS',
-        } as any);
-        if (error) {
           console.warn(
-            `[notify-inss-update] aviso de não entrega para ${ASSESSOR_INSS.name} falhou: ${error.message}`,
+            `[notify-inss-update] atividade irmã para ${pessoa.name} falhou: ${error.message}`,
           );
         }
       }
-    }
-
-    if (zapPatch.zap_status === 'sem_grupo' && atividade?.id) {
-      const aviso =
-        '\n\n📵 O CLIENTE NÃO FOI AVISADO — este lead não tem grupo de WhatsApp confiável ' +
-        `vinculado (${zapPatch.zap_erro}).\n` +
-        'Vincule o grupo certo ao lead (ficha do lead → WhatsApp → vincular grupo) e avise o ' +
-        'cliente desta atualização por aqui. Depois de vinculado, as próximas mensagens saem sozinhas.';
-      await supabase
-        .from('lead_activities')
-        .update({ description: `${atividade.description || activityDesc}${aviso}` })
-        .eq('id', atividade.id);
-    }
-
-    // O PDF existe mas não chegou ao cliente (mensagem agendada para a janela,
-    // envio recusado pela instância, ou o evento nem virou mensagem). Quem abre
-    // a atividade precisa saber que o anexo ficou por conta dela.
-    if (procuracao && !procuracaoEnviada && atividade?.id) {
-      const motivo =
-        zapPatch.zap_status === 'agendado'
-          ? 'a mensagem ficou agendada para a janela de 8h às 20h e o PDF vai junto com ela'
-          : `a mensagem não saiu (${zapPatch.zap_status})`;
-      await supabase
-        .from('lead_activities')
-        .update({
-          description:
-            `${atividade.description || activityDesc}\n\n` +
-            `📎 O PDF DA PROCURAÇÃO AINDA NÃO CHEGOU AO CLIENTE: ${motivo}. ` +
-            'Se precisar adiantar, mande o link acima no grupo.',
-        })
-        .eq('id', atividade.id);
     }
 
     // 3) Marca como notificado. Só o evento mais recente pode virar mensagem;
