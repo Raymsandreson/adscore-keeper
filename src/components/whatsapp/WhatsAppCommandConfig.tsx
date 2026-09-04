@@ -29,6 +29,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { SuperPromptDiagnostic } from './SuperPromptDiagnostic';
 import { AgentTestChat } from './AgentTestChat';
+import { AtendenteDeCasoSection } from './AtendenteDeCasoSection';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
 import { AgentAutomationRules } from './AgentAutomationRules';
 import { AgentConversationsList } from './AgentConversationsList';
@@ -297,6 +298,13 @@ export function WhatsAppCommandConfig({ focusAgentId }: WhatsAppCommandConfigPro
 }
 
 // ==================== SHORTCUTS TAB (UNIFIED ASSISTANT + DOCUMENT) ====================
+/**
+ * As seções que saem da fileira principal. Ordem por uso real sobre os 16
+ * agentes, medido em 04/09/2026: Documento 7, Follow-up 6, Conversas e Testar
+ * são leitura, Automações 0 regras.
+ */
+const SECOES_AVANCADAS = ['document', 'followup', 'conversations', 'test', 'automations'] as const;
+
 function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', focusAgentId }: { shortcuts: Shortcut[]; profiles: Profile[]; onReload: () => void; commandScope?: string; focusAgentId?: string | null }) {
   const [showForm, setShowForm] = useState(false);
   const [showAI, setShowAI] = useState(false);
@@ -834,24 +842,62 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
           <CardContent className="p-4 space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando agente' : '➕ Novo agente'}</p>
-              <div className="flex gap-1">
-                {(['general', 'ai', 'document', 'followup', 'automations', 'conversations', 'test'] as const).map(sec => (
+              {/*
+                Eram sete botões em fileira única. Medido em 04/09/2026 sobre os 16
+                agentes: Automações tinha 0 regras e Documentos de conhecimento 0 —
+                e o sistema inteiro produziu 25 mensagens em 60 dias. Sete portas
+                para o que cabe em três, e ninguém sabia qual abrir.
+
+                Nada foi apagado: as cinco menos usadas viram segunda fileira, que
+                só aparece quando você entra em Avançado. Ordem por uso real —
+                Documento (7 agentes) e Follow-up (6) primeiro, Automações (0) por
+                último.
+              */}
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex gap-1">
+                  {(['general', 'ai'] as const).map(sec => (
+                    <Button
+                      key={sec}
+                      size="sm"
+                      variant={formSection === sec ? 'default' : 'ghost'}
+                      className="h-7 text-[10px] px-2"
+                      onClick={() => setFormSection(sec)}
+                    >
+                      {sec === 'general' && '⚙️ Geral'}
+                      {sec === 'ai' && '🧠 IA'}
+                    </Button>
+                  ))}
                   <Button
-                    key={sec}
                     size="sm"
-                    variant={formSection === sec ? 'default' : 'ghost'}
+                    variant={SECOES_AVANCADAS.includes(formSection as never) ? 'default' : 'ghost'}
                     className="h-7 text-[10px] px-2"
-                    onClick={() => setFormSection(sec)}
+                    onClick={() => {
+                      // Entra pela mais usada das avançadas, não por uma tela vazia.
+                      if (!SECOES_AVANCADAS.includes(formSection as never)) setFormSection('document');
+                    }}
                   >
-                    {sec === 'general' && '⚙️ Geral'}
-                    {sec === 'ai' && '🧠 IA'}
-                    {sec === 'test' && '▶️ Testar'}
-                    {sec === 'document' && '📄 Documento'}
-                    {sec === 'followup' && '🔔 Follow-up'}
-                    {sec === 'automations' && '⚡ Automações'}
-                    {sec === 'conversations' && '💬 Conversas'}
+                    🔧 Avançado
                   </Button>
-                ))}
+                </div>
+                {SECOES_AVANCADAS.includes(formSection as never) && (
+                  <div className="flex gap-1">
+                    {SECOES_AVANCADAS.map(sec => (
+                      <Button
+                        key={sec}
+                        size="sm"
+                        variant={formSection === sec ? 'secondary' : 'ghost'}
+                        className="h-6 text-[10px] px-2"
+                        onClick={() => setFormSection(sec)}
+                      >
+                        {sec === 'document' && '📄 Documento'}
+                        {sec === 'followup' && '🔔 Follow-up'}
+                        {sec === 'conversations' && '💬 Conversas'}
+                        {sec === 'test' && '▶️ Testar'}
+                        {sec === 'automations' && '⚡ Automações'}
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1330,6 +1376,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
                   )}
                 </div>
                 {/* Respond in Groups + Audio Reply */}
+                <AtendenteDeCasoSection agentId={editingId} />
+
                 <div className="space-y-2 border rounded-lg p-3">
                   <div className="flex items-center justify-between">
                     <div>
