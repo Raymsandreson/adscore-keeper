@@ -514,6 +514,17 @@ Agora o drawer usa o **mesmo** `useSugestaoAutomatica` da conversa completa, com
 - **Custo**: 1 chamada ao `ai-text-editor` por conversa aberta com pendência (o histórico já era carregado pelo drawer). Abrir a mesma conversa de novo sem mensagem nova não repete a chamada — a âncora é a última mensagem.
 - Código: `src/components/whatsapp/DashboardChatPreview.tsx` (hook, `usarSugestao`, fantasma sobre o `Textarea`, `handleKeyDown`). O auto-resize do campo passou a considerar a altura da sugestão, senão ela sairia cortada.
 
+#### A sugestão escreve no tom da conversa, não em tom de atendimento (04/09/2026)
+
+Numa conversa pessoal (a esposa do dono da conta) a sugestão saía **"Entendi, Wana. Você gostaria de mudar de assunto e falar sobre Jeri? Posso ajudar com algo relacionado?"** — formal e fora do assunto. Duas causas, as duas no código, não no modelo:
+
+- **A persona era fixa**: o prompt abria com "Você é o atendente de um escritório de advocacia respondendo um contato pelo WhatsApp". Não havia caminho em que a sugestão não fosse atendimento. Agora a base é **"você escreve no lugar do dono da conta"**, e o prompt manda **ler na conversa** (a) a relação real entre as duas pessoas, (b) o registro em que se tratam e (c) o fio do assunto. Se a conversa é pessoal ou íntima, soar como atendimento é proibido explicitamente ("Entendi, [Nome]", "posso ajudar", "estamos à disposição", perguntar se quer mudar de assunto).
+- **As regras do escritório agora são condicionais**: "esta conversa É de trabalho", cobrança, prazos e fatos jurídicos só entram quando existe **algum dado do escritório** para aquela pessoa — Relacionamento Conosco, caso ligado, andamento do processo ou pendência do cliente. Sem nenhum desses, nada empurra a conversa para o jurídico. Cliente cadastrado continua sendo tratado como cliente, com as mesmas travas de quem cobra quem.
+- **A âncora virou o bloco, não a última mensagem**: quem manda "Amor" / "Vamos pra outro lugar" / "Prea" / "Jeri" está fazendo **uma frase em quatro mensagens**. `blocoDoInterlocutor` junta todas as falas seguidas sem resposta e o prompt diz que são uma fala só — palavra solta no fim continua a frase anterior, nunca é assunto novo. Vale nos três lugares: conversa completa, drawer da notificação e popup.
+- **A voz é a da pessoa**: `montarLinhasDoEstilo` manda ao prompt **exemplos reais** das últimas mensagens que o próprio dono da conta enviou naquela conversa (sem links soltos nem textões), com o comprimento típico. Adjetivo ("seja informal") dá informalidade genérica; três frases dele dão a dele.
+- **Tom padrão** passou a ser **"Do jeito da conversa"** (`TONS.auto`) no lugar de "Cordial e profissional", no campo e no diálogo do ✨ — os tons manuais continuam no seletor.
+- Código: `src/lib/tomDaConversa.ts` (novo, puro), `src/lib/sugestaoDeResposta.ts`, `useSugestaoAutomatica` (`getComoEuEscrevo`), `AISuggestReply` (`comoEuEscrevo`), `WhatsAppChat`, `DashboardChatPreview` e `whatsappQuickReply.pendenciaDaConversa`. Testes: `tomDaConversa.test.ts` (9) e `sugestaoDeResposta.test.ts` (18). Custo: mesmo número de chamadas ao `ai-text-editor` — só o prompt ficou mais longo (~1 parágrafo + exemplos).
+
 ---
 
 ## Campanhas — `/campanhas`

@@ -52,11 +52,31 @@ interface Params {
    * de a conversa abrir.
    */
   getContextoDaRelacao?: () => string[];
+  /**
+   * O que o PROCESSO andou (`useAndamentoDoProcesso`): número do CNJ, fase e
+   * últimas movimentações. Sem isso a IA respondia "ainda não temos o número do
+   * processo" a quem já tinha processo distribuído. Getter porque a busca
+   * termina depois de a conversa abrir.
+   */
+  getAndamentoDoProcesso?: () => string[];
+  /**
+   * Como o dono da conta escreve NESTA conversa (`montarLinhasDoEstilo`) —
+   * exemplos reais das mensagens dele. Sem isso a sugestão sai em tom de
+   * atendimento mesmo numa conversa pessoal.
+   */
+  getComoEuEscrevo?: () => string[];
+  /**
+   * Contexto do banco ainda chegando (andamento do processo, por exemplo).
+   * Enquanto true, nada é pedido à IA: sugestão gerada antes do andamento é
+   * justamente a que responde "ainda não temos informação" tendo o dado.
+   */
+  aguardandoContexto?: boolean;
   modo?: ModoDaSugestao;
 }
 
 export function useSugestaoAutomatica({
-  ativa, ancora, buildContext, getState, getPendenciasDoCliente, getContextoDaRelacao, modo = 'client',
+  ativa, ancora, buildContext, getState, getPendenciasDoCliente, getContextoDaRelacao,
+  getAndamentoDoProcesso, getComoEuEscrevo, aguardandoContexto = false, modo = 'client',
 }: Params) {
   const [ligada, setLigadaState] = useState(sugestaoAutomaticaLigada);
   const [sugestao, setSugestao] = useState('');
@@ -68,10 +88,14 @@ export function useSugestaoAutomatica({
   const stateRef = useRef(getState);
   const pendenciasRef = useRef(getPendenciasDoCliente);
   const relacaoRef = useRef(getContextoDaRelacao);
+  const andamentoRef = useRef(getAndamentoDoProcesso);
+  const estiloRef = useRef(getComoEuEscrevo);
   contextRef.current = buildContext;
   stateRef.current = getState;
   pendenciasRef.current = getPendenciasDoCliente;
   relacaoRef.current = getContextoDaRelacao;
+  andamentoRef.current = getAndamentoDoProcesso;
+  estiloRef.current = getComoEuEscrevo;
 
   // Âncora já atendida (gerada ou dispensada): impede pedir a mesma coisa de novo.
   const atendidaRef = useRef<string>('');
@@ -95,6 +119,8 @@ export function useSugestaoAutomatica({
         ultimaDoInterlocutor: st.lastClientText,
         pendenciasDoCliente: pendenciasRef.current?.() || undefined,
         contextoDaRelacao: relacaoRef.current?.() || undefined,
+        andamentoDoProcesso: andamentoRef.current?.() || undefined,
+        comoEuEscrevo: estiloRef.current?.() || undefined,
       });
       if (emVooRef.current !== chave) return; // conversa já mudou
       setSugestao((opts[0] || '').trim());
@@ -110,6 +136,7 @@ export function useSugestaoAutomatica({
 
   useEffect(() => {
     if (!ligada || !ativa || !ancora) return;
+    if (aguardandoContexto) return; // o andamento do processo ainda está vindo
     if (atendidaRef.current === ancora || dispensadaRef.current === ancora) return;
     // Espera a conversa assentar: mensagens chegam em rajada pelo realtime e
     // cada rajada mudaria a âncora — sem isso, seriam vários pedidos à IA.
@@ -118,7 +145,7 @@ export function useSugestaoAutomatica({
       void pedir(ancora);
     }, 900);
     return () => clearTimeout(t);
-  }, [ligada, ativa, ancora, pedir]);
+  }, [ligada, ativa, ancora, aguardandoContexto, pedir]);
 
   // Trocou de conversa, ou chegou mensagem nova: a sugestão anterior não serve
   // mais. Só a âncora zera — digitar no campo apenas esconde a sugestão, e ela
