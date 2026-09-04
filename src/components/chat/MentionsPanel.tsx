@@ -322,6 +322,10 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
           phone: mention.entity_id,
           contactName: mention.entity_name,
           direction: 'bottom',
+          // Vale mesmo já estando em /whatsapp: sem isso a conversa trocava na
+          // inbox ATRÁS do painel de menções, que é a mesma sensação de ter
+          // sido jogado na sessão.
+          forceSheet: true,
         });
         break;
       case 'case':
