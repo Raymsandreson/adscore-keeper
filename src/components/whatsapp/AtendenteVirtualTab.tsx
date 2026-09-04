@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { db, ensureExternalSession } from '@/integrations/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -34,10 +35,30 @@ const AGENT_ID = 'd6ad8eee-d6a3-452c-b852-b94ef8dd54bf';
 
 const dbAny = db as unknown as SupabaseClient;
 
-interface Voz { id: string; name: string; genero: string | null; status: string }
+/** Voz pronta do ElevenLabs ou clonada. `genero` só existe nas prontas. */
+interface Voz { id: string; name: string; genero: 'masculina' | 'feminina' | null }
+
+/**
+ * As vozes prontas do ElevenLabs, com o gênero que a própria edge
+ * elevenlabs-voice-clone declara em `list_presets`. Voz clonada não tem gênero
+ * declarado em lugar nenhum — para essa, quem diz é o usuário.
+ */
+const VOZES_PRONTAS: Voz[] = [
+  { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura (padrão pt-BR)', genero: 'feminina' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', genero: 'feminina' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', genero: 'masculina' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', genero: 'masculina' },
+  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', genero: 'feminina' },
+  { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily', genero: 'feminina' },
+  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam', genero: 'masculina' },
+  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', genero: 'masculina' },
+  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger', genero: 'masculina' },
+  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', genero: 'feminina' },
+];
 interface Config {
   nome_atendente: string | null;
   reply_voice_id: string | null;
+  genero_voz: 'masculina' | 'feminina' | null;
   reply_with_audio: boolean;
   split_messages: boolean;
   split_delay_seconds: number;
@@ -83,9 +104,13 @@ export function AtendenteVirtualTab() {
     await ensureExternalSession();
     const [c, v, g, a, f] = await Promise.all([
       dbAny.from('wjia_command_shortcuts')
-        .select('nome_atendente, reply_voice_id, reply_with_audio, split_messages, split_delay_seconds, human_reply_pause_minutes, max_tts_chars, is_active, contexto_processual')
+        .select('nome_atendente, reply_voice_id, genero_voz, reply_with_audio, split_messages, split_delay_seconds, human_reply_pause_minutes, max_tts_chars, is_active, contexto_processual')
         .eq('id', AGENT_ID).maybeSingle(),
-      dbAny.from('custom_voices').select('id, name, genero, status').eq('status', 'ready').order('name'),
+      // As vozes clonadas moram no CLOUD, não no Externo: é de lá que a tela de
+      // Agentes IA sempre leu. No Externo a mesma tabela tem RLS
+      // `user_id = auth.uid()`, e o user_id guardado lá é uuid do Cloud — não
+      // casa com ninguém, e a lista volta vazia.
+      supabase.from('custom_voices').select('id, name').eq('status', 'ready').order('name'),
       dbAny.from('dom_grupos_piloto').select('group_jid, group_name, modo, ativo').order('group_name'),
       dbAny.from('dom_atendentes').select('id, nome, whatsapp, escopo, is_active, position').order('position'),
       dbAny.from('dom_respostas_pendentes')
@@ -93,7 +118,8 @@ export function AtendenteVirtualTab() {
         .eq('status', 'pendente').order('criado_em', { ascending: false }).limit(50),
     ]);
     if (c.data) setCfg(c.data as Config);
-    setVozes((v.data as Voz[]) || []);
+    const clonadas: Voz[] = ((v.data as any[]) || []).map(x => ({ id: x.id, name: `🎤 ${x.name}`, genero: null }));
+    setVozes([...VOZES_PRONTAS, ...clonadas]);
     setGrupos((g.data as Grupo[]) || []);
     setAtendentes((a.data as Atendente[]) || []);
     setFila((f.data as Rascunho[]) || []);
@@ -105,7 +131,9 @@ export function AtendenteVirtualTab() {
     () => vozes.find(v => v.id === cfg?.reply_voice_id) || null,
     [vozes, cfg?.reply_voice_id],
   );
-  const nomeSugerido = nomePelaVoz(vozEscolhida?.genero);
+  const nomeSugerido = nomePelaVoz(cfg?.genero_voz);
+  /** Voz clonada não declara gênero — aí a escolha aparece na tela. */
+  const precisaEscolherGenero = !!vozEscolhida && vozEscolhida.genero === null;
 
   const salvarConfig = async (patch: Partial<Config>) => {
     if (!cfg) return;
@@ -121,11 +149,21 @@ export function AtendenteVirtualTab() {
   /** Trocar a voz reescreve o nome, a menos que já exista um nome escolhido à mão. */
   const trocarVoz = async (voiceId: string) => {
     const voz = vozes.find(v => v.id === voiceId);
-    const sugerido = nomePelaVoz(voz?.genero);
+    // Voz pronta já traz o gênero; clonada fica null e a tela pergunta.
+    await aplicarGenero(voz?.genero ?? null, { reply_voice_id: voiceId });
+  };
+
+  /**
+   * Grava o gênero e, com ele, o nome. O nome só é reescrito enquanto for um dos
+   * dois automáticos — nome digitado à mão sobrevive à troca de voz.
+   */
+  const aplicarGenero = async (genero: 'masculina' | 'feminina' | null, extra: Partial<Config> = {}) => {
+    const sugerido = nomePelaVoz(genero);
     const nomeAtual = cfg?.nome_atendente;
     const nomeEraAutomatico = !nomeAtual || nomeAtual === 'Dom' || nomeAtual === 'Dora';
     await salvarConfig({
-      reply_voice_id: voiceId,
+      ...extra,
+      genero_voz: genero,
       ...(sugerido && nomeEraAutomatico ? { nome_atendente: sugerido } : {}),
     });
   };
@@ -203,16 +241,25 @@ export function AtendenteVirtualTab() {
                     <SelectContent>
                       {vozes.map(v => (
                         <SelectItem key={v.id} value={v.id} className="text-xs">
-                          🎤 {v.name}
-                          {v.genero ? ` — ${v.genero}` : ' — sem gênero'}
+                          {v.name}{v.genero ? ` — ${v.genero}` : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {vozEscolhida && !vozEscolhida.genero && (
-                    <p className="text-[10px] text-amber-600">
-                      Esta voz não tem gênero marcado, então o nome não muda sozinho.
-                    </p>
+                  {precisaEscolherGenero && (
+                    <div className="pt-1 space-y-1">
+                      <Label className="text-[10px] text-amber-700">
+                        Voz clonada não diz o gênero. Qual é?
+                      </Label>
+                      <Select value={cfg.genero_voz || ''}
+                        onValueChange={v => aplicarGenero(v as 'masculina' | 'feminina')}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Escolha" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="masculina" className="text-xs">Masculina → Dom</SelectItem>
+                          <SelectItem value="feminina" className="text-xs">Feminina → Dora</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   )}
                 </div>
 
