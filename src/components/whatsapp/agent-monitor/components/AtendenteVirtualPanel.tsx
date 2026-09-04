@@ -27,7 +27,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare } from 'lucide-react';
+import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal } from 'lucide-react';
 import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 
 const dbAny = db as unknown as SupabaseClient;
@@ -111,6 +111,7 @@ export function AtendenteVirtualPanel() {
   const [silenciadas, setSilenciadas] = useState<Decisao[]>([]);
   const [grupos, setGrupos] = useState<GrupoPiloto[]>([]);
   const [trocandoModo, setTrocandoModo] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState<Pendente | null>(null);
   const [texto, setTexto] = useState('');
@@ -187,6 +188,54 @@ export function AtendenteVirtualPanel() {
   };
 
   const automaticos = grupos.filter(g => g.modo === 'automatico').length;
+
+  /**
+   * Aprovar E mandar — o botão que faltava.
+   *
+   * "Marcar como boa" só marca: um rascunho de grupo em modo Rascunho não tinha
+   * NENHUM caminho para chegar ao cliente, e ficava preso no painel para sempre.
+   * Aqui ele entra na mesma fila de agendamento do resto, com os mesmos 5
+   * minutos — então ainda dá para desistir pela bolha na conversa, e quem
+   * escreveu no grupo nesse meio-tempo cancela o envio sozinho.
+   */
+  const aprovarEEnviar = async (p: Pendente) => {
+    setEnviando(true);
+    try {
+      const quando = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const { data: ag, error: errAg } = await dbAny.from('whatsapp_mensagens_agendadas').insert({
+        phone: p.group_jid,
+        instance_name: p.instance_name,
+        contact_name: p.group_name,
+        mensagem: texto,
+        mensagem_original: texto,
+        proximo_envio_at: quando,
+        repeticao: 'nenhuma',
+        intervalo: 1,
+        unidade: 'dias',
+        pular_se_responder: true,
+        criado_por_nome: 'Atendente virtual (aprovado à mão)',
+      } as never).select('id').maybeSingle();
+      if (errAg) throw errAg;
+
+      const { error } = await dbAny.from('dom_respostas_pendentes')
+        .update({
+          resposta_final: texto,
+          agendamento_id: (ag as { id: string }).id,
+          revisado_em: new Date().toISOString(),
+          motivo_revisao: 'aprovado à mão — sai em 5 min',
+        } as never)
+        .eq('id', p.id);
+      if (error) throw error;
+
+      setAberto(null);
+      toast.success('Na fila — sai em 5 minutos, dá para cancelar pela conversa');
+      carregar();
+    } catch (e) {
+      toast.error('Não consegui pôr na fila: ' + ((e as Error)?.message || 'erro'));
+    } finally {
+      setEnviando(false);
+    }
+  };
 
   const vazio = (txt: string) => <p className="text-xs text-muted-foreground py-6 text-center">{txt}</p>;
 
@@ -339,10 +388,16 @@ export function AtendenteVirtualPanel() {
                 onClick={() => abrirConversa(aberto.group_jid, aberto.instance_name, aberto.group_name)}>
                 <MessagesSquare className="h-3.5 w-3.5" />Abrir a conversa do grupo
               </Button>
+              <Button size="sm" className="w-full text-xs gap-1"
+                disabled={enviando || !texto.trim()}
+                onClick={() => aprovarEEnviar(aberto)}>
+                {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SendHorizonal className="h-3.5 w-3.5" />}
+                Aprovar e enviar (sai em 5 min)
+              </Button>
               <div className="flex gap-2">
-                <Button size="sm" className="text-xs gap-1 flex-1"
+                <Button size="sm" variant="outline" className="text-xs gap-1 flex-1"
                   onClick={() => decidir(aberto, texto === aberto.resposta_sugerida ? 'aprovada' : 'editada')}>
-                  <Check className="h-3.5 w-3.5" />Marcar como boa
+                  <Check className="h-3.5 w-3.5" />Só marcar como boa
                 </Button>
                 <Button size="sm" variant="outline" className="text-xs gap-1"
                   onClick={() => decidir(aberto, 'descartada')}>
@@ -350,8 +405,11 @@ export function AtendenteVirtualPanel() {
                 </Button>
               </div>
               <p className="text-[10px] text-muted-foreground">
-                Marcar como boa não envia nada ao cliente enquanto o grupo estiver em modo
-                Rascunho — serve para o atendente aprender com a correção antes de falar sozinho.
+                <strong>Aprovar e enviar</strong> põe na fila com 5 minutos de atraso — ainda dá
+                para cancelar pela bolha tracejada na conversa, e o envio some sozinho se alguém
+                escrever no grupo antes.{' '}
+                <strong>Só marcar como boa</strong> não manda nada: serve para o atendente aprender
+                com a correção antes de falar sozinho.
               </p>
             </div>
           )}

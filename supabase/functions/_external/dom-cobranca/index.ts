@@ -158,7 +158,12 @@ function promptDeCobranca(itens: any[], conversa: string): string {
     "    como repetição.",
     "",
     "PASSO 2 — Se sobrou algo, escreva UMA mensagem para o grupo:",
-    "  · junte tudo numa conversa só, no máximo três assuntos;",
+    "  · NO MÁXIMO TRÊS ASSUNTOS. Não é sugestão. Se sobrou mais que isso, fique",
+    "    com os três mais antigos e mande TODO o resto para 'fora', com motivo",
+    "    'fica para a próxima'. Cinco pedidos numa mensagem só viram uma lista de",
+    "    tarefas, o cliente trava e não faz nenhum;",
+    "  · a mensagem tem que ler como conversa, não como formulário: nada de",
+    "    marcador, nada de item numerado;",
     "  · tom de quem lembra, não de quem cobra dívida: aquele documento destrava",
     "    o caso DELE;",
     "  · uma frase dizendo por que aquilo importa, em palavra simples;",
@@ -295,6 +300,13 @@ Deno.serve(async (req) => {
       );
       const cobraveis = abertas.filter((c: any) => escolhidos.has(String(c.id)));
       let texto = String(decisao.mensagem || "").trim();
+
+      // O teto de três assuntos é cobrado no prompt, não cortado aqui: a lista
+      // e o texto saem da mesma resposta, e jogar ids fora depois deixaria a
+      // mensagem falando de coisa que o registro diz que não foi cobrada.
+      if (cobraveis.length > 3) {
+        console.warn(`[dom-cobranca] grupo=${g.group_jid} cobrou ${cobraveis.length} assuntos (teto 3)`);
+      }
 
       if (cobraveis.length === 0 || !texto) {
         const fora = (Array.isArray(decisao.fora) ? decisao.fora : [])
