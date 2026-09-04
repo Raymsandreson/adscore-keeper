@@ -6,6 +6,8 @@ Padrão obrigatório para gravar a amostra que treina uma voz personalizada no E
 
 Regra: **nenhuma voz é criada a partir de conversa espontânea.** Só a partir da leitura deste roteiro.
 
+**Vale para qualquer atendente.** O roteiro é o mesmo para todo mundo — o único trecho pessoal é o nome, no Bloco 1.
+
 ---
 
 ## PARTE 1 — Instruções para quem vai gravar
@@ -28,7 +30,7 @@ Vale o esforço de refazer agora.
 
 ### Como ler
 
-- **Naturalmente, como se estivesse falando com um cliente.** Não faça voz de locutora, não faça voz de propaganda. É a sua voz de trabalho.
+- **Naturalmente, como se estivesse falando com um cliente.** Não faça voz de locução, não faça voz de propaganda. É a sua voz de trabalho.
 - **Devagar.** A pressa é o que produz o tropeço. Leia mais calmo do que você acha necessário.
 - **Leia a frase inteira com os olhos antes de falar.** É o que evita a hesitação: você trava porque está lendo e falando ao mesmo tempo.
 - **Um bloco por vez.** São 6 blocos. Grave um, ouça, aprove, passe para o próximo. Não grave os 6 de uma vez.
@@ -51,9 +53,9 @@ Não tem meio-termo, não tem "ficou quase bom". Se qualquer um destes aparecer,
 | **Acelerar no fim do bloco** | as últimas frases mais rápidas que as primeiras | 🔴 **REFAZ** |
 | **Volume subindo ou caindo** | você foi encostando ou afastando o celular | 🔴 **REFAZ** |
 | **Ler com pressa os números** | "novedesetembro" | 🔴 **REFAZ** — número se lê pausado |
-| **Voz de locutora** | entonação artificial, de rádio | 🔴 **REFAZ** — perde o seu jeito, que é o que a gente quer |
+| **Voz de locução** | entonação artificial, de rádio | 🔴 **REFAZ** — perde o seu jeito, que é o que a gente quer |
 
-**O que NÃO é defeito e você deve manter**: o seu "tá bom?", o seu "olha", a sua entonação subindo no fim da pergunta, a sua doçura ao explicar. **Isso é o seu estilo e é exatamente o que estamos preservando.** O que sai é a hesitação, não o jeito.
+**O que NÃO é defeito e você deve manter**: o seu "tá bom?", o seu "olha", a sua entonação subindo no fim da pergunta, o seu jeito calmo de explicar. **Isso é o seu estilo e é exatamente o que estamos preservando.** O que sai é a hesitação, não o jeito.
 
 ### Como enviar — atenção, aqui todo mundo erra
 
@@ -82,9 +84,11 @@ Leu? Leia de novo, mais devagar. Agora sim, comece a gravar.
 
 ### 🎙️ Bloco 1 — Abertura
 
+> ⚠️ Este é o **único lugar do roteiro onde você fala o seu nome**. Diga só o primeiro nome, do jeito que você se apresenta ao cliente. Se travar no próprio nome, refaz.
+
 > Olá, bom dia! Tudo bem com você?
 >
-> Aqui é a Keliane, do escritório. Estou passando para te dar uma notícia sobre o seu processo, e também para combinar alguns detalhes com você.
+> Aqui é **[seu primeiro nome]**, do escritório. Estou passando para te dar uma notícia sobre o seu processo, e também para combinar alguns detalhes com você.
 >
 > Fica tranquilo, é tudo coisa boa. Vou te explicar com calma, passo a passo.
 
@@ -154,7 +158,7 @@ Marque cada item. Se algum falhar, refaça **só aquele bloco**.
 - [ ] Volume igual do bloco 1 ao bloco 6
 - [ ] Velocidade igual, sem acelerar no fim
 - [ ] Os números do bloco 3 estão pausados e claros
-- [ ] Soa como você falando com um cliente, não como locutora
+- [ ] Soa como você falando com um cliente, não como locução
 - [ ] Arquivos enviados como **documento**, não como mensagem de voz
 
 ---
