@@ -67,6 +67,7 @@ import { handler as bpcSheetSync } from './functions/bpc-sheet-sync';
 import { handler as syncFunnelStatusFromSheet } from './functions/sync-funnel-status-from-sheet';
 import { handler as metaCapiEnqueue } from './functions/meta-capi-enqueue';
 import { handler as metaCapiDispatch } from './functions/meta-capi-dispatch';
+import { handler as metaCapiReconcile } from './functions/meta-capi-reconcile';
 import { handler as metaCapiStatus } from './functions/meta-capi-status';
 import { handler as syncHearingsFromSheet } from './functions/sync-hearings-from-sheet';
 import { handler as gmailInssSync } from './functions/gmail-inss-sync';
@@ -189,6 +190,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'sync-funnel-status-from-sheet': syncFunnelStatusFromSheet,
   'meta-capi-enqueue': metaCapiEnqueue, // conversão entra na fila (nada vai à rede aqui)
   'meta-capi-dispatch': metaCapiDispatch, // drena a fila -> Graph API; modo probe checa a credencial
+  'meta-capi-reconcile': metaCapiReconcile, // acha fechamento sem evento (webhook fecha lead sem passar por gatilho)
   'meta-capi-status': metaCapiStatus, // leitura do painel (RLS barra o navegador)
   'sync-hearings-from-sheet': syncHearingsFromSheet,
   'transcode-audio-opus': transcodeAudioOpus,
