@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal } from 'lucide-react';
@@ -64,6 +65,21 @@ const quando = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 
 /**
+ * As 19 intenções em cinco famílias, que é como a decisão de fato é tomada:
+ * a letra manda, o número é detalhe. Filtrar por "E16" obrigaria a pessoa a
+ * decorar códigos; filtrar por "Precisa de gente" é a pergunta que ela faz.
+ */
+const FAMILIAS: { chave: string; rotulo: string; casa: (i: string | null) => boolean }[] = [
+  { chave: 'todas', rotulo: 'Todas', casa: () => true },
+  { chave: 'A', rotulo: 'Perguntou algo', casa: (i) => (i || '').startsWith('A') },
+  { chave: 'B', rotulo: 'Desabafo', casa: (i) => (i || '').startsWith('B') },
+  { chave: 'C', rotulo: 'Entregou algo', casa: (i) => (i || '').startsWith('C') },
+  { chave: 'D', rotulo: 'Não pede resposta', casa: (i) => (i || '').startsWith('D') },
+  { chave: 'E', rotulo: 'Precisa de gente', casa: (i) => (i || '').startsWith('E') },
+  { chave: 'COBRANCA', rotulo: 'Cobrança', casa: (i) => i === 'COBRANCA' },
+];
+
+/**
  * Abre a conversa do grupo no painel de baixo pra cima — o mesmo drawer do
  * resto do sistema, com histórico ao vivo, mídia e resposta. Nunca redireciona.
  */
@@ -78,11 +94,19 @@ function abrirConversa(groupJid: string, instanceName: string | null, groupName:
 }
 
 /** Linha comum das três listas que saem de dom_respostas_pendentes. */
-function LinhaPendente({ p, onClick, rodape }: { p: Pendente; onClick?: () => void; rodape?: React.ReactNode }) {
+function LinhaPendente({ p, onClick, rodape, marcada, onMarcar }: {
+  p: Pendente; onClick?: () => void; rodape?: React.ReactNode;
+  marcada?: boolean; onMarcar?: (v: boolean) => void;
+}) {
   return (
     <Card className={onClick ? 'cursor-pointer hover:border-primary/40' : ''} onClick={onClick}>
       <CardContent className="p-3 space-y-1">
         <div className="flex items-center gap-2">
+          {onMarcar && (
+            <span onClick={(e) => e.stopPropagation()} className="shrink-0">
+              <Checkbox checked={!!marcada} onCheckedChange={(v) => onMarcar(v === true)} />
+            </span>
+          )}
           <p className="text-xs font-medium flex-1 truncate">{p.group_name || '—'}</p>
           {p.intencao && <Badge variant="outline" className="text-[10px]">{p.intencao}</Badge>}
           <span className="text-[10px] text-muted-foreground whitespace-nowrap">{quando(p.criado_em)}</span>
@@ -112,6 +136,8 @@ export function AtendenteVirtualPanel() {
   const [grupos, setGrupos] = useState<GrupoPiloto[]>([]);
   const [trocandoModo, setTrocandoModo] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [familia, setFamilia] = useState('todas');
+  const [marcadas, setMarcadas] = useState<Set<string>>(new Set());
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState<Pendente | null>(null);
   const [texto, setTexto] = useState('');
@@ -202,35 +228,38 @@ export function AtendenteVirtualPanel() {
    * minutos — então ainda dá para desistir pela bolha na conversa, e quem
    * escreveu no grupo nesse meio-tempo cancela o envio sozinho.
    */
+  const porNaFilaDeEnvio = async (p: Pendente, corpo: string) => {
+    const quando = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const { data: ag, error: errAg } = await dbAny.from('whatsapp_mensagens_agendadas').insert({
+      phone: p.group_jid,
+      instance_name: p.instance_name,
+      contact_name: p.group_name,
+      mensagem: corpo,
+      mensagem_original: corpo,
+      proximo_envio_at: quando,
+      repeticao: 'nenhuma',
+      intervalo: 1,
+      unidade: 'dias',
+      pular_se_responder: true,
+      criado_por_nome: 'Atendente virtual (aprovado à mão)',
+    } as never).select('id').maybeSingle();
+    if (errAg) throw errAg;
+
+    const { error } = await dbAny.from('dom_respostas_pendentes')
+      .update({
+        resposta_final: corpo,
+        agendamento_id: (ag as { id: string }).id,
+        revisado_em: new Date().toISOString(),
+        motivo_revisao: 'aprovado à mão — sai em 5 min',
+      } as never)
+      .eq('id', p.id);
+    if (error) throw error;
+  };
+
   const aprovarEEnviar = async (p: Pendente) => {
     setEnviando(true);
     try {
-      const quando = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-      const { data: ag, error: errAg } = await dbAny.from('whatsapp_mensagens_agendadas').insert({
-        phone: p.group_jid,
-        instance_name: p.instance_name,
-        contact_name: p.group_name,
-        mensagem: texto,
-        mensagem_original: texto,
-        proximo_envio_at: quando,
-        repeticao: 'nenhuma',
-        intervalo: 1,
-        unidade: 'dias',
-        pular_se_responder: true,
-        criado_por_nome: 'Atendente virtual (aprovado à mão)',
-      } as never).select('id').maybeSingle();
-      if (errAg) throw errAg;
-
-      const { error } = await dbAny.from('dom_respostas_pendentes')
-        .update({
-          resposta_final: texto,
-          agendamento_id: (ag as { id: string }).id,
-          revisado_em: new Date().toISOString(),
-          motivo_revisao: 'aprovado à mão — sai em 5 min',
-        } as never)
-        .eq('id', p.id);
-      if (error) throw error;
-
+      await porNaFilaDeEnvio(p, texto);
       setAberto(null);
       toast.success('Na fila — sai em 5 minutos, dá para cancelar pela conversa');
       carregar();
@@ -240,6 +269,58 @@ export function AtendenteVirtualPanel() {
       setEnviando(false);
     }
   };
+
+  /**
+   * Ação em lote sobre o que estiver marcado. Uma fila de trinta rascunhos não
+   * se resolve abrindo trinta painéis.
+   */
+  const emLote = async (acao: 'enviar' | 'descartar') => {
+    const alvos = fila.filter(p => marcadas.has(p.id));
+    if (alvos.length === 0) return;
+    setEnviando(true);
+    let ok = 0;
+    const falhas: string[] = [];
+    for (const p of alvos) {
+      try {
+        if (acao === 'enviar') {
+          await porNaFilaDeEnvio(p, p.resposta_final || p.resposta_sugerida);
+        } else {
+          const { error } = await dbAny.from('dom_respostas_pendentes')
+            .update({ status: 'descartada', revisado_em: new Date().toISOString() } as never)
+            .eq('id', p.id);
+          if (error) throw error;
+        }
+        ok++;
+      } catch (e) {
+        falhas.push(`${p.group_name}: ${(e as Error)?.message || 'erro'}`);
+      }
+    }
+    setEnviando(false);
+    setMarcadas(new Set());
+    if (ok) {
+      toast.success(acao === 'enviar'
+        ? `${ok} na fila — saem em 5 minutos`
+        : `${ok} descartada(s)`);
+    }
+    // Falha silenciosa em lote é o pior tipo: a pessoa acha que mandou tudo.
+    if (falhas.length) toast.error(`${falhas.length} não deu: ${falhas[0]}`);
+    carregar();
+  };
+
+  const marcar = (id: string, v: boolean) => {
+    setMarcadas(atual => {
+      const novo = new Set(atual);
+      if (v) novo.add(id); else novo.delete(id);
+      return novo;
+    });
+  };
+
+  /** O filtro de intenção vale para as três listas que têm intenção. */
+  const casa = FAMILIAS.find(f => f.chave === familia) ?? FAMILIAS[0];
+  const filaF = fila.filter(p => casa.casa(p.intencao));
+  const enviadasF = enviadas.filter(p => casa.casa(p.intencao));
+  const comHumanoF = comHumano.filter(p => casa.casa(p.intencao));
+  const silenciadasF = silenciadas.filter(d => casa.casa(d.intencao));
 
   const vazio = (txt: string) => <p className="text-xs text-muted-foreground py-6 text-center">{txt}</p>;
 
@@ -286,30 +367,71 @@ export function AtendenteVirtualPanel() {
         </Card>
       )}
 
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="text-[10px] text-muted-foreground mr-1">Intenção:</span>
+        {FAMILIAS.map(f => (
+          <Button
+            key={f.chave}
+            size="sm"
+            variant={familia === f.chave ? 'default' : 'outline'}
+            className="h-6 px-2 text-[10px]"
+            onClick={() => { setFamilia(f.chave); setMarcadas(new Set()); }}
+          >
+            {f.rotulo}
+          </Button>
+        ))}
+      </div>
+
       <Tabs defaultValue="fila">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="fila" className="text-xs gap-1">
             <Inbox className="h-3.5 w-3.5" />Na fila
-            {fila.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{fila.length}</Badge>}
+            {filaF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filaF.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="enviadas" className="text-xs gap-1">
             <Send className="h-3.5 w-3.5" />Enviadas
-            {enviadas.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{enviadas.length}</Badge>}
+            {enviadasF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{enviadasF.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="humano" className="text-xs gap-1">
             <UserCheck className="h-3.5 w-3.5" />Com humano
-            {comHumano.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{comHumano.length}</Badge>}
+            {comHumanoF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{comHumanoF.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="silencio" className="text-xs gap-1">
             <VolumeX className="h-3.5 w-3.5" />Silenciadas
-            {silenciadas.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{silenciadas.length}</Badge>}
+            {silenciadasF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{silenciadasF.length}</Badge>}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="fila" className="space-y-2 pt-3">
-          {fila.length === 0 && vazio('Nada esperando revisão.')}
-          {fila.map(p => (
+          {filaF.length > 0 && (
+            <div className="flex items-center gap-2 pb-1">
+              <Checkbox
+                checked={marcadas.size > 0 && marcadas.size === filaF.length}
+                onCheckedChange={(v) => setMarcadas(v === true ? new Set(filaF.map(p => p.id)) : new Set())}
+              />
+              <span className="text-[10px] text-muted-foreground flex-1">
+                {marcadas.size > 0 ? `${marcadas.size} marcada(s)` : 'Marcar todas'}
+              </span>
+              {marcadas.size > 0 && (
+                <>
+                  <Button size="sm" className="h-6 px-2 text-[10px] gap-1"
+                    disabled={enviando} onClick={() => emLote('enviar')}>
+                    {enviando ? <Loader2 className="h-3 w-3 animate-spin" /> : <SendHorizonal className="h-3 w-3" />}
+                    Enviar as marcadas
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                    disabled={enviando} onClick={() => emLote('descartar')}>
+                    <X className="h-3 w-3" />Descartar
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+          {filaF.length === 0 && vazio('Nada esperando revisão.')}
+          {filaF.map(p => (
             <LinhaPendente key={p.id} p={p}
+              marcada={marcadas.has(p.id)}
+              onMarcar={(v) => marcar(p.id, v)}
               onClick={() => { setAberto(p); setTexto(p.resposta_final || p.resposta_sugerida); }}
               rodape={p.status !== 'pendente' && !p.agendamento_id
                 ? <p className="text-[10px] text-amber-700">
@@ -322,8 +444,8 @@ export function AtendenteVirtualPanel() {
         </TabsContent>
 
         <TabsContent value="enviadas" className="space-y-2 pt-3">
-          {enviadas.length === 0 && vazio('Nenhuma mensagem chegou ao cliente ainda.')}
-          {enviadas.map(p => (
+          {enviadasF.length === 0 && vazio('Nenhuma mensagem chegou ao cliente ainda.')}
+          {enviadasF.map(p => (
             <LinhaPendente key={p.id} p={p}
               rodape={<p className="text-[10px] text-emerald-700">
                 Enviada em {p.enviado_em ? quando(p.enviado_em) : '—'}
@@ -332,8 +454,8 @@ export function AtendenteVirtualPanel() {
         </TabsContent>
 
         <TabsContent value="humano" className="space-y-2 pt-3">
-          {comHumano.length === 0 && vazio('Nada foi encaminhado para atendente.')}
-          {comHumano.map(p => (
+          {comHumanoF.length === 0 && vazio('Nada foi encaminhado para atendente.')}
+          {comHumanoF.map(p => (
             <LinhaPendente key={p.id} p={p}
               onClick={() => { setAberto(p); setTexto(p.resposta_final || p.resposta_sugerida); }}
               rodape={<p className="text-[10px] text-blue-700">
@@ -343,8 +465,8 @@ export function AtendenteVirtualPanel() {
         </TabsContent>
 
         <TabsContent value="silencio" className="space-y-2 pt-3">
-          {silenciadas.length === 0 && vazio('Ele ainda não decidiu calar em nenhuma conversa.')}
-          {silenciadas.map(d => (
+          {silenciadasF.length === 0 && vazio('Ele ainda não decidiu calar em nenhuma conversa.')}
+          {silenciadasF.map(d => (
             <Card key={d.id}>
               <CardContent className="p-3 space-y-1">
                 <div className="flex items-center gap-2">

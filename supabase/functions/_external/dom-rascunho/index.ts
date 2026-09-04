@@ -20,6 +20,11 @@
 //   4. Mensagem da equipe chega como `inbound` para os outros números nossos.
 //      O maior remetente dos grupos do piloto é a própria equipe (198 mensagens
 //      únicas em 20 dias). Sem filtrar, o Dom responde os colegas.
+//   5. (v6) `pergunta.length < 3` cortava "Ok" como "sem texto" e gravava
+//      `pulou`, que NÃO bloqueia — o mesmo "Ok" voltava a cada 5 minutos, para
+//      sempre: 36 linhas de decisão em 3 horas num grupo só. O mesmo corte
+//      comia foto e documento, e cliente mandando o RG fotografado é justo a
+//      hora de dizer "recebi".
 //
 // Daí esta versão: deduplica por messageid, separa equipe de cliente pelo
 // remetente, e classifica a INTENÇÃO antes de decidir se escreve.
@@ -53,6 +58,23 @@ const json = (body: unknown, status = 200) =>
   });
 
 const so = (v: unknown) => String(v ?? "").replace(/\D/g, "");
+
+/**
+ * O que dizer ao classificador quando a mensagem não tem texto.
+ *
+ * Cortar mensagem sem texto parecia inofensivo e não era: cliente mandando a
+ * foto do RG é EXATAMENTE a hora de dizer "recebi, obrigado" (intenção C9), e
+ * o corte deixava ele falando sozinho. Aqui a mídia vira uma frase que o
+ * classificador consegue ler, e a decisão volta a ser dele.
+ */
+function descricaoDeMidia(tipo: string): string {
+  if (tipo === "image") return "[o cliente enviou uma foto]";
+  if (tipo === "document") return "[o cliente enviou um documento]";
+  if (tipo === "audio" || tipo === "ptt") return "[o cliente mandou um áudio que não deu para transcrever]";
+  if (tipo === "video") return "[o cliente enviou um vídeo]";
+  if (tipo === "location") return "[o cliente enviou a localização]";
+  return "";
+}
 
 // As 19 intenções levantadas sobre 45 dias de mensagem real dos grupos do
 // piloto. O agrupamento é o que decide a ação, não o rótulo:
@@ -278,8 +300,23 @@ Deno.serve(async (req) => {
       const ultima = lista[lista.length - 1];
       if (ultima.daEquipe) { pulados.push({ grupo: g.group_jid, motivo: "equipe falou por último" }); await registrar(supabase, g, "pulou", "equipe falou por último"); continue; }
 
-      const pergunta = ultima.texto;
-      if (pergunta.length < 3) { pulados.push({ grupo: g.group_jid, motivo: "última mensagem sem texto" }); await registrar(supabase, g, "pulou", "última mensagem sem texto"); continue; }
+      // Texto curto NÃO é motivo para pular. "Ok" tem dois caracteres e é uma
+      // conversa se encerrando — quem tem que dizer isso é o classificador, que
+      // devolve D13 e grava SILÊNCIO. O corte antigo (`length < 3`) gravava
+      // `pulou`, que não bloqueia: o mesmo "Ok" era reclassificado a cada cinco
+      // minutos, para sempre. Um grupo sozinho gerou 36 linhas em 3 horas.
+      const pergunta = ultima.texto || descricaoDeMidia(ultima.tipo);
+      if (!pergunta) {
+        // Aqui sim não há o que ler. Registra SILÊNCIO (decisão final, que
+        // bloqueia) em vez de `pulou`, para não repetir a conta eternamente.
+        pulados.push({ grupo: g.group_jid, motivo: "mensagem sem nada que dê para ler" });
+        await registrar(supabase, g, "silencio", "mensagem sem nada que dê para ler", {
+          // A pergunta vai junto para o bloqueio funcionar: `jaDecidiu` casa por
+          // (grupo, pergunta), e silêncio sem pergunta não impede nada.
+          pergunta: `[${ultima.tipo} sem conteúdo em ${ultima.criado}]`,
+        });
+        continue;
+      }
 
       const { data: jaTem } = await supabase
         .from("dom_respostas_pendentes").select("id")
@@ -307,7 +344,7 @@ Deno.serve(async (req) => {
 
       // 3. Intenção antes de qualquer coisa cara.
       const ultimasTrocas = lista.slice(-6)
-        .map((m) => `${m.daEquipe ? "EQUIPE" : "CLIENTE"}: ${m.texto.slice(0, 160)}`).join("\n");
+        .map((m) => `${m.daEquipe ? "EQUIPE" : "CLIENTE"}: ${(m.texto || descricaoDeMidia(m.tipo)).slice(0, 160)}`).join("\n");
       let cls: any;
       try {
         cls = await classificar(pergunta, ultimasTrocas);
@@ -343,7 +380,7 @@ Deno.serve(async (req) => {
 
       const historico = lista
         .map((m) => {
-          const t = m.texto || (m.tipo !== "text" ? `[${m.tipo}]` : "");
+          const t = m.texto || descricaoDeMidia(m.tipo) || (m.tipo !== "text" ? `[${m.tipo}]` : "");
           if (!t) return null;
           return { role: m.daEquipe ? "model" : "user", parts: [{ text: t }] };
         })
