@@ -156,10 +156,25 @@ function blocoProcessual(ctx: any): string {
 
     const dias = diasDesde(p.ultima_movimentacao);
     if (p.ultima_movimentacao) {
-      linhas.push(
-        `  Última movimentação: ${dataBR(p.ultima_movimentacao)}` +
-          (dias !== null ? ` (há ${dias} dias)` : ""),
-      );
+      if (dias !== null && dias < 0) {
+        // Medido em 04/09/2026: 16 processos com data_ultima_movimentacao no
+        // FUTURO, o mais distante em 03/12/2026. Provavelmente data de prazo ou
+        // audiência gravada como movimentação. Esconder a linha só trocaria um
+        // número errado por um silêncio errado — e o processo continuaria torto.
+        // Então ela aparece, marcada, e a resposta vai para a esteira de
+        // conserto em vez de virar promessa ao cliente.
+        linhas.push(
+          `  Última movimentação: ${dataBR(p.ultima_movimentacao)} — DATA INCONSISTENTE,` +
+            ` está no futuro. NÃO diga esta data ao cliente e NÃO afirme que o processo` +
+            ` andou nela. Responda sobre o resto e emita [REVISAR: data de movimentação` +
+            ` no futuro neste processo].`,
+        );
+      } else {
+        linhas.push(
+          `  Última movimentação: ${dataBR(p.ultima_movimentacao)}` +
+            (dias !== null ? ` (há ${dias} dias)` : ""),
+        );
+      }
     }
 
     if (p.resultado?.situacao) {
@@ -205,7 +220,7 @@ function blocoProcessual(ctx: any): string {
 
     // Sem movimento há muito tempo o cliente costuma achar que foi esquecido.
     // Melhor o Dom saber disso do que ser pego de surpresa.
-    if (dias !== null && dias > 90) {
+    if (dias !== null && dias > 90 && dias > 0) {
       linhas.push(
         `  NOTA INTERNA: sem movimentação há ${dias} dias. Se cobrarem, seja honesto` +
           " sobre a espera — não prometa prazo que você não tem.",

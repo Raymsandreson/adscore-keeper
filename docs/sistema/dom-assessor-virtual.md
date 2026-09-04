@@ -60,6 +60,19 @@ Custo aceito: grupo novo roda sem exemplos, e o tom vem só do prompt.
   vem primeiro. Sem movimentação recente, diz isso com honestidade — sem prometer
   prazo.
 
+## Data de movimentação no futuro
+
+Medido em 04/09/2026: **16 processos** com `lead_processes.data_ultima_movimentacao`
+no futuro, o mais distante em 03/12/2026 — provavelmente data de prazo ou de
+audiência gravada como movimentação.
+
+`blocoProcessual` **não esconde** a linha: marca como `DATA INCONSISTENTE`,
+proíbe o Dom de dizer a data ao cliente e manda emitir
+`[REVISAR: data de movimentação no futuro neste processo]`, o que joga a resposta
+na fila de revisão. Detector, não filtro — o processo torto continua visível e
+vai para a esteira de conserto. Esconder trocaria um número errado por um
+silêncio errado.
+
 ## Modos do piloto (`dom_grupos_piloto.modo`)
 
 - `hibrido` — envia o factual, enfileira o sensível em `dom_respostas_pendentes`
@@ -79,11 +92,37 @@ Pronto e vivo:
 - prompt sem as frases que mandavam deduzir o processo da conversa
 - acervo isolado por grupo
 
+8 grupos no piloto, todos em `rascunho` (escolhidos em 04/09/2026):
+
+| grupo | linha | perguntas/30d | acervo | conteúdo |
+|---|---|---|---|---|
+| FAMILIA 375 — Ester Maria, Sinop/MT | Processual | 141 | 71 | 5 processos |
+| Familia 412 — Felipe Barbosa x CGB | Processual | 129 | 29 | 2 processos, mov 28/07 |
+| Caso 224 — Arlan, Abaetetuba/PA | Processual | 89 | 26 | 6 processos, mov 26/08 |
+| Caso 217 — Bruno, Arcos/MG | Processual | 68 | 99 | 7 processos |
+| CASO 398 — Charles x Porto Rico | Prev 2 | 145 | 67 | 1 processo |
+| PREV 1934 — São Mathus | Prev 2 | 106 | 17 | só INSS |
+| 1104 Milagros — BPC/LOAS | Prev 2 | 64 | 18 | judicial + INSS |
+| PREV 1943 — Mauricio | Prev 2 | 55 | 12 | judicial + INSS, acervo pequeno |
+
+Começa em `rascunho` de propósito: **nada chega ao cliente**, tudo cai em
+`dom_respostas_pendentes`. Dá para ler por SQL o que o Dom responderia a
+perguntas reais antes de ele falar com alguém. Vira `hibrido` quando as
+respostas passarem no olho e a tela da fila existir.
+
+Descartados na conferência, e por quê:
+- **FAMÍLIA 374 (Peterson)** — maior acervo de todos (298 pares), mas em
+  **segredo de justiça**. O próprio prompt manda não detalhar conteúdo desses no
+  grupo.
+- **CASO 396** e **Família 294** — movimentação datada em 16/09 e 21/09, no
+  futuro. Ver a seção acima.
+
 Falta:
 - **deploy** de `dom-contexto` (nunca subiu) e de `whatsapp-ai-agent-reply`
   (produção roda v47, de 11/06/2026, sem nenhum código do Dom)
 - `is_active = true`
-- escolher os grupos do piloto e vincular em `whatsapp_conversation_agents`
+- vincular os grupos do piloto em `whatsapp_conversation_agents` (o Dom só é
+  consultado quando a conversa tem agente atribuído)
 - tela da fila `dom_respostas_pendentes` — sem ela o modo híbrido enfileira para
   ninguém
 - atraso de 5 min por fila agendada (ver abaixo)
