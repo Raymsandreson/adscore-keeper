@@ -117,6 +117,14 @@ entrada; `CompleteRegistration` na qualificação. Desfecho negativo
 mais gente parecida com quem foi recusado é o oposto do que se quer. O
 `auto-enrich-lead` fazia exatamente isso e foi corrigido.
 
+**Fechar lead tem ponto único: `registrarFechamentoDeLead`.** Fechar acontece
+em várias telas — arrastar o card para ✅ Fechado, o menu "marcar como fechado",
+salvar a ficha com o desfecho — e cada uma grava `lead_status` do seu jeito.
+Todas chamam a mesma função de `src/services/metaCapiQueue.ts`; nenhuma monta
+evento na mão. O teste `src/services/__tests__/fechamento-enfileira-conversao.test.ts`
+cobra isso: arquivo que grava `lead_status: 'closed'` ou chama a função, ou
+explica por que não com um comentário `capi:sem-conversao`.
+
 **Lead sem e-mail nem telefone não é enviado** — vira `skipped` com o motivo
 registrado. Não é perda: é o buraco virando número no painel.
 
@@ -125,7 +133,7 @@ registrado. Não é perda: é o buraco virando número no painel.
 | valor_origem | significado |
 |---|---|
 | `informado` | valor digitado no fechamento ou `leads.conversion_value` |
-| `faixa_produto` | média de `products_services.price_range_min/max` (cobre 77% dos fechados) |
+| `faixa_produto` | média de `products_services.price_range_min/max` (cobre 71% dos fechados) |
 | `padrao` | `META_CAPI_VALOR_PADRAO` do ambiente |
 | `ausente` | sem valor |
 
@@ -306,6 +314,43 @@ lead, ou preço no cadastro do produto) em vez de deixar a Meta recusar.
 - os outros 1.047 viram `skipped` com motivo no painel, em vez de serem enviados
   e descartados calados pela Meta, como antes
 
+### O gatilho estava furado — medido e corrigido em 04/09/2026
+
+A fila funcionava; o que quase não chegava nela era evento. Entre 03/09 e 04/09
+houve **84 fechamentos no CRM e 3 eventos**. Motivo, por caminho:
+
+| Onde se fecha um lead | Antes | Agora |
+|---|---|---|
+| Arrastar o card para ✅ Fechado | não enfileirava | `registrarFechamentoDeLead` |
+| Menu "marcar como fechado" | não enfileirava | `registrarFechamentoDeLead` |
+| `useLeads.updateLead` | observava `status === 'converted'` | observa `lead_status === 'closed'` |
+| Salvar a ficha com o desfecho | enfileirava | `registrarFechamentoDeLead` |
+
+O terceiro é o mais instrutivo: o `if` observava uma **etapa de funil** chamada
+`converted`, que não existe em board nenhum. No banco: 0 leads em `converted`,
+3 em `qualified`, **1.491 em `closed`**. Nunca rodou, em nenhum momento.
+
+`CompleteRegistration` ficou de propósito sem gatilho: não existe estado de
+"qualificado" no lead, e inventar um mandaria evento por gente que ainda não é
+cliente.
+
+Efeito colateral esperado ao ligar: dos 3.173 fechados, **928 (29%) não têm
+produto**, logo não têm valor, e `Purchase` sem `value` é recusado pela Meta
+(subcode 2804009). Esses aparecem na fila com o motivo à vista. O conserto é
+preencher o produto no lead — não inventar valor no código.
+
+### O caminho antigo saiu (04/09/2026)
+
+`src/utils/metaConversionTracking.ts` chamava a edge `facebook-capi`, do app da
+Meta apagado em 31/07/2026, e engolia todo erro num `console.error`. Ficou mais
+de um mês "enviando" para lugar nenhum. As três chamadas em `LeadEditDialog`
+foram removidas; o arquivo continua no repo marcado como morto.
+
+Ele também mapeava errado: `refused`, `inviavel` e `cancelled` viravam evento
+`Lead`, que a Meta conta como **conversão**. Se tivesse funcionado, estaria
+ensinando a Meta a buscar mais gente parecida com quem o escritório recusou.
+Sinal negativo de qualidade precisa de outro mecanismo, não deste.
+
 ---
 
 ## O que ficou de fora
@@ -315,13 +360,16 @@ lead, ou preço no cadastro do produto) em vez de deixar a Meta recusar.
   relatório. Decisão adiada de propósito.
 - **`meta_ad_accounts` com token morto** (`code 190, subcode 467 — user logged
   out`). É outra integração (leitura de campanhas), fora do escopo desta.
-- **Conversion Leads (`QUALITY_LEAD`).** Frente real, não viável hoje: a Meta
-  pede o *Meta Lead ID* de 15-17 dígitos guardado no CRM (telefone/e-mail como
-  alternativa), e a coluna `leads.facebook_lead_id` existe com **0 preenchidos em
-  23.426**; `adset_id` também zerado, `campaign_id` tem 714 e secou em
-  11/05/2026. Para destravar seria preciso capturar o `leadgen_id` do webhook de
-  Lead Ads na entrada. Só depois faz sentido mandar estágio de funil.
-  Documentação: `conversions-api/conversion-leads-integration`.
+- **Conversion Leads (`QUALITY_LEAD`).** Meio destravado em 04/09/2026. A Meta
+  pede o *Meta Lead ID* de 15-17 dígitos guardado no CRM, e `leads.facebook_lead_id`
+  estava com **0 preenchidos em 19.420**. O dado sempre esteve na planilha de
+  Lead Ads (coluna `id`), mas o `bpc-sheet-sync` despejava tudo dentro do texto
+  de `notes` e deixava as colunas nulas. Agora o import grava
+  `facebook_lead_id`, `campaign_id`, `campaign_name`, `adset_id`, `adset_name` e
+  `ad_name` nas colunas de verdade — ver `docs/sistema/planilhas-lead-ads.md`.
+  Falta: os leads antigos seguem sem id (backfill possível pela planilha), e
+  trocar o `optimization_goal` dos conjuntos no Gerenciador é ação na Meta, não
+  no código. Documentação: `conversions-api/conversion-leads-integration`.
 - **CTWA / `business_messaging`.** Morto de fato: 400 leads com `ctwa_context` e
   **zero** com `ctwa_clid` preenchido, o mais recente de 28/04/2026. Os leads
   vêm de formulário (Lead Ads), então o caminho é Pixel/CAPI. `meta_capi_config`

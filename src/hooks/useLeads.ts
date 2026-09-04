@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
-import { enfileiraConversao } from '@/services/metaCapiQueue';
+import { enfileiraConversao, registrarFechamentoDeLead } from '@/services/metaCapiQueue';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { applyGeoRuleForLead } from '@/utils/applyGeoRuleForLead';
@@ -749,13 +749,17 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
       );
       setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updatedLead } : l));
 
-      // Send CAPI events based on status change
-      if (updates.status === 'qualified') {
-        void enfileiraConversao({ leadId: id, evento: 'CompleteRegistration', origem: 'pipeline' });
-      }
-
-      if (updates.status === 'converted') {
-        void enfileiraConversao({ leadId: id, evento: 'Purchase', origem: 'pipeline' });
+      // Conversão para a Meta. Até 04/09/2026 este trecho observava
+      // `updates.status === 'qualified'` e `=== 'converted'` — etapas de funil
+      // que não existem em board nenhum: 0 leads em 'converted' e 3 em
+      // 'qualified', contra 1.491 em 'closed'. O `if` nunca rodou.
+      //
+      // O sinal certo não é a etapa do funil (cada board tem as suas), é o
+      // RESULTADO do lead virando `closed`. `CompleteRegistration` ficou sem
+      // gatilho de propósito: não existe estado de "qualificado" no lead hoje,
+      // e inventar um mandaria evento por lead que ainda não é cliente.
+      if (updates.lead_status === 'closed' && prevLeadStatus !== 'closed') {
+        registrarFechamentoDeLead(id, 'pipeline');
       }
 
       // Roda matcher reverso quando o usuário edita campos-chave para vínculo INSS

@@ -56,13 +56,16 @@ async function discoverSheetTabs(
 }
 
 interface ParsedRow {
-  form_lead_id: string;
+  facebook_lead_id: string;
   created_at: string;
   name: string;
   phone: string; // normalizado, só dígitos (com 55 quando aplicável)
   phone_key: string; // últimos 8 dígitos (chave de match)
   operator: string;
+  campaign_id: string;
   campaign_name: string;
+  adset_id: string;
+  adset_name: string;
   ad_name: string;
   form_name: string;
   estado_civil: string;
@@ -103,7 +106,13 @@ function rowToObj(headers: string[], r: any[]): Record<string, string> {
   return o;
 }
 
-async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: string }): Promise<ParsedRow[]> {
+interface AbaLida {
+  tab: string;
+  headers: string[];
+  rows: ParsedRow[];
+}
+
+async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: string }): Promise<AbaLida> {
   const lovableKey = process.env.LOVABLE_API_KEY || '';
   const gsKey = process.env.GOOGLE_SHEETS_API_KEY || '';
   if (!lovableKey || !gsKey) throw new Error('Missing connector keys (LOVABLE_API_KEY / GOOGLE_SHEETS_API_KEY)');
@@ -121,7 +130,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   }
   const json = (await resp.json()) as { values?: any[][] };
   const values: any[][] = json.values || [];
-  if (values.length < 2) return [];
+  if (values.length < 2) return { tab: meta.tab, headers: [], rows: [] };
   const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
 
   const out: ParsedRow[] = [];
@@ -136,13 +145,16 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     const phone = normalizePhone(rawPhone);
     if (phone.length < 10) continue;
     out.push({
-      form_lead_id: o['id'] || '',
+      facebook_lead_id: o['id'] || '',
       created_at: o['created_time'] || '',
       name: name.trim(),
       phone,
       phone_key: phoneKey(phone),
       operator: meta.operator,
+      campaign_id: o['campaign_id'] || '',
       campaign_name: o['campaign_name'] || '',
+      adset_id: o['adset_id'] || '',
+      adset_name: o['adset_name'] || '',
       ad_name: o['ad_name'] || '',
       form_name: o['form_name'] || '',
       estado_civil: o['estado_civil'] || o['marital_status'] || '',
@@ -153,7 +165,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
       tab: meta.tab,
     });
   }
-  return out;
+  return { tab: meta.tab, headers, rows: out };
 }
 
 // Garante a definição de um custom field do board (cria se não existir).
@@ -223,13 +235,18 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   }
   const sheetRows: ParsedRow[] = [];
   const tabErrors: { tab: string; error: string }[] = [];
+  const cabecalhos = new Set<string>();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
     const results = await Promise.allSettled(chunk.map((t) => fetchTab(spreadsheetId, t)));
     results.forEach((r, idx) => {
       const meta = chunk[idx];
-      if (r.status === 'fulfilled') sheetRows.push(...r.value);
-      else tabErrors.push({ tab: meta.tab, error: String(r.reason?.message || r.reason).slice(0, 200) });
+      if (r.status === 'fulfilled') {
+        sheetRows.push(...r.value.rows);
+        r.value.headers.forEach((h) => cabecalhos.add(h));
+      } else {
+        tabErrors.push({ tab: meta.tab, error: String(r.reason?.message || r.reason).slice(0, 200) });
+      }
     });
     if (i + 3 < SHEET_TABS.length) await new Promise((r) => setTimeout(r, 300));
   }
@@ -292,6 +309,11 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
     abas_ignoradas: abasIgnoradas,
     linhas_por_aba: porAba,
     tab_errors: tabErrors,
+    // Cabecalhos vistos na planilha: e o que permite afirmar de qual coluna veio
+    // cada campo, em vez de supor. Mudanca de nome de coluna pela Meta aparece
+    // aqui antes de virar coluna vazia no banco.
+    colunas_da_planilha: [...cabecalhos].sort(),
+    com_facebook_lead_id: toCreate.filter((r) => r.facebook_lead_id).length,
   };
 
   if (opts.dryRun) {
@@ -328,12 +350,25 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
           board_id: boardId,
           status: initialStageId,
           source: `Planilha Meta Ads — ${r.operator || board.name}`,
+          // Atribuicao vai para as COLUNAS, nao so para o texto de `notes`.
+          // Ate 04/09/2026 tudo isso era despejado em `notes` e as colunas
+          // ficavam nulas: `facebook_lead_id` estava vazio em 19.420 de 19.420
+          // leads. Sem esse id a Meta nao consegue casar o fechamento com o lead
+          // do formulario, que e o que destrava otimizar por lead qualificado.
+          // Campo ausente na planilha fica NULL em vez de string vazia, senao
+          // "tem valor" e "e vazio" viram a mesma coisa na hora de medir.
+          facebook_lead_id: r.facebook_lead_id || null,
+          campaign_id: r.campaign_id || null,
+          campaign_name: r.campaign_name || null,
+          adset_id: r.adset_id || null,
+          adset_name: r.adset_name || null,
+          ad_name: r.ad_name || null,
           notes: [
             `Importado da planilha do board — aba ${r.tab}`,
             r.form_name && `Form: ${r.form_name}`,
             r.campaign_name && `Campanha: ${r.campaign_name}`,
             r.ad_name && `Ad: ${r.ad_name}`,
-            r.form_lead_id && `form_lead_id: ${r.form_lead_id}`,
+            r.facebook_lead_id && `facebook_lead_id: ${r.facebook_lead_id}`,
           ]
             .filter(Boolean)
             .join('\n'),

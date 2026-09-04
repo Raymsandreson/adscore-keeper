@@ -19,7 +19,7 @@ import {
 
 const EVENTOS_VALIDOS = new Set(['Purchase', 'Lead', 'CompleteRegistration']);
 const ORIGENS_VALIDAS = new Set<Origem>([
-  'kanban', 'pipeline', 'planilha', 'auto_enrich', 'manual', 'backfill',
+  'kanban', 'pipeline', 'planilha', 'auto_enrich', 'manual', 'backfill', 'zapsign',
 ]);
 
 interface Pedido {
