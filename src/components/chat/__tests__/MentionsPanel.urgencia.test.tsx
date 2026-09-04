@@ -4,7 +4,7 @@
  * outro — e o registro do que foi cobrado, com o "visto", igual ao Feedback.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const nudgeMention = vi.fn().mockResolvedValue(undefined);
 
@@ -123,7 +123,9 @@ vi.mock('@/hooks/useTeamChat', () => ({
   }),
 }));
 
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+const navigateMock = vi.fn();
+vi.mock('react-router-dom', () => ({ useNavigate: () => navigateMock }));
+vi.mock('@/lib/whatsappChatSheet', () => ({ openWhatsAppChatSheet: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: vi.fn() } }));
 vi.mock('@/integrations/supabase/external-client', () => ({
@@ -144,6 +146,7 @@ vi.mock('@/hooks/useInactiveUserIds', () => ({ useInactiveUserIds: () => new Set
 vi.mock('@/contexts/AuthContext', () => ({ useAuthContext: () => ({ user: { id: 'me' } }) }));
 
 import { MentionsPanel } from '../MentionsPanel';
+import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 
 /** O painel abre direto nas menções — a aba "Chat" não existe mais. */
 function renderMentionsTab(list: any[], seguindo: string[] = []) {
@@ -303,5 +306,42 @@ describe('MentionsPanel — participação no chat da ficha', () => {
     renderMentionsTab([recebidaCobrada], []);
 
     expect(screen.queryByRole('button', { name: /Finalizar participação/ })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Regra dura do produto (ui-sem-redirecionar): clique que abre alguma coisa
+ * abre POR CIMA, nunca tira a pessoa da tela. A menção do WhatsApp mandava para
+ * /whatsapp — a pessoa perdia as menções e ainda tinha que achar a conversa de
+ * novo na inbox.
+ */
+describe('MentionsPanel — menção do WhatsApp abre a conversa por cima', () => {
+  const noWhatsApp = {
+    ...recebidaCobrada,
+    id: 'm-w',
+    message_id: 'msg-w',
+    entity_type: 'whatsapp' as const,
+    entity_id: '5511999998888',
+    entity_name: 'Keliane Souza',
+    scope: 'ficha' as const,
+    nudge: null,
+    message: { ...recebidaCobrada.message, id: 'msg-w', content: '@Eu Mesmo o cliente respondeu aqui' },
+  };
+
+  it('abre o painel de baixo pra cima em vez de navegar para /whatsapp', async () => {
+    navigateMock.mockClear();
+    (openWhatsAppChatSheet as any).mockClear();
+    renderMentionsTab([noWhatsApp]);
+
+    fireEvent.click(screen.getByText('@Eu Mesmo o cliente respondeu aqui'));
+
+    await waitFor(() =>
+      expect(openWhatsAppChatSheet).toHaveBeenCalledWith({
+        phone: '5511999998888',
+        contactName: 'Keliane Souza',
+        direction: 'bottom',
+      })
+    );
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });

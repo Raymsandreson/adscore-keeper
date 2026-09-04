@@ -16,6 +16,13 @@ export interface WhatsAppChatSheetIntent {
   instanceName?: string | null;
   /** Nome do contato ou do grupo, para o cabeçalho não abrir vazio. */
   contactName?: string | null;
+  /**
+   * Por onde a conversa entra. 'top' é o padrão de quem veio de NOTIFICAÇÃO:
+   * mantém a pilha de popups (top-center) à vista acima do painel. Quem clica
+   * de dentro de uma lista (menções, relatório) pede 'bottom' — painel de baixo
+   * pra cima, que é o padrão do sistema.
+   */
+  direction?: 'top' | 'bottom';
   nonce: string;
 }
 
