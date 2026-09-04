@@ -20,12 +20,13 @@ import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, MessageSquare, Sparkles, 
   Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2, Volume2, Maximize2, RefreshCw,
-  ChevronUp, ChevronDown, Eye, EyeOff, Check, ChevronsUpDown, Megaphone, Filter
+  ChevronUp, ChevronDown, Eye, EyeOff, Check, ChevronsUpDown, Megaphone, Filter, Inbox
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { AtendenteVirtualPanel } from './agent-monitor/components/AtendenteVirtualPanel';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { SuperPromptDiagnostic } from './SuperPromptDiagnostic';
 import { AgentTestChat } from './AgentTestChat';
@@ -266,12 +267,15 @@ export function WhatsAppCommandConfig({ focusAgentId }: WhatsAppCommandConfigPro
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="shortcuts" className="text-xs gap-1">
             <Zap className="h-3.5 w-3.5" /> Agentes IA
           </TabsTrigger>
           <TabsTrigger value="member" className="text-xs gap-1">
             <Bot className="h-3.5 w-3.5" /> IA Interna
+          </TabsTrigger>
+          <TabsTrigger value="fila" className="text-xs gap-1">
+            <Inbox className="h-3.5 w-3.5" /> Fila do atendente
           </TabsTrigger>
         </TabsList>
 
@@ -291,6 +295,10 @@ export function WhatsAppCommandConfig({ focusAgentId }: WhatsAppCommandConfigPro
             profiles={profiles}
             onReload={loadData}
           />
+        </TabsContent>
+
+        <TabsContent value="fila">
+          <AtendenteVirtualPanel />
         </TabsContent>
       </Tabs>
     </div>
