@@ -274,6 +274,18 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   useEffect(() => {
     if (!intent?.nonce) return;
 
+    // Pedido de conversa nova: abre o seletor de pessoa/grupo e para por aqui.
+    if (intent.newChat) {
+      setShowNewChat(true);
+      onIntentHandled?.();
+      return;
+    }
+
+    if (!intent.conversationId) {
+      onIntentHandled?.();
+      return;
+    }
+
     setActiveConversationId(intent.conversationId);
 
     if (typeof intent.draft === 'string') {
