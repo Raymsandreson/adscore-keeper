@@ -30,6 +30,7 @@ import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { SuperPromptDiagnostic } from './SuperPromptDiagnostic';
 import { AgentTestChat } from './AgentTestChat';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
+import { AtendenteVirtualTab } from './AtendenteVirtualTab';
 import { AgentAutomationRules } from './AgentAutomationRules';
 import { AgentConversationsList } from './AgentConversationsList';
 
@@ -265,12 +266,15 @@ export function WhatsAppCommandConfig({ focusAgentId }: WhatsAppCommandConfigPro
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="shortcuts" className="text-xs gap-1">
             <Zap className="h-3.5 w-3.5" /> Agentes IA
           </TabsTrigger>
           <TabsTrigger value="member" className="text-xs gap-1">
             <Bot className="h-3.5 w-3.5" /> IA Interna
+          </TabsTrigger>
+          <TabsTrigger value="atendente" className="text-xs gap-1">
+            <Sparkles className="h-3.5 w-3.5" /> Atendente Virtual
           </TabsTrigger>
         </TabsList>
 
@@ -290,6 +294,10 @@ export function WhatsAppCommandConfig({ focusAgentId }: WhatsAppCommandConfigPro
             profiles={profiles}
             onReload={loadData}
           />
+        </TabsContent>
+
+        <TabsContent value="atendente">
+          <AtendenteVirtualTab />
         </TabsContent>
       </Tabs>
     </div>
