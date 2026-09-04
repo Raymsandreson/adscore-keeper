@@ -402,6 +402,16 @@ Deno.serve(async (req)=>{
       // parecidas. Sem isso o agente tenta deduzir o andamento da conversa, que é
       // o motivo de ele estar desligado até hoje.
       let domCtx = null;
+      // O Dom é um atendente de GRUPO DE CASO: o contexto dele nasce do JID do
+      // grupo (grupo → lead → autos) e o portão do piloto mora em dom-contexto,
+      // que só é consultado quando is_group. Em conversa individual nada disso
+      // roda: ele responderia sem andamento nenhum, sem piloto e ainda com o
+      // prefixo padrão que manda fingir ser humano. Por isso: mudo.
+      // Fail-closed de propósito — is_group ausente também cai aqui.
+      if (agent.contexto_processual && !is_group) return new Response(JSON.stringify({
+        skipped: true,
+        reason: "Dom: agente de contexto processual não atende conversa individual"
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       if (agent.contexto_processual && is_group) {
         try {
           const domResp = await fetch(`${RESOLVED_SUPABASE_URL}/functions/v1/dom-contexto`, {
