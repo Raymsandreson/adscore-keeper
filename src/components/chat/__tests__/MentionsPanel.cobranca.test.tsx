@@ -134,9 +134,10 @@ import { MentionsPanel } from '../MentionsPanel';
 import { startDirectConversationWith } from '@/lib/teamDirectMessages';
 import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
 
-/** O painel abre direto nas menções — a aba "Chat" não existe mais. */
+/** O painel abre nas Conversas — as menções ficam atrás do clique na aba. */
 function renderMentionsTab() {
   render(<MentionsPanel open onOpenChange={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: /^Menções/ }));
 }
 
 describe('MentionsPanel — cobrança do chat interno', () => {
