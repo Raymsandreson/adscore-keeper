@@ -19,10 +19,10 @@ import {
 
 const EVENTOS_VALIDOS = new Set(['Purchase', 'Lead', 'CompleteRegistration']);
 const ORIGENS_VALIDAS = new Set<Origem>([
-  'kanban', 'pipeline', 'planilha', 'auto_enrich', 'manual', 'backfill', 'zapsign',
+  'kanban', 'pipeline', 'planilha', 'auto_enrich', 'manual', 'backfill', 'zapsign', 'reconcile',
 ]);
 
-interface Pedido {
+export interface Pedido {
   lead_id: string;
   event_name?: string;
   origem?: Origem;
@@ -38,7 +38,7 @@ export interface ResultadoEnfileiramento {
   motivo?: string;
 }
 
-async function enfileiraUm(p: Pedido): Promise<ResultadoEnfileiramento> {
+export async function enfileiraUm(p: Pedido): Promise<ResultadoEnfileiramento> {
   const eventName = p.event_name || 'Purchase';
   if (!EVENTOS_VALIDOS.has(eventName)) {
     return { lead_id: p.lead_id, situacao: 'erro', motivo: `event_name inválido: ${eventName}` };
