@@ -72,7 +72,7 @@ import { midiasDaMensagem, rotuloDaMidia } from '@/lib/midiaDaConversa';
 import { avisarLeituraDeAnexos, gerarRascunhoDaConversa } from '@/lib/rascunhoDaConversa';
 import { linkWhatsAppMessagesToActivity } from '@/lib/whatsappMessageActivities';
 import { separarPrefixoRemetente } from '@/lib/whatsappSenderName';
-import { useAutoriaDasMensagens } from '@/hooks/useAutoriaDasMensagens';
+import { useAutoriaDasMensagens, idDaMensagemNoWhatsApp } from '@/hooks/useAutoriaDasMensagens';
 import { ehInstanciaCloud } from '@/lib/cloudApiInstances';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
@@ -2494,7 +2494,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                   const textoDaBolha = autoriaEnviada?.nome ? autoriaEnviada.corpo : msg.message_text;
                   const nomeDeQuemEnviou = isInbound
                     ? null
-                    : (autorPorMensagem[msg.external_message_id || ''] || autoriaEnviada?.nome || null);
+                    : (autorPorMensagem[idDaMensagemNoWhatsApp(msg.external_message_id)] || autoriaEnviada?.nome || null);
                   return (
                     <div key={msg.id} data-msg-id={msg.id}>
                       {showDateSep && (
