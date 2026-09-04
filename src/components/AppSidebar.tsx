@@ -178,6 +178,7 @@ export function AppSidebar() {
       items: [
         { id: "finance-main", label: "Finanças", icon: <CreditCard className="h-3.5 w-3.5" />, path: "/finance", color: "text-green-500" },
         { id: "cost-org", label: "Ecossistema", icon: <Target className="h-3.5 w-3.5" />, path: "/cost-organization", color: "text-purple-500" },
+        { id: "metricas", label: "Métricas", icon: <TrendingUp className="h-3.5 w-3.5" />, path: "/metricas", color: "text-amber-500" },
       ],
     },
     {
