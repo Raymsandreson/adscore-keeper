@@ -67,14 +67,57 @@ const O_QUE_FAZER: Record<CausaFalha, string> = {
  */
 export function avisoDeFalhaNoEnvio(args: { zapErro?: string | null; tipo?: string | null }): string {
   const causa = classificarFalha(args.zapErro);
-  const assunto = args.tipo === 'indeferido'
-    ? ' Este é um INDEFERIMENTO: o prazo do cliente corre a partir de quando ele fica sabendo.'
-    : '';
+  const assunto = urgenciaDoTipo(args.tipo);
   const motivo = String(args.zapErro || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   return (
     '\n\n🚫 O CLIENTE NÃO FOI AVISADO — o robô tentou mandar a mensagem e o WhatsApp recusou.' +
     assunto +
     `\n${O_QUE_FAZER[causa]}` +
     (motivo ? `\nMotivo técnico: ${motivo}` : '')
+  );
+}
+
+/**
+ * Ênfase por tipo. Protocolo e exigência o cliente descobre depois sem prejuízo;
+ * deferimento e indeferimento são DECISÃO — num o prazo corre, no outro o
+ * cliente tem dinheiro a receber e não sabe. O aviso precisa separar os dois
+ * casos, senão vira mais uma linha igual às outras na atividade.
+ */
+function urgenciaDoTipo(tipo?: string | null): string {
+  if (tipo === 'indeferido') {
+    return ' Este é um INDEFERIMENTO: o prazo do cliente corre a partir de quando ele fica sabendo.';
+  }
+  if (tipo === 'deferido') {
+    return ' Este é um DEFERIMENTO: o benefício foi aprovado e o cliente ainda não sabe.';
+  }
+  return '';
+}
+
+/**
+ * O nome do segurado no requerimento não bate com nenhum nome do lead, então a
+ * mensagem iria para o grupo de OUTRO cliente e o robô se recusou a mandar.
+ *
+ * A recusa está certa — medido em 04/09/2026, de 38 eventos parados assim
+ * apenas 2 eram a mesma pessoa com grafia diferente (DANIELLE/DANIELE,
+ * RAINARA/RAYNARA); os outros 36 eram nomes de fato distintos. O defeito nunca
+ * foi a checagem, e sim ela não avisar ninguém: ficava num `console.warn` e a
+ * atividade nascia muda. Entre 16/06 e 03/09 isso engoliu 17 indeferimentos e
+ * 7 deferimentos — clientes com decisão do INSS na mão sem ninguém saber que
+ * não foram avisados.
+ */
+export function avisoDeVinculoSuspeito(args: {
+  motivo?: string | null;
+  tipo?: string | null;
+}): string {
+  const motivo = String(args.motivo || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  return (
+    '\n\n🛑 O CLIENTE NÃO FOI AVISADO — o nome do segurado neste requerimento não bate com o ' +
+    'nome deste lead, e mandar assim colocaria a informação no grupo de outro cliente.' +
+    urgenciaDoTipo(args.tipo) +
+    '\nConfira de quem é este requerimento. Se for mesmo deste lead, corrija o nome no cadastro ' +
+    '(às vezes é só a grafia: DANIELLE contra DANIELE) e avise o cliente desta atualização por ' +
+    'aqui. Se não for, encontre o lead certo — o requerimento está vinculado ao lead errado, e ' +
+    'todas as próximas atualizações dele vão parar aqui também.' +
+    (motivo ? `\nO que não bateu: ${motivo}` : '')
   );
 }

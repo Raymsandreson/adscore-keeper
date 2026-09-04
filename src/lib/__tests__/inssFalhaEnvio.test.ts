@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   classificarFalha,
   avisoDeFalhaNoEnvio,
+  avisoDeVinculoSuspeito,
 } from '../../../railway-server/src/lib/inss-falha-envio';
 
 // Os dois primeiros são o `zap_erro` literal das duas falhas registradas em
@@ -72,5 +73,53 @@ describe('avisoDeFalhaNoEnvio', () => {
     const t = avisoDeFalhaNoEnvio({ zapErro: ERRO_DESCONECTADA, tipo: 'indeferido' });
     expect(t).not.toMatch(/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/); // CPF
     expect(t).not.toMatch(/\d{4,}/); // número longo (benefício, processo)
+  });
+});
+
+// Motivos literais de `zap_erro` em eventos com zap_status = 'suspeito'.
+const CONFLITO_REAL = '"CAMILLI" não aparece em nenhum nome do lead (LIMEIRA, MATHEUS, BRASCAR)';
+const CONFLITO_GRAFIA = '"DANIELLE" não aparece em nenhum nome do lead (DANIELE, BUTZEN, VIVIANE)';
+
+describe('avisoDeVinculoSuspeito', () => {
+  it('diz que o cliente não foi avisado e por quê', () => {
+    const t = avisoDeVinculoSuspeito({ motivo: CONFLITO_REAL, tipo: 'exigencia' });
+    expect(t).toMatch(/O CLIENTE NÃO FOI AVISADO/);
+    expect(t).toMatch(/grupo de outro cliente/);
+  });
+
+  it('separa decisão de andamento: indeferido e deferido ganham destaque', () => {
+    expect(avisoDeVinculoSuspeito({ tipo: 'indeferido' })).toMatch(/INDEFERIMENTO/);
+    expect(avisoDeVinculoSuspeito({ tipo: 'deferido' })).toMatch(/DEFERIMENTO/);
+    const andamento = avisoDeVinculoSuspeito({ tipo: 'protocolado' });
+    expect(andamento).not.toMatch(/INDEFERIMENTO|DEFERIMENTO/);
+  });
+
+  it('manda conferir de quem é o requerimento, os dois desfechos', () => {
+    const t = avisoDeVinculoSuspeito({ motivo: CONFLITO_GRAFIA, tipo: 'exigencia' });
+    expect(t).toMatch(/Se for mesmo deste lead/);
+    expect(t).toMatch(/Se não for/);
+  });
+
+  it('lembra da grafia, que foi 2 dos 38 casos medidos', () => {
+    expect(avisoDeVinculoSuspeito({ motivo: CONFLITO_GRAFIA })).toMatch(/grafia/);
+  });
+
+  it('carrega o motivo, que é o que permite decidir sem abrir o banco', () => {
+    const t = avisoDeVinculoSuspeito({ motivo: CONFLITO_REAL });
+    expect(t).toMatch(/CAMILLI/);
+    expect(t).toMatch(/LIMEIRA/);
+  });
+
+  it('sem motivo continua acionável', () => {
+    const t = avisoDeVinculoSuspeito({ motivo: null, tipo: 'indeferido' });
+    expect(t).not.toMatch(/O que não bateu:/);
+    expect(t).toMatch(/Confira de quem é este requerimento/);
+  });
+
+  it('não se confunde com o aviso de envio recusado', () => {
+    const suspeito = avisoDeVinculoSuspeito({ motivo: CONFLITO_REAL, tipo: 'indeferido' });
+    const falha = avisoDeFalhaNoEnvio({ zapErro: 'uazapi 503: disconnected', tipo: 'indeferido' });
+    expect(suspeito).not.toMatch(/o WhatsApp recusou/);
+    expect(falha).not.toMatch(/não bate com o nome deste lead/);
   });
 });
