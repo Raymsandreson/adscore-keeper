@@ -294,6 +294,9 @@ app.get('/health', (_req, res) => {
       // estar vazia antes de ligar o enforce.
       observado: authStats(),
     },
+    // Cron da planilha de Lead Ads. `ligado` diz se a env var SHEET_LEAD_SYNC
+    // pegou; `execucoes`/`ultima_em` provam que ele roda de verdade.
+    sheet_lead_sync: sheetSyncEstado,
     // Webhook da UazAPI: entra sem credencial de proposito (servico externo).
     // Aqui se mede se da pra exigir o instance_token como prova de origem —
     // `sem_token_por_evento` e a lista que precisa esvaziar antes disso.
@@ -958,7 +961,22 @@ const SHEET_SYNC_INTERVAL_MS = 10 * 60 * 1000;
 const SHEET_SYNC_DIAS = 7;
 const SHEET_SYNC_LIGADO = (process.env.SHEET_LEAD_SYNC || '').toLowerCase() === 'on';
 
+// Estado do cron, exposto no /health. Sem isto, "ligado" e "morto" sao
+// indistinguiveis de fora: com a janela ja importada, uma rodada correta cria
+// zero leads e nao deixa rastro nenhum no banco. Foi assim que 4 jobs do
+// pg_cron do Externo rodaram pra nada por meses sem ninguem notar.
+const sheetSyncEstado = {
+  ligado: SHEET_SYNC_LIGADO,
+  execucoes: 0,
+  ultima_em: null as string | null,
+  ultimo_resultado: null as string | null,
+  criados_acumulado: 0,
+};
+
 async function runSheetLeadSync() {
+  // Antes do await: prova que a rodada disparou mesmo que ela trave depois.
+  sheetSyncEstado.execucoes += 1;
+  sheetSyncEstado.ultima_em = new Date().toISOString();
   try {
     const resp = await fetch(`http://127.0.0.1:${PORT}/functions/bpc-sheet-sync`, {
       method: 'POST',
@@ -968,6 +986,7 @@ async function runSheetLeadSync() {
     const json: any = await resp.json().catch(() => ({}));
     if (json?.error) {
       console.error(`[cron:sheet-lead-sync] ${json.error}`);
+      sheetSyncEstado.ultimo_resultado = `erro: ${String(json.error).slice(0, 120)}`;
       return;
     }
     // Board que falhou não pode sumir no meio do JSON: planilha renomeada,
@@ -985,8 +1004,12 @@ async function runSheetLeadSync() {
         `[cron:sheet-lead-sync] criados=${json.criados ?? 0} boards=${json.boards_com_planilha ?? 0} falhas=${falhas.length}`,
       );
     }
+    sheetSyncEstado.criados_acumulado += Number(json?.criados || 0);
+    sheetSyncEstado.ultimo_resultado = `criados=${json?.criados ?? 0} boards=${json?.boards_com_planilha ?? 0} falhas=${falhas.length}`;
   } catch (err) {
-    console.warn('[cron:sheet-lead-sync] failed:', err instanceof Error ? err.message : err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[cron:sheet-lead-sync] failed:', msg);
+    sheetSyncEstado.ultimo_resultado = `falha: ${msg.slice(0, 120)}`;
   }
 }
 

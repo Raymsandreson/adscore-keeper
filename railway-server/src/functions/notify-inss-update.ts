@@ -12,6 +12,7 @@ import {
   donoDaAtualizacaoInss,
   type DonoAtividade,
 } from '../lib/inss-roteamento';
+import { avisoDeFalhaNoEnvio } from '../lib/inss-falha-envio';
 import { mandarAudioDaMensagem } from '../lib/inss-audio';
 import { conferirNomeDoSegurado } from '../lib/inss-nome-confere';
 import {
@@ -505,6 +506,44 @@ export const handler: RequestHandler = async (req, res) => {
         } as any);
         if (error) {
           console.warn(`[notify-inss-update] atividade de deferimento para ${pessoa.name} falhou: ${error.message}`);
+        }
+      }
+    }
+
+    // Envio recusado pelo WhatsApp. Era o único desfecho mudo do fluxo: ficava
+    // em `zap_erro` e num console.log, e nada reenviava. Agora vai na atividade
+    // que já nasceu, e o José é avisado mesmo quando a atividade é de outra
+    // pessoa (pedido do usuário, 04/09/2026) — ele é quem toca o pós-protocolo
+    // e quem decide se avisa o cliente à mão.
+    if (zapPatch.zap_status === 'erro' && atividade?.id) {
+      const aviso = avisoDeFalhaNoEnvio({ zapErro: zapPatch.zap_erro, tipo: tipoMensagem });
+      await supabase
+        .from('lead_activities')
+        .update({ description: `${atividade.description || activityDesc}${aviso}` })
+        .eq('id', atividade.id);
+
+      if (dono.id !== ASSESSOR_INSS.id) {
+        const { error } = await supabase.from('lead_activities').insert({
+          lead_id: leadId,
+          title: activityTitle,
+          description:
+            `${activityDesc}${aviso}\n\n👥 ${dono.name} recebeu esta mesma tarefa — ` +
+            'combinem quem fala com o cliente para ele não ser procurado duas vezes.',
+          activity_type: 'notificacao',
+          status: 'pendente',
+          priority: 'normal',
+          assigned_to: ASSESSOR_INSS.id,
+          assigned_to_name: ASSESSOR_INSS.name,
+          deadline: new Date().toISOString().slice(0, 10),
+          case_id: proc.case_id,
+          case_title: formatLabel(caseInfo?.case_number, caseInfo?.title) || null,
+          process_id: process?.id || null,
+          process_title: process ? formatLabel(process.process_number, process.title) || null : null,
+          action_source: 'system',
+          action_source_detail: 'Robô do INSS',
+        } as any);
+        if (error) {
+          console.warn(`[notify-inss-update] aviso de falha para ${ASSESSOR_INSS.name} falhou: ${error.message}`);
         }
       }
     }

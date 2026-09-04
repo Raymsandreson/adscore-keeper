@@ -10,6 +10,8 @@ import {
 } from '../lib/inss-zap';
 import { exigeProcuracao, extrairPontosPendentes, separarPendencias } from '../lib/inss-despacho';
 import { mandarAudioDaMensagem } from '../lib/inss-audio';
+import { avisoDeFalhaNoEnvio } from '../lib/inss-falha-envio';
+import { ASSESSOR_INSS } from '../lib/inss-roteamento';
 import { buscarProcuracaoDoCliente } from '../lib/inss-procuracao';
 
 /**
@@ -27,6 +29,63 @@ const LOTE = 30;
 const PAUSA_ENTRE_ENVIOS_MS = 400;
 /** Mensagem parada há mais de uma semana virou notícia velha: não vai. */
 const VALIDADE_DIAS = 7;
+
+
+/**
+ * Leva o aviso de falha até a atividade que nasceu deste mesmo evento.
+ *
+ * A fila não guarda o id da atividade — ela roda horas depois, num processo
+ * separado. O elo é o par (lead, momento): o `notify-inss-update` cria a
+ * atividade ao processar o e-mail e só então agenda a mensagem, então a
+ * primeira atividade do robô naquele lead a partir de `email_received_at` é a
+ * deste evento. Não achando, o aviso vira atividade própria em vez de sumir —
+ * é o desfecho que a falha silenciosa não tinha.
+ */
+async function avisarFalhaNaFila(args: {
+  leadId: string | null;
+  emailRecebidoEm?: string | null;
+  zapErro?: string | null;
+  tipo?: string | null;
+}): Promise<void> {
+  if (!args.leadId) return;
+  const aviso = avisoDeFalhaNoEnvio({ zapErro: args.zapErro, tipo: args.tipo });
+
+  let q = supabase
+    .from('lead_activities')
+    .select('id, description, title, case_id, case_title, process_id, process_title')
+    .eq('lead_id', args.leadId)
+    .eq('action_source_detail', 'Robô do INSS')
+    .order('created_at', { ascending: true })
+    .limit(1);
+  if (args.emailRecebidoEm) q = q.gte('created_at', args.emailRecebidoEm);
+  const { data: achadas } = await q;
+  const alvo = achadas?.[0] as any;
+
+  if (alvo?.id) {
+    await supabase
+      .from('lead_activities')
+      .update({ description: `${alvo.description || ''}${aviso}` })
+      .eq('id', alvo.id);
+    return;
+  }
+
+  const { error } = await supabase.from('lead_activities').insert({
+    lead_id: args.leadId,
+    title: 'Aviso do INSS não chegou ao cliente',
+    description: `O robô não conseguiu entregar a atualização do INSS neste grupo.${aviso}`,
+    activity_type: 'notificacao',
+    status: 'pendente',
+    priority: 'normal',
+    assigned_to: ASSESSOR_INSS.id,
+    assigned_to_name: ASSESSOR_INSS.name,
+    deadline: new Date().toISOString().slice(0, 10),
+    action_source: 'system',
+    action_source_detail: 'Robô do INSS',
+  } as any);
+  if (error) {
+    console.warn(`[dispatch-inss-zap] aviso de falha não virou atividade: ${error.message}`);
+  }
+}
 
 export const handler: RequestHandler = async (req, res) => {
   const forcar = req.body?.force === true;
@@ -148,6 +207,14 @@ export const handler: RequestHandler = async (req, res) => {
         }
       }
       await supabase.from('inss_status_history').update(patch).eq('id', item.id);
+      if (patch.zap_status === 'erro') {
+        await avisarFalhaNaFila({
+          leadId: leadPorProcesso.get(item.process_id) || null,
+          emailRecebidoEm: item.email_received_at,
+          zapErro: patch.zap_erro,
+          tipo: item.zap_tipo,
+        });
+      }
     }
 
     console.log(
