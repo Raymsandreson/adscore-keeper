@@ -21,6 +21,7 @@ import { tmpdir } from 'os';
 import path from 'path';
 import ffmpegPath from 'ffmpeg-static';
 import { supabase } from '../lib/supabase';
+import { registrarAutoriaDoEnvio } from '../lib/autoriaDoEnvio';
 
 const TOKEN = process.env.WHATSAPP_CLOUD_TOKEN || '';
 const API_VERSION = process.env.WHATSAPP_CLOUD_API_VERSION || 'v21.0';
@@ -408,6 +409,16 @@ export const handler: RequestHandler = async (req, res) => {
   } catch (err) {
     console.error(`[send-cloud ${rid}] insert exceção (msg JÁ foi enviada via Graph):`, err);
   }
+
+  // Quem da equipe mandou — mesma tabela que a edge send-whatsapp v28 alimenta
+  // no canal UazAPI, para a bolha mostrar o autor também aqui. Depende do
+  // Authorization do usuário chegar até este handler (o proxy send-whatsapp do
+  // Cloud repassa); sem JWT, sai em silêncio e a bolha fica sem autor.
+  await registrarAutoriaDoEnvio(req, {
+    externalMessageId: externalId,
+    phone,
+    instanceName,
+  });
 
   console.log(`[send-cloud ${rid}] OK wamid=...${externalId.slice(-12)} db=${dbId || 'fail'}`);
   res.status(200).json({

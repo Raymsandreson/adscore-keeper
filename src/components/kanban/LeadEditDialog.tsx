@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { safeSelectValue } from '@/utils/selectValue';
-import { sendLeadConversionEvent } from '@/utils/metaConversionTracking';
-import { enfileiraConversao } from '@/services/metaCapiQueue';
+import { registrarFechamentoDeLead } from '@/services/metaCapiQueue';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
@@ -1906,12 +1905,7 @@ ${scrapeData.content || ''}
            // Conversão entra na fila da Meta CAPI. O valor digitado agora tem
            // precedência; sem ele o servidor cai no conversion_value salvo e,
            // se também faltar, na faixa de preço do produto do lead.
-           void enfileiraConversao({
-             leadId: currentLead.id,
-             evento: 'Purchase',
-             origem: 'kanban',
-             valor: parsedConversionValue ?? undefined,
-           });
+           registrarFechamentoDeLead(currentLead.id, 'kanban', parsedConversionValue ?? undefined);
             // Rename WhatsApp group with closed prefix + sync participants/contacts
             if ((currentLead as any).whatsapp_group_id) {
               cloudFunctions.invoke('rename-whatsapp-group', {
@@ -2022,32 +2016,10 @@ ${scrapeData.content || ''}
         }
        } else if (leadOutcome === 'refused') {
          await externalSupabase.from('leads').update({ lead_status: 'refused' } as any).eq('id', currentLead.id);
-         // Send conversion event to Meta CAPI
-         sendLeadConversionEvent({
-           id: currentLead.id,
-           lead_name: currentLead.lead_name,
-           lead_phone: (currentLead as any).lead_phone,
-           ctwa_context: (currentLead as any).ctwa_context,
-           campaign_id: (currentLead as any).campaign_id,
-         }, 'refused');
        } else if (leadOutcome === 'inviavel') {
          await externalSupabase.from('leads').update({ lead_status: 'inviavel' } as any).eq('id', currentLead.id);
-         sendLeadConversionEvent({
-           id: currentLead.id,
-           lead_name: currentLead.lead_name,
-           lead_phone: (currentLead as any).lead_phone,
-           ctwa_context: (currentLead as any).ctwa_context,
-           campaign_id: (currentLead as any).campaign_id,
-         }, 'inviavel');
        } else if (leadOutcome === 'cancelled') {
          await externalSupabase.from('leads').update({ lead_status: 'cancelled' } as any).eq('id', currentLead.id);
-         sendLeadConversionEvent({
-           id: currentLead.id,
-           lead_name: currentLead.lead_name,
-           lead_phone: (currentLead as any).lead_phone,
-           ctwa_context: (currentLead as any).ctwa_context,
-           campaign_id: (currentLead as any).campaign_id,
-         }, 'cancelled');
         } else if (!leadOutcome && (
          (currentLead as any).became_client_date ||
          (currentLead as any).inviavel_date ||

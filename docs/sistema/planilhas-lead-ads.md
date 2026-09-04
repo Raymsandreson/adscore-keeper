@@ -60,6 +60,31 @@ permissão ou range errado — o total geral sozinho não denuncia.
 
 Endpoint: `POST /functions/bpc-sheet-sync` no Railway.
 
+## O que o import grava
+
+Além de nome e telefone, cada linha carrega a atribuição do anúncio, e ela vai
+para as **colunas** de `leads`, não para o texto de `notes`:
+
+| Coluna em `leads` | Coluna na planilha |
+|---|---|
+| `facebook_lead_id` | `id` (o Meta Lead ID, 15-17 dígitos) |
+| `campaign_id` / `campaign_name` | idem |
+| `adset_id` / `adset_name` | idem |
+| `ad_name` | idem |
+
+Campo ausente na planilha entra como `NULL`, não como string vazia — senão "tem
+valor" e "é vazio" viram a mesma coisa na hora de medir.
+
+O `facebook_lead_id` é o que destrava otimizar por **lead qualificado**
+(Conversion Leads): é por ele que a Meta casa o fechamento no CRM com o
+formulário que originou o lead. Até 04/09/2026 essa coluna estava vazia em
+19.420 de 19.420 leads, porque o import jogava o id dentro de `notes` como
+texto solto.
+
+`colunas_da_planilha` no `dry_run` lista os cabeçalhos vistos: é o que permite
+afirmar de qual coluna veio cada campo, e denuncia renome de coluna pela Meta
+antes de virar coluna nula no banco.
+
 ## Dedup
 
 Duas camadas, ambas pelos **últimos 8 dígitos do telefone**:

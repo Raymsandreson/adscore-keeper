@@ -35,6 +35,10 @@ async function ensureExternalLeadForCase(leadId: string | null | undefined, titl
       id: leadId,
       lead_name: title,
       source: 'whatsapp',
+      // capi:sem-conversao — este lead é ESPELHO, criado só para o caso
+      // jurídico ter onde se pendurar (sem telefone, sem e-mail). A Meta
+      // descartaria o evento por falta de correspondência, e a conversão de
+      // verdade já é enfileirada por quem fechou o lead original.
       lead_status: 'closed',
       became_client_date: new Date().toISOString().split('T')[0],
       created_by: extCreatedBy,

@@ -67,6 +67,12 @@ Deno.serve(async (req) => {
         'x-request-id': requestId,
       };
       if (RAILWAY_API_KEY) cloudHeaders['x-api-key'] = RAILWAY_API_KEY;
+      // Identidade de quem clicou em enviar. O Railway usa para registrar a
+      // autoria da mensagem (whatsapp_message_authors), do mesmo jeito que a
+      // edge do Externo faz no canal UazAPI. Sem isto, envio pelo canal Meta
+      // fica sem autor na bolha. `verifyCloudJwt` valida do outro lado.
+      const authDoUsuario = req.headers.get('authorization');
+      if (authDoUsuario) cloudHeaders['Authorization'] = authDoUsuario;
 
       const cloudResp = await fetch(RAILWAY_CLOUD_SEND, {
         method: 'POST',

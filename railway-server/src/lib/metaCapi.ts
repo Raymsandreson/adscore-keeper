@@ -19,7 +19,7 @@ export const CAPI_DATASET_ID =
   process.env.META_CAPI_DATASET_ID || process.env.FACEBOOK_PIXEL_ID || '';
 const VALOR_PADRAO = Number(process.env.META_CAPI_VALOR_PADRAO || 0);
 
-export type Origem = 'kanban' | 'pipeline' | 'planilha' | 'auto_enrich' | 'manual' | 'backfill';
+export type Origem = 'kanban' | 'pipeline' | 'planilha' | 'auto_enrich' | 'manual' | 'backfill' | 'zapsign';
 export type ValorOrigem = 'informado' | 'faixa_produto' | 'padrao' | 'ausente';
 
 // Normalização, hash e regra de correspondência moram em `metaCapiNormalize`
@@ -33,12 +33,18 @@ export {
 
 /**
  * Valor da conversão e a procedência dele.
- * Medido em 02/09/2026: dos 3.992 leads fechados, ZERO tinham
- * `conversion_value > 0` — todo Purchase saía com valor 0 e a Meta não tinha
- * como otimizar por retorno. A faixa de `products_services` cobre 77% deles
- * (3.082 têm `product_service_id`), então serve de estimativa enquanto a
- * equipe não preenche o valor real. `valor_origem` guarda a diferença: o
- * painel nunca apresenta estimativa como se fosse receita apurada.
+ * Medido de novo em 04/09/2026, sobre os 3.173 leads fechados:
+ *   - `conversion_value > 0`:            0   (ninguém preenche o valor real)
+ *   - com produto E faixa de preço:  2.245   (71%) -> valor estimado
+ *   - sem produto nenhum:              928   (29%) -> fica SEM valor
+ *
+ * Os 29% importam: `Purchase` sem `value` é recusado pela Meta com subcode
+ * 2804009 ("Missing Value for Purchase Event"), então esses fechamentos não
+ * viram evento — ficam na fila como ignorados, com o motivo à vista. O
+ * conserto é preencher o produto no lead, não inventar valor aqui.
+ *
+ * `valor_origem` guarda a procedência: o painel nunca apresenta estimativa
+ * como se fosse receita apurada.
  */
 export async function resolveValor(lead: {
   conversion_value?: number | null;

@@ -1,4 +1,21 @@
 /**
+ * MORTO desde 04/09/2026 — nada importa este arquivo. Não volte a usar.
+ *
+ * Ele chamava a edge `facebook-capi`, do app da Meta que foi APAGADO em
+ * 31/07/2026, e todo erro caía num `catch` com `console.error`. Ficou mais de
+ * um mês "enviando" para lugar nenhum. O caminho vivo é a fila:
+ * `registrarFechamentoDeLead` / `enfileiraConversao` em
+ * `src/services/metaCapiQueue.ts`, despachada pelo cron do Railway.
+ *
+ * Além de morto, o mapeamento aqui estava errado: `refused`, `inviavel` e
+ * `cancelled` viravam evento `Lead`, que a Meta conta como CONVERSÃO. Ou seja,
+ * se tivesse funcionado, estaria ensinando a Meta a buscar mais gente parecida
+ * com quem o escritório recusou. Sinal negativo de qualidade precisa de outro
+ * mecanismo (integração de CRM / `lead_event_source`), não deste.
+ *
+ * Mantido só para consulta enquanto o histórico interessa; pode ser apagado.
+ *
+ * ---
  * Send lead quality signals back to Meta Conversions API (CAPI)
  * using the official Business Messaging format.
  * 
