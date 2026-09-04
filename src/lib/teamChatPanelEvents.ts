@@ -15,10 +15,13 @@ export interface TeamChatContextReply {
 }
 
 export interface TeamChatOpenIntent {
-  conversationId: string;
+  /** Conversa a abrir. Vazio quando o pedido é a tela de "Nova Conversa". */
+  conversationId?: string;
   draft?: string;
   focusComposer?: boolean;
   contextReply?: TeamChatContextReply;
+  /** Abre o seletor de pessoa/grupo em vez de uma conversa existente. */
+  newChat?: boolean;
   nonce: string;
 }
 
@@ -41,6 +44,15 @@ export function openTeamChatConversation(intent: Omit<TeamChatOpenIntent, 'nonce
   };
 
   window.dispatchEvent(new CustomEvent<TeamChatOpenIntent>(TEAM_CHAT_OPEN_EVENT, { detail }));
+}
+
+/**
+ * Abre o Chat da Equipe já na tela de "Nova Conversa" (pessoa ou grupo). É o
+ * caminho de quem está nas menções e quer falar com alguém que ainda não te
+ * marcou — o painel de menções não tem lista de conversas própria.
+ */
+export function openTeamChatNewConversation() {
+  openTeamChatConversation({ newChat: true });
 }
 
 export function subscribeToTeamChatConversation(handler: (intent: TeamChatOpenIntent) => void) {

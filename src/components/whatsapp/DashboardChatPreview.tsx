@@ -53,6 +53,7 @@ import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrati
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
+import { blocoDoInterlocutor, montarLinhasDoEstilo } from '@/lib/tomDaConversa';
 import { useSugestaoAutomatica } from '@/hooks/useSugestaoAutomatica';
 import { useRelacionamentoDoContato } from '@/hooks/useRelacionamentoDoContato';
 import { RelacionamentoBar } from '@/components/whatsapp/RelacionamentoBar';
@@ -70,6 +71,8 @@ import { bindDownload } from '@/lib/downloadFile';
 import { midiasDaMensagem, rotuloDaMidia } from '@/lib/midiaDaConversa';
 import { avisarLeituraDeAnexos, gerarRascunhoDaConversa } from '@/lib/rascunhoDaConversa';
 import { linkWhatsAppMessagesToActivity } from '@/lib/whatsappMessageActivities';
+import { separarPrefixoRemetente } from '@/lib/whatsappSenderName';
+import { useAutoriaDasMensagens } from '@/hooks/useAutoriaDasMensagens';
 import { ehInstanciaCloud } from '@/lib/cloudApiInstances';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
@@ -259,6 +262,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       });
   }, [open, canTogglePrivate]);
   const [messages, setMessages] = useState<Message[]>([]);
+  /** Quem da equipe mandou cada envio — cobre áudio e mídia, que não têm assinatura no texto. */
+  const autorPorMensagem = useAutoriaDasMensagens(messages);
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -753,13 +758,19 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     const withText = (messages || []).filter(m => m && m.message_text && String(m.message_text).trim());
     const last = withText[withText.length - 1];
     const lastOutbound = [...withText].reverse().find(m => m.direction === 'outbound');
-    const lastClient = [...withText].reverse().find(m => m.direction !== 'outbound');
     return {
       pending: !!last && last.direction !== 'outbound',
       lastOutboundText: lastOutbound ? String(lastOutbound.message_text).trim() : '',
-      lastClientText: lastClient ? String(lastClient.message_text).trim() : '',
+      // O bloco inteiro sem resposta, não só a última mensagem — mesma regra da
+      // conversa completa (`WhatsAppChat`).
+      lastClientText: blocoDoInterlocutor(withText),
     };
   };
+  /** Como EU escrevo nesta conversa — exemplos reais para a sugestão soar minha. */
+  const comoEuEscrevoParaIA = useMemo(
+    () => montarLinhasDoEstilo((messages || []).slice(-40)),
+    [messages],
+  );
   /**
    * Quem é essa pessoa para nós — mesma cascata da conversa completa
    * (campo salvo → nome → IA lendo a conversa). Entra no prompt da sugestão.
@@ -818,6 +829,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     getState: buildReplyState,
     getPendenciasDoCliente: () => pendenciasDoClienteParaIA,
     getContextoDaRelacao: () => relacionamento.linhas,
+    getComoEuEscrevo: () => comoEuEscrevoParaIA,
   });
   const temSugestaoNoCampo = sugestaoCabeAqui && !!sugestaoAuto;
   /** Passa a sugestão para o campo, com o cursor no fim, pronta para editar ou enviar. */
@@ -2474,6 +2486,15 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
 
                   const msg = item.data as Message;
                   const isInbound = msg.direction === 'inbound';
+                  // Quem da equipe assinou o envio: a assinatura `*Nome:*` sobe
+                  // pro cabeçalho da bolha e sai do corpo. Mesma leitura da aba
+                  // WhatsApp. Áudio e mídia saem sem assinatura — para esses, o
+                  // autor vem do banco (`useAutoriaDasMensagens`).
+                  const autoriaEnviada = isInbound ? null : separarPrefixoRemetente(msg.message_text);
+                  const textoDaBolha = autoriaEnviada?.nome ? autoriaEnviada.corpo : msg.message_text;
+                  const nomeDeQuemEnviou = isInbound
+                    ? null
+                    : (autorPorMensagem[msg.external_message_id || ''] || autoriaEnviada?.nome || null);
                   return (
                     <div key={msg.id} data-msg-id={msg.id}>
                       {showDateSep && (
@@ -2540,12 +2561,20 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                               {msg.media_type === 'image' ? '📷 Imagem' : msg.media_type === 'audio' ? '🎵 Áudio' : msg.media_type === 'video' ? '🎬 Vídeo' : msg.media_type === 'document' ? '📄 Documento' : '📎 Mídia'}
                             </span>
                           )}
-                          {msg.message_text && (
+                          {nomeDeQuemEnviou && (
+                            <p
+                              className="text-[9px] font-semibold mb-0.5 text-primary-foreground/80"
+                              title="Quem da equipe enviou esta mensagem"
+                            >
+                              {nomeDeQuemEnviou}
+                            </p>
+                          )}
+                          {textoDaBolha && (
                             <p className="whitespace-pre-wrap break-words">
                               {msg.message_type === 'audio' && (
                                 <span className="text-[10px] font-medium opacity-70 block mb-0.5">🎤 Transcrição:</span>
                               )}
-                              {msg.message_text}
+                              {textoDaBolha}
                             </p>
                           )}
                           <div className="flex items-center gap-0.5 mt-0.5 flex-wrap">
@@ -2832,6 +2861,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                 getState={buildReplyState}
                 pendenciasDoCliente={pendenciasDoClienteParaIA}
                 contextoDaRelacao={relacionamento.linhas}
+                comoEuEscrevo={comoEuEscrevoParaIA}
                 onApply={setNewMessage}
               />
               {/* Instância controlada: sugestão focada numa mensagem específica (botão por bolha). */}
@@ -2840,6 +2870,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                 getState={buildReplyState}
                 pendenciasDoCliente={pendenciasDoClienteParaIA}
                 contextoDaRelacao={relacionamento.linhas}
+                comoEuEscrevo={comoEuEscrevoParaIA}
                 onApply={setNewMessage}
                 open={replySuggestOpen}
                 onOpenChange={setReplySuggestOpen}

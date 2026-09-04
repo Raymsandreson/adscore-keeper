@@ -15,6 +15,7 @@ Documentação de todas as seções do sistema: propósito de cada tela, funcion
 - [Comunicação e gestão](comunicacao-gestao.md) — WhatsApp, chat da equipe, campanhas, relatórios IA, equipe, analytics, financeiro, configurações
 - [Chat interno da equipe](chat-interno.md) — de quem é a conversa de cada ficha (a da atividade é a do processo), menções e para onde elas levam
 - [Financeiro no processo e na atividade](financeiro-processo-atividade.md) — onde lançar despesa/receita de cliente e como o lançamento sobe para processo, caso e lead
+- [Dom — Assessor Jurídico Virtual](dom-assessor-virtual.md) — atendente virtual que responde o cliente no grupo do caso com o andamento real dos autos: as três travas, o isolamento por grupo, como ele fala e o que ainda falta
 - [Open Finance / Celcoin](open-finance-celcoin.md) — conciliação bancária que substitui a Pluggy: caminhos versionados, janela de datas, consentimento PJ e o que ainda falta conectar
 
 ## Observação sobre propriedade intelectual (Brasil)
