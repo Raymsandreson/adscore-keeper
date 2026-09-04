@@ -837,11 +837,22 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
         />
       )}
 
-      {showForm && (
-        <Card className="border-primary/30">
-          <CardContent className="p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando agente' : '➕ Novo agente'}</p>
+      {/*
+        O editor abria EMBAIXO, empurrando a lista de agentes para o rodapé.
+        Regra de interface do projeto: o que se abre, abre em painel lateral por
+        cima do que já está aberto, e fechar devolve a pessoa exatamente onde
+        ela estava. Aqui vale dobrado — o formulário tem três seções e mais de
+        mil linhas de tela; com ele inline, a lista atrás virava rolagem perdida
+        e não dava para conferir um agente enquanto se edita outro.
+
+        Fechar o painel chama resetForm, que é o mesmo caminho do botão
+        Cancelar: sair pelo X não pode deixar estado meio preenchido para trás.
+      */}
+      <Sheet open={showForm} onOpenChange={(aberto) => { if (!aberto) resetForm(); }}>
+        <SheetContent side="right" className="w-full sm:max-w-3xl overflow-y-auto">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <SheetTitle className="text-xs font-medium text-primary">{editingId ? '✏️ Editando agente' : '➕ Novo agente'}</SheetTitle>
               {/*
                 Eram sete botões em fileira única. Medido em 04/09/2026 sobre os 16
                 agentes: Automações tinha 0 regras e Documentos de conhecimento 0 —
@@ -2112,13 +2123,13 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
               </div>
             )}
 
-            <div className="flex gap-2 justify-end border-t pt-3">
+            <div className="flex gap-2 justify-end border-t pt-3 sticky bottom-0 bg-background">
               <Button size="sm" variant="ghost" onClick={resetForm}>Cancelar</Button>
               <Button size="sm" onClick={handleSave}>{editingId ? 'Atualizar' : 'Salvar'}</Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {shortcuts.length === 0 ? (
         <Card><CardContent className="py-6 text-center text-sm text-muted-foreground">
