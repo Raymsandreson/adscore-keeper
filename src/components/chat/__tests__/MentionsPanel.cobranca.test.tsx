@@ -5,7 +5,7 @@
  * ela chega — senão a marcação vira notificação solta, sem registro.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const mentions = [
   {
@@ -95,6 +95,11 @@ const mentions = [
   },
 ];
 
+const profilesMock = [
+  { id: 'p1', user_id: 'keliane', full_name: 'Keliane Souza', email: 'keliane@rp.adv' },
+  { id: 'p2', user_id: 'me', full_name: 'Eu Mesmo', email: 'eu@rp.adv' },
+];
+
 vi.mock('@/hooks/useTeamChat', () => ({
   useMyMentions: () => ({
     mentions,
@@ -115,10 +120,19 @@ vi.mock('@/integrations/supabase/external-client', () => ({
 vi.mock('../TeamDirectChatPanel', () => ({ TeamDirectChatPanel: () => null }));
 vi.mock('@/lib/teamChatPanelEvents', () => ({
   openTeamChatConversation: vi.fn(),
+  openTeamChatNewConversation: vi.fn(),
   subscribeToTeamChatConversation: () => () => {},
 }));
+// A busca do painel também procura PESSOA (abrir conversa direta) — daí o
+// painel precisar de perfis, de quem está ativo e de quem é você.
+vi.mock('@/lib/teamDirectMessages', () => ({ startDirectConversationWith: vi.fn() }));
+vi.mock('@/hooks/useProfilesList', () => ({ useProfilesList: () => profilesMock }));
+vi.mock('@/hooks/useInactiveUserIds', () => ({ useInactiveUserIds: () => new Set<string>() }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuthContext: () => ({ user: { id: 'me' } }) }));
 
 import { MentionsPanel } from '../MentionsPanel';
+import { startDirectConversationWith } from '@/lib/teamDirectMessages';
+import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
 
 /** O painel abre direto nas menções — a aba "Chat" não existe mais. */
 function renderMentionsTab() {
@@ -158,5 +172,41 @@ describe('MentionsPanel — cobrança do chat interno', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Não lidas \(1\)$/ }));
     expect(screen.getByText('@Eu Mesmo consegue olhar isso hoje?')).toBeInTheDocument();
     expect(screen.queryByText('@Zulmira Teixeira cadê a certidão?')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Sem aba "Chat", a caixa de busca virou a porta de entrada da conversa: quem
+ * nunca te marcou não tem menção nenhuma, e antes o nome dela não devolvia nada.
+ */
+describe('MentionsPanel — a busca acha gente, não só menção', () => {
+  it('oferece abrir conversa direta com quem não aparece nas menções', async () => {
+    (startDirectConversationWith as any).mockResolvedValue('conv-nova');
+    renderMentionsTab();
+
+    fireEvent.change(screen.getByPlaceholderText(/Buscar por pessoa/), {
+      target: { value: 'keliane' },
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Keliane Souza/ }));
+
+    await waitFor(() =>
+      expect(startDirectConversationWith).toHaveBeenCalledWith('keliane', 'me')
+    );
+    await waitFor(() =>
+      expect(openTeamChatConversation).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationId: 'conv-nova' })
+      )
+    );
+  });
+
+  it('não oferece você mesmo na lista de pessoas', () => {
+    renderMentionsTab();
+
+    fireEvent.change(screen.getByPlaceholderText(/Buscar por pessoa/), {
+      target: { value: 'eu mesmo' },
+    });
+
+    expect(screen.queryByText('Abrir conversa direta')).not.toBeInTheDocument();
   });
 });

@@ -105,6 +105,11 @@ let mentions: any[] = [];
 let followedThreads = new Set<string>();
 const leaveMentionThread = vi.fn().mockResolvedValue(undefined);
 
+const profilesMock = [
+  { id: 'p1', user_id: 'keliane', full_name: 'Keliane Souza', email: 'keliane@rp.adv' },
+  { id: 'p2', user_id: 'me', full_name: 'Eu Mesmo', email: 'eu@rp.adv' },
+];
+
 vi.mock('@/hooks/useTeamChat', () => ({
   useMyMentions: () => ({
     mentions,
@@ -128,8 +133,15 @@ vi.mock('@/integrations/supabase/external-client', () => ({
 vi.mock('../TeamDirectChatPanel', () => ({ TeamDirectChatPanel: () => null }));
 vi.mock('@/lib/teamChatPanelEvents', () => ({
   openTeamChatConversation: vi.fn(),
+  openTeamChatNewConversation: vi.fn(),
   subscribeToTeamChatConversation: () => () => {},
 }));
+// A busca do painel também procura PESSOA (abrir conversa direta) — daí o
+// painel precisar de perfis, de quem está ativo e de quem é você.
+vi.mock('@/lib/teamDirectMessages', () => ({ startDirectConversationWith: vi.fn() }));
+vi.mock('@/hooks/useProfilesList', () => ({ useProfilesList: () => profilesMock }));
+vi.mock('@/hooks/useInactiveUserIds', () => ({ useInactiveUserIds: () => new Set<string>() }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuthContext: () => ({ user: { id: 'me' } }) }));
 
 import { MentionsPanel } from '../MentionsPanel';
 
