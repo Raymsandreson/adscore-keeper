@@ -95,6 +95,10 @@ export interface GeminiCallOptions {
   thinking_budget?: number;
   /** Força saída JSON (Google: responseMimeType application/json). Ignorado quando há tools. */
   response_json?: boolean;
+  /** SÓ Anthropic: output_config.effort (low|medium|high|xhigh|max). Ignorado no Google. */
+  effort?: string;
+  /** SÓ Anthropic: cacheia o system prompt (cache_control ephemeral). Ignorado no Google. */
+  cache_system?: boolean;
 }
 
 export async function callGemini(options: GeminiCallOptions): Promise<Response> {
