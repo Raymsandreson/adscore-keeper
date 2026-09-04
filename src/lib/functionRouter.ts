@@ -26,6 +26,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'onboarding-checkpoint-execute': 'railway',
   'onboarding-checkpoint-reprocess': 'railway',
   'regenerate-lead-name': 'railway',
+  'resolve-client-names': 'railway',
   'lead-close-sequence-info': 'railway',
   'whatsapp-download-media': 'railway',
   // Só existe no Railway. Sem esta linha caía no default 'cloud', onde não há
