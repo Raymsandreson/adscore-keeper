@@ -254,10 +254,24 @@ Deno.serve(async (req) => {
       .from("dom_numeros_equipe").select("phone").eq("ativo", true);
     const equipe = new Set((equipeRows ?? []).map((r: any) => so(r.phone)));
 
-    let q = supabase.from("dom_grupos_piloto")
-      .select("group_jid, group_name, lead_id, modo").eq("ativo", true);
-    if (soEsteGrupo) q = q.eq("group_jid", soEsteGrupo);
-    const { data: grupos } = await q.limit(limite);
+    // QUEM OLHAR
+    // Com 8 grupos dava para varrer todos. Com mais de mil, `select ... limit 8`
+    // sem ordenação olharia sempre os mesmos oito e os outros nunca — o piloto
+    // pareceria funcionar e a maior parte dos clientes ficaria sem resposta,
+    // calada. A conta vira do avesso: `dom_grupos_para_olhar` parte das
+    // MENSAGENS e devolve só grupo onde o cliente falou DEPOIS da última
+    // decisão, o mais recente primeiro. Grupo parado não custa nada.
+    let grupos: any[] = [];
+    if (soEsteGrupo) {
+      const { data } = await supabase.from("dom_grupos_piloto")
+        .select("group_jid, group_name, lead_id, modo")
+        .eq("ativo", true).eq("group_jid", soEsteGrupo).limit(1);
+      grupos = data ?? [];
+    } else {
+      const { data, error } = await supabase.rpc("dom_grupos_para_olhar", { p_limite: limite });
+      if (error) return json({ error: `fila de grupos: ${error.message}` }, 500);
+      grupos = data ?? [];
+    }
 
     const pulados: any[] = [];
     let rascunhos = 0;

@@ -26,6 +26,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal } from 'lucide-react';
@@ -146,6 +147,9 @@ export function AtendenteVirtualPanel() {
    * sair sozinha — e quem lia concluía, com razão, que ainda precisava aprovar.
    */
   const [saiEm, setSaiEm] = useState<Record<string, string>>({});
+  const [busca, setBusca] = useState('');
+  const [achados, setAchados] = useState<GrupoPiloto[]>([]);
+  const [totalGrupos, setTotalGrupos] = useState(0);
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState<Pendente | null>(null);
   const [texto, setTexto] = useState('');
@@ -173,15 +177,22 @@ export function AtendenteVirtualPanel() {
           .select('id, group_name, group_jid, intencao, decisao, motivo, pergunta, criado_em')
           .eq('decisao', 'silencio')
           .order('criado_em', { ascending: false }).limit(100),
+        // Só os que RESPONDEM SOZINHOS. São mais de mil grupos no piloto:
+        // desenhar mil chaves na tela não é configuração, é entulho. Quem
+        // procura um grupo específico usa a busca abaixo.
         dbAny.from('dom_grupos_piloto')
           .select('group_jid, group_name, modo, ativo')
-          .eq('ativo', true).order('group_name'),
+          .eq('ativo', true).eq('modo', 'automatico').order('group_name'),
       ]);
       setFila((f.data as unknown as Pendente[]) || []);
       setEnviadas((e.data as unknown as Pendente[]) || []);
       setComHumano((h.data as unknown as Pendente[]) || []);
       setSilenciadas((s.data as unknown as Decisao[]) || []);
       setGrupos((gp.data as unknown as GrupoPiloto[]) || []);
+
+      const { count } = await dbAny.from('dom_grupos_piloto')
+        .select('group_jid', { count: 'exact', head: true }).eq('ativo', true);
+      setTotalGrupos(count || 0);
 
       const ids = [...((f.data as unknown as Pendente[]) || [])]
         .map(p => p.agendamento_id).filter(Boolean) as string[];
@@ -233,13 +244,14 @@ export function AtendenteVirtualPanel() {
       .update({ modo } as never).eq('group_jid', g.group_jid);
     setTrocandoModo(null);
     if (error) { toast.error('Não salvou: ' + error.message); return; }
-    setGrupos(atual => atual.map(x => (x.group_jid === g.group_jid ? { ...x, modo } : x)));
+    setAchados(atual => atual.map(x => (x.group_jid === g.group_jid ? { ...x, modo } : x)));
+    setGrupos(atual => sozinho
+      ? (atual.some(x => x.group_jid === g.group_jid) ? atual : [...atual, { ...g, modo }])
+      : atual.filter(x => x.group_jid !== g.group_jid));
     toast.success(sozinho
       ? `${g.group_name}: responde sozinho, 5 min depois de o cliente escrever`
       : `${g.group_name}: volta a só rascunhar`);
   };
-
-  const automaticos = grupos.filter(g => g.modo === 'automatico').length;
 
   /**
    * Aprovar E mandar — o botão que faltava.
@@ -356,6 +368,17 @@ export function AtendenteVirtualPanel() {
     }
   };
 
+  /** Procurar um grupo entre os mais de mil, para ligar ou desligar. */
+  const procurar = async (termo: string) => {
+    setBusca(termo);
+    if (termo.trim().length < 3) { setAchados([]); return; }
+    const { data } = await dbAny.from('dom_grupos_piloto')
+      .select('group_jid, group_name, modo, ativo')
+      .eq('ativo', true).ilike('group_name', `%${termo.trim()}%`)
+      .order('group_name').limit(30);
+    setAchados((data as unknown as GrupoPiloto[]) || []);
+  };
+
   const marcar = (id: string, v: boolean) => {
     setMarcadas(atual => {
       const novo = new Set(atual);
@@ -378,9 +401,9 @@ export function AtendenteVirtualPanel() {
       <div className="flex items-center gap-2">
         <p className="text-[11px] text-muted-foreground flex-1">
           O que o atendente virtual fez.{' '}
-          {automaticos === 0
-            ? 'Nenhum grupo responde sozinho ainda — tudo fica esperando revisão e nada sai para o cliente.'
-            : `${automaticos} de ${grupos.length} grupos respondem sozinhos: a resposta entra na fila e sai 5 minutos depois, se ninguém escrever antes.`}
+          {grupos.length === 0
+            ? `Nenhum dos ${totalGrupos} grupos responde sozinho ainda — tudo fica esperando revisão e nada sai para o cliente.`
+            : `${grupos.length} de ${totalGrupos} grupos respondem sozinhos: a resposta entra na fila e sai 5 minutos depois, se ninguém escrever antes.`}
         </p>
         <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={carregar} disabled={carregando}>
           {carregando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -388,33 +411,62 @@ export function AtendenteVirtualPanel() {
         </Button>
       </div>
 
-      {grupos.length > 0 && (
-        <Card>
-          <CardContent className="p-3 space-y-2">
-            <p className="text-[11px] font-medium">Quem ele acompanha</p>
-            <p className="text-[10px] text-muted-foreground">
-              Ligado, ele responde sozinho 5 minutos depois de o cliente escrever. A mensagem
-              aparece na conversa como bolha tracejada com cronômetro — dá para tirar da fila
-              ou mandar na hora. Se alguém escrever no grupo antes, ela não sai.
-            </p>
-            <div className="space-y-1 pt-1">
-              {grupos.map(g => (
-                <div key={g.group_jid} className="flex items-center gap-2">
-                  <span className="text-[11px] flex-1 truncate">{g.group_name || g.group_jid}</span>
-                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                    {g.modo === 'automatico' ? 'responde sozinho' : 'só rascunha'}
-                  </span>
-                  <Switch
-                    checked={g.modo === 'automatico'}
-                    disabled={trocandoModo === g.group_jid}
-                    onCheckedChange={(v) => trocarModo(g, v)}
-                  />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardContent className="p-3 space-y-2">
+          <p className="text-[11px] font-medium">Quem responde sozinho</p>
+          <p className="text-[10px] text-muted-foreground">
+            Ligado, ele responde sozinho 5 minutos depois de o cliente escrever. A mensagem
+            aparece na conversa como bolha tracejada com cronômetro — dá para tirar da fila
+            ou mandar na hora. Se alguém escrever no grupo antes, ela não sai.
+            {' '}Os outros continuam trabalhando em modo rascunho: escrevem e enchem a fila,
+            sem nada chegar no cliente.
+          </p>
+
+          <div className="space-y-1 pt-1">
+            {grupos.length === 0 && (
+              <p className="text-[10px] text-muted-foreground italic py-1">
+                Nenhum grupo responde sozinho ainda.
+              </p>
+            )}
+            {grupos.map(g => (
+              <div key={g.group_jid} className="flex items-center gap-2">
+                <span className="text-[11px] flex-1 truncate">{g.group_name || g.group_jid}</span>
+                <span className="text-[10px] text-emerald-700 whitespace-nowrap">responde sozinho</span>
+                <Switch
+                  checked
+                  disabled={trocandoModo === g.group_jid}
+                  onCheckedChange={(v) => trocarModo(g, v)}
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="pt-2 border-t space-y-1">
+            <Input
+              value={busca}
+              onChange={(e) => procurar(e.target.value)}
+              placeholder={`Procurar entre os ${totalGrupos} grupos para ligar…`}
+              className="h-7 text-xs"
+            />
+            {busca.trim().length >= 3 && achados.length === 0 && (
+              <p className="text-[10px] text-muted-foreground py-1">Nenhum grupo com esse nome.</p>
+            )}
+            {achados.map(g => (
+              <div key={g.group_jid} className="flex items-center gap-2">
+                <span className="text-[11px] flex-1 truncate">{g.group_name || g.group_jid}</span>
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                  {g.modo === 'automatico' ? 'responde sozinho' : 'só rascunha'}
+                </span>
+                <Switch
+                  checked={g.modo === 'automatico'}
+                  disabled={trocandoModo === g.group_jid}
+                  onCheckedChange={(v) => trocarModo(g, v)}
+                />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="flex flex-wrap items-center gap-1">
         <span className="text-[10px] text-muted-foreground mr-1">Intenção:</span>
