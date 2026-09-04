@@ -103,10 +103,39 @@ Duas camadas, ambas pelos **últimos 8 dígitos do telefone**:
 Por isso a função é idempotente: rodar de novo não duplica, e uma rodada perdida
 é recuperada pela seguinte enquanto o lead estiver dentro da janela.
 
+### A armadilha das 1000 linhas (corrigida em 04/09/2026)
+
+A consulta dos leads já existentes **não paginava**. O PostgREST corta em 1000
+linhas por request, e o board BPC tem **7.255 leads com telefone**: o dedup
+conhecia 14% deles. Com o cron ligado, quem ficasse fora dessas 1000 seria
+recriado a cada 10 minutos, para sempre — o lead novo também não entraria nas
+primeiras 1000, então nem a rodada seguinte se corrigiria.
+
+Nunca chegou a acontecer: a janela de 7 dias do BPC estava vazia quando o cron
+foi ligado. Foi achado medindo, não por sintoma.
+
+O conserto pagina com `.range()` e `.order('id')` — sem ordem estável a
+paginação pula e repete linhas. A resposta agora traz `dedup_leads_lidos` e
+`dedup_telefones_conhecidos`: **se `dedup_leads_lidos` vier redondo em 1000 num
+board maior que isso, a paginação quebrou de novo.**
+
 ## O cron
 
 `runSheetLeadSync` em `railway-server/src/index.ts`, a cada 10 min, janela de 7
 dias, via loopback autenticado (`x-internal-key`).
+
+**Ligado em 04/09/2026.** Conferir de fora, sem log do Railway:
+
+```
+curl -s https://adscore-keeper-production.up.railway.app/health | jq .sheet_lead_sync
+{ "ligado": true, "execucoes": 3, "ultima_em": "...", "ultimo_resultado": "criados=0 boards=3 falhas=0", "criados_acumulado": 0 }
+```
+
+Esse bloco existe porque **o banco não prova que o cron está vivo**: com a janela
+já importada, uma rodada correta cria zero leads e não deixa rastro nenhum.
+"ligado" e "morto" ficavam indistinguíveis — foi assim que 4 jobs do pg_cron do
+Externo rodaram para nada por meses. `ultima_em` é gravado antes do `await`, para
+que uma rodada travada apareça como travada, e não como ausente.
 
 **Sai desligado.** Ligar é `SHEET_LEAD_SYNC=on` nas env vars do Railway. O gate
 existe porque a primeira rodada não importa "os leads novos" — importa tudo que
