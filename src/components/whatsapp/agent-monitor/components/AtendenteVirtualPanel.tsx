@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare } from 'lucide-react';
@@ -43,6 +44,9 @@ interface Pendente {
    * que quebra calada numa atualização de biblioteca.
    */
   dom_atendentes?: { nome: string }[] | { nome: string } | null;
+}
+interface GrupoPiloto {
+  group_jid: string; group_name: string | null; modo: string; ativo: boolean;
 }
 interface Decisao {
   id: string; group_name: string | null; group_jid: string; intencao: string | null;
@@ -105,6 +109,8 @@ export function AtendenteVirtualPanel() {
   const [enviadas, setEnviadas] = useState<Pendente[]>([]);
   const [comHumano, setComHumano] = useState<Pendente[]>([]);
   const [silenciadas, setSilenciadas] = useState<Decisao[]>([]);
+  const [grupos, setGrupos] = useState<GrupoPiloto[]>([]);
+  const [trocandoModo, setTrocandoModo] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState<Pendente | null>(null);
   const [texto, setTexto] = useState('');
@@ -114,7 +120,7 @@ export function AtendenteVirtualPanel() {
     try {
       await ensureExternalSession();
       const sel = 'id, group_jid, instance_name, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, dom_atendentes(nome)';
-      const [f, e, h, s] = await Promise.all([
+      const [f, e, h, s, gp] = await Promise.all([
         dbAny.from('dom_respostas_pendentes').select(sel)
           .eq('status', 'pendente').is('atendente_id', null)
           .order('criado_em', { ascending: false }).limit(100),
@@ -128,11 +134,15 @@ export function AtendenteVirtualPanel() {
           .select('id, group_name, group_jid, intencao, decisao, motivo, pergunta, criado_em')
           .eq('decisao', 'silencio')
           .order('criado_em', { ascending: false }).limit(100),
+        dbAny.from('dom_grupos_piloto')
+          .select('group_jid, group_name, modo, ativo')
+          .eq('ativo', true).order('group_name'),
       ]);
       setFila((f.data as unknown as Pendente[]) || []);
       setEnviadas((e.data as unknown as Pendente[]) || []);
       setComHumano((h.data as unknown as Pendente[]) || []);
       setSilenciadas((s.data as unknown as Decisao[]) || []);
+      setGrupos((gp.data as unknown as GrupoPiloto[]) || []);
     } catch (err) {
       console.error('[AtendenteVirtualPanel]', err);
     } finally {
@@ -156,20 +166,72 @@ export function AtendenteVirtualPanel() {
     carregar();
   };
 
+  /**
+   * Liga/desliga o "responde sozinho" de um grupo.
+   *
+   * `rascunho` → escreve e espera alguém aprovar (nada sai).
+   * `automatico` → entra na fila de envio com 5 minutos de atraso; a janela é a
+   * revisão, e a bolha tracejada na conversa deixa cancelar ou mandar na hora.
+   */
+  const trocarModo = async (g: GrupoPiloto, sozinho: boolean) => {
+    setTrocandoModo(g.group_jid);
+    const modo = sozinho ? 'automatico' : 'rascunho';
+    const { error } = await dbAny.from('dom_grupos_piloto')
+      .update({ modo } as never).eq('group_jid', g.group_jid);
+    setTrocandoModo(null);
+    if (error) { toast.error('Não salvou: ' + error.message); return; }
+    setGrupos(atual => atual.map(x => (x.group_jid === g.group_jid ? { ...x, modo } : x)));
+    toast.success(sozinho
+      ? `${g.group_name}: responde sozinho, 5 min depois de o cliente escrever`
+      : `${g.group_name}: volta a só rascunhar`);
+  };
+
+  const automaticos = grupos.filter(g => g.modo === 'automatico').length;
+
   const vazio = (txt: string) => <p className="text-xs text-muted-foreground py-6 text-center">{txt}</p>;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <p className="text-[11px] text-muted-foreground flex-1">
-          O que o atendente virtual fez. Enquanto os grupos estiverem em modo Rascunho,
-          nada sai para o cliente — a coluna Enviadas fica vazia de propósito.
+          O que o atendente virtual fez.{' '}
+          {automaticos === 0
+            ? 'Nenhum grupo responde sozinho ainda — tudo fica esperando revisão e nada sai para o cliente.'
+            : `${automaticos} de ${grupos.length} grupos respondem sozinhos: a resposta entra na fila e sai 5 minutos depois, se ninguém escrever antes.`}
         </p>
         <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={carregar} disabled={carregando}>
           {carregando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
           Atualizar
         </Button>
       </div>
+
+      {grupos.length > 0 && (
+        <Card>
+          <CardContent className="p-3 space-y-2">
+            <p className="text-[11px] font-medium">Quem ele acompanha</p>
+            <p className="text-[10px] text-muted-foreground">
+              Ligado, ele responde sozinho 5 minutos depois de o cliente escrever. A mensagem
+              aparece na conversa como bolha tracejada com cronômetro — dá para tirar da fila
+              ou mandar na hora. Se alguém escrever no grupo antes, ela não sai.
+            </p>
+            <div className="space-y-1 pt-1">
+              {grupos.map(g => (
+                <div key={g.group_jid} className="flex items-center gap-2">
+                  <span className="text-[11px] flex-1 truncate">{g.group_name || g.group_jid}</span>
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                    {g.modo === 'automatico' ? 'responde sozinho' : 'só rascunha'}
+                  </span>
+                  <Switch
+                    checked={g.modo === 'automatico'}
+                    disabled={trocandoModo === g.group_jid}
+                    onCheckedChange={(v) => trocarModo(g, v)}
+                  />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="fila">
         <TabsList className="grid w-full grid-cols-4">

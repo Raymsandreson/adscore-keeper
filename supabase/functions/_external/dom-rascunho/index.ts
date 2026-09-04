@@ -37,6 +37,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const DOM_AGENT_ID = "d6ad8eee-d6a3-452c-b852-b94ef8dd54bf";
 
+/** A janela entre escrever e falar. É ela que faz o papel da revisão. */
+const ATRASO_MIN = 5;
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -394,7 +397,9 @@ Deno.serve(async (req) => {
         resposta_sugerida: resposta,
         intencao: cls.intencao,
         atendente_id: atendenteId,
-        motivo_revisao: motivo || "modo rascunho: tudo passa por revisão",
+        motivo_revisao: motivo || (g.modo === "automatico"
+          ? "modo automático: entra na fila de envio"
+          : "modo rascunho: tudo passa por revisão"),
         contexto_usado: domCtx.contexto || null,
         status: "pendente",
       }).select("id").maybeSingle();
@@ -404,14 +409,62 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // 6. Modo automático: o rascunho entra na MESMA fila de agendamento que a
+      //    equipe já usa. É de lá que sai a bolha tracejada com o cronômetro na
+      //    conversa, o "tirar da fila" e o "enviar agora" — nada disso precisou
+      //    ser escrito de novo.
+      //
+      //    A janela de 5 minutos É a revisão: silêncio aprova. E `pular_se_
+      //    responder` garante o resto — se o cliente OU um colega escrever no
+      //    grupo dentro da janela, a resposta não sai. Rascunho velho não fala,
+      //    e o tique seguinte redesenha em cima do que foi dito.
+      //
+      //    Fica de fora, de propósito: grupo de reclamação (já foi para uma
+      //    pessoa) e resposta que o próprio modelo marcou com [REVISAR] — nesses
+      //    dois o silêncio não pode valer como aprovação.
+      const pendenteId = (linhaFila as any)?.id ?? null;
+      let agendadoPara: string | null = null;
+      if (g.modo === "automatico" && !atendenteId && !motivo) {
+        const quando = new Date(Date.now() + ATRASO_MIN * 60 * 1000).toISOString();
+        const { data: ag, error: errAg } = await supabase
+          .from("whatsapp_mensagens_agendadas").insert({
+            phone: g.group_jid,
+            instance_name: ultima.instancia,
+            lead_id: g.lead_id || domCtx.contexto?.lead_id || null,
+            contact_name: g.group_name || null,
+            mensagem: resposta,
+            mensagem_original: resposta,
+            proximo_envio_at: quando,
+            repeticao: "nenhuma",
+            intervalo: 1,
+            unidade: "dias",
+            pular_se_responder: true,
+            criado_por_nome: "Atendente virtual",
+          }).select("id").maybeSingle();
+
+        if (errAg) {
+          // Falhar aqui não pode perder o rascunho: ele continua na fila para
+          // revisão humana, que é o comportamento antigo e seguro.
+          pulados.push({ grupo: g.group_jid, motivo: `agendamento: ${errAg.message}` });
+        } else if (pendenteId) {
+          agendadoPara = quando;
+          await supabase.from("dom_respostas_pendentes")
+            .update({
+              agendamento_id: (ag as any).id,
+              motivo_revisao: `sai sozinho em ${ATRASO_MIN} min — some se alguém escrever antes`,
+            })
+            .eq("id", pendenteId);
+        }
+      }
+
       await registrar(
         supabase, g,
         atendenteId ? "humano" : "respondeu",
-        motivo || "rascunho gerado",
-        { pergunta, intencao: cls.intencao, pendente_id: (linhaFila as any)?.id ?? null },
+        motivo || (agendadoPara ? `agendado para ${agendadoPara}` : "rascunho gerado"),
+        { pergunta, intencao: cls.intencao, pendente_id: pendenteId },
       );
       rascunhos++;
-      console.log(`[dom-rascunho] grupo=${g.group_jid} intencao=${cls.intencao} humano=${!!atendenteId} (${resposta.length}ch)`);
+      console.log(`[dom-rascunho] grupo=${g.group_jid} intencao=${cls.intencao} humano=${!!atendenteId} agendado=${!!agendadoPara} (${resposta.length}ch)`);
     }
 
     return json({ grupos: (grupos ?? []).length, rascunhos, pulados });
