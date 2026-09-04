@@ -126,3 +126,53 @@ describe('dedupeMirroredMessages', () => {
     expect(out.map(m => [m.id, m.direction])).toEqual([['p1', 'inbound'], ['p2', 'outbound']]);
   });
 });
+
+/**
+ * PREV 2209 (`120363412100298990`) — caso real de 04/09/2026, o que motivou o
+ * campo `sent_by_instance`: "Vocês recebem bolsa família?" gravada 4 vezes, uma
+ * por instância nossa no grupo. A linha canônica (a primeira da lista) é de uma
+ * instância que apenas RECEBEU; mostrar o `instance_name` dela na bolha diria o
+ * número errado.
+ */
+const BOLSA_FAMILIA = [
+  { id: 'x1', direction: 'inbound', instance_name: 'Atendimento Previdenciário 2', external_message_id: '558688257217:3EB0F3DC4B8CB465010BD6', created_at: '2026-09-04T16:41:32.893Z' },
+  { id: 'x2', direction: 'inbound', instance_name: 'Luiz Abraci', external_message_id: '558688054381:3EB0F3DC4B8CB465010BD6', created_at: '2026-09-04T16:41:32.584Z' },
+  { id: 'x3', direction: 'outbound', instance_name: 'Raym', external_message_id: '558695590127:3EB0F3DC4B8CB465010BD6', created_at: '2026-09-04T16:41:32.474Z' },
+  { id: 'x4', direction: 'inbound', instance_name: 'Atendimento Previdenciário', external_message_id: '558694000545:3EB0F3DC4B8CB465010BD6', created_at: '2026-09-04T16:41:32.423Z' },
+];
+
+describe('sent_by_instance — por qual número saiu', () => {
+  it('é a instância do espelho outbound, não a da linha canônica', () => {
+    const [msg] = dedupeMirroredMessages(BOLSA_FAMILIA, { ourPhones: NOSSOS });
+    expect(msg.instance_name).toBe('Atendimento Previdenciário 2'); // canônica: só recebeu
+    expect(msg.sent_by_instance).toBe('Raym');                      // quem enviou de verdade
+  });
+
+  it('não depende da ordem de entrada', () => {
+    const asc = dedupeMirroredMessages(BOLSA_FAMILIA, { ourPhones: NOSSOS })[0];
+    const desc = dedupeMirroredMessages([...BOLSA_FAMILIA].reverse(), { ourPhones: NOSSOS })[0];
+    expect(asc.sent_by_instance).toBe('Raym');
+    expect(desc.sent_by_instance).toBe('Raym');
+  });
+
+  it('mensagem do celular (sem espelho outbound) resolve pelo telefone do autor', () => {
+    const porTelefone = new Map([['558688437181', 'Dom-Abraci']]);
+    const [msg] = dedupeMirroredMessages(DOM_NO_CELULAR, {
+      ourPhones: NOSSOS,
+      instanceNameByPhone: porTelefone,
+    });
+    expect(msg.direction).toBe('outbound');
+    expect(msg.sent_by_instance).toBe('Dom-Abraci');
+  });
+
+  it('sem o mapa, mensagem do celular fica sem instância — não chuta', () => {
+    const [msg] = dedupeMirroredMessages(DOM_NO_CELULAR, { ourPhones: NOSSOS });
+    expect(msg.sent_by_instance).toBeNull();
+  });
+
+  it('mensagem do cliente não tem instância remetente', () => {
+    const [msg] = dedupeMirroredMessages(IVANA, { ourPhones: NOSSOS });
+    expect(msg.direction).toBe('inbound');
+    expect(msg.sent_by_instance).toBeNull();
+  });
+});

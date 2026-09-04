@@ -339,10 +339,23 @@ export async function getInboxActivitySignature(
  */
 let ourInstancePhonesPromise: Promise<ReadonlySet<string>> | null = null;
 let ourInstancePhonesCache: ReadonlySet<string> = new Set();
+let instanceNameByPhoneCache: ReadonlyMap<string, string> = new Map();
 
 /** Última resposta de `getOurInstancePhones`, para os caminhos síncronos. Vazio antes da 1ª carga. */
 export function getOurInstancePhonesSync(): ReadonlySet<string> {
   return ourInstancePhonesCache;
+}
+
+/**
+ * Telefone da instância → nome dela, da mesma carga de `getOurInstancePhones`.
+ *
+ * Serve para dizer POR QUAL número a mensagem saiu quando ela foi digitada no
+ * celular: aí não existe espelho `outbound`, e o telefone do autor é a única
+ * pista. Vazio antes da primeira carga — quem precisa disso já dá `await` em
+ * `getOurInstancePhones()` antes.
+ */
+export function getInstanceNameByPhoneSync(): ReadonlyMap<string, string> {
+  return instanceNameByPhoneCache;
 }
 
 /**
@@ -355,19 +368,26 @@ const OUR_PHONES_TIMEOUT_MS = 8_000;
 export function getOurInstancePhones(): Promise<ReadonlySet<string>> {
   if (!ourInstancePhonesPromise) {
     const run = withTimeout(
-      (externalSupabase as any).from('whatsapp_instances').select('owner_phone'),
+      (externalSupabase as any).from('whatsapp_instances').select('owner_phone, instance_name'),
       OUR_PHONES_TIMEOUT_MS,
       'getOurInstancePhones',
     )
-      .then(({ data, error }: { data: Array<{ owner_phone: string | null }> | null; error: { message: string } | null }) => {
+      .then(({ data, error }: { data: Array<{ owner_phone: string | null; instance_name: string | null }> | null; error: { message: string } | null }) => {
         if (error) {
           console.warn('[getOurInstancePhones] falhou:', error.message);
           // Falha não fica cacheada: a próxima abertura tenta de novo.
           if (ourInstancePhonesPromise === run) ourInstancePhonesPromise = null;
           return new Set<string>() as ReadonlySet<string>;
         }
-        ourInstancePhonesCache = new Set(
-          (data || []).map(i => String(i.owner_phone || '').replace(/\D/g, '')).filter(Boolean)
+        const linhas = (data || [])
+          .map(i => ({
+            phone: String(i.owner_phone || '').replace(/\D/g, ''),
+            name: String(i.instance_name || '').trim(),
+          }))
+          .filter(i => i.phone);
+        ourInstancePhonesCache = new Set(linhas.map(i => i.phone));
+        instanceNameByPhoneCache = new Map(
+          linhas.filter(i => i.name).map(i => [i.phone, i.name] as const)
         );
         return ourInstancePhonesCache;
       })

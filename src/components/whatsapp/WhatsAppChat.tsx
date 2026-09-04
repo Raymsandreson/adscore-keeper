@@ -4887,6 +4887,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           const nomeDeQuemEnviou = msg.direction === 'outbound'
             ? (autorPorMensagem[idDaMensagemNoWhatsApp(msg.external_message_id)] || autoriaEnviada?.nome || null)
             : null;
+          // Instância que enviou. `sent_by_instance` vem do dedupe (o espelho
+          // outbound); fora de grupo não há espelho concorrente, então a
+          // instância da conversa é a mesma coisa. Nunca cai em
+          // `msg.instance_name` em grupo: ali a linha canônica costuma ser de
+          // uma instância que só recebeu, e isso mostraria o número errado.
+          const instanciaQueEnviou = msg.direction === 'outbound'
+            ? ((msg as any).sent_by_instance || (isGroup ? null : conversation.instance_name) || null)
+            : null;
           return (
             <div key={msg.id} data-msg-id={msg.id}>
               {dateSeparator}
@@ -5479,6 +5487,18 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   msg.direction === 'outbound' ? "text-green-200" : "text-muted-foreground"
                 )}>
                   {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
+                  {/* Por qual número da casa esta mensagem saiu. Num grupo
+                      convivem várias instâncias nossas e o header só mostra a da
+                      conversa — aqui é a que realmente enviou (o espelho
+                      `outbound`, ou o telefone do autor quando saiu do celular). */}
+                  {instanciaQueEnviou && (
+                    <span
+                      className="opacity-90 truncate max-w-[150px]"
+                      title={`Enviada pela instância "${instanciaQueEnviou}"`}
+                    >
+                      · {instanciaQueEnviou}
+                    </span>
+                  )}
                   {(() => {
                     // Recibo real da Cloud API. Sem ele "enviada" era lido como
                     // "chegou", e mensagem recusada passava despercebida.

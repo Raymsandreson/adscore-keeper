@@ -18,6 +18,7 @@ import {
   linkMessagesToContact,
   getOurInstancePhones,
   getOurInstancePhonesSync,
+  getInstanceNameByPhoneSync,
   CONVERSATIONS_PAGE_SIZE,
   type ConversationSummary,
 } from '@/integrations/supabase/external-rpc';
@@ -63,6 +64,12 @@ export interface WhatsAppMessage {
   read_at: string | null;
   instance_name: string | null;
   instance_token: string | null;
+  /**
+   * Por qual instância a mensagem SAIU — preenchido por `dedupeMirroredMessages`
+   * olhando todos os espelhos. Difere de `instance_name`, que é o da linha
+   * canônica e, em grupo, costuma ser de uma instância que só recebeu.
+   */
+  sent_by_instance?: string | null;
 }
 
 export interface WhatsAppConversation {
@@ -1754,6 +1761,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       // aparecia, e as duas telas discordavam em 20% das mensagens de grupo.
       const deduped = dedupeMirroredMessages(allMsgs, {
         ourPhones: await getOurInstancePhones(),
+        instanceNameByPhone: getInstanceNameByPhoneSync(),
       }) as unknown as WhatsAppMessage[];
 
       const firstNamedMessage = deduped.find(m => m.contact_name || m.contact_id || m.lead_id) || deduped[0] || null;
@@ -1829,7 +1837,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       );
       const older = (dedupeMirroredMessages(
         raw.map(msg => ({ ...msg, phone: normalizeWhatsAppConversationPhone(msg.phone) })),
-        { ourPhones: await getOurInstancePhones() },
+        { ourPhones: await getOurInstancePhones(), instanceNameByPhone: getInstanceNameByPhoneSync() },
       ) as unknown as WhatsAppMessage[])
         .filter(m => {
           if (existingIds.has(m.id)) return false;
@@ -1873,7 +1881,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     );
     const fresh = (dedupeMirroredMessages(
       incoming.map(msg => ({ ...msg, phone: normalizeWhatsAppConversationPhone(msg.phone) })),
-      { ourPhones: getOurInstancePhonesSync() },
+      { ourPhones: getOurInstancePhonesSync(), instanceNameByPhone: getInstanceNameByPhoneSync() },
     ) as unknown as WhatsAppMessage[])
       .filter(m => {
         if (existingIds.has(m.id)) return false;
