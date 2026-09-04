@@ -16,7 +16,7 @@
  */
 import { cloudFunctions } from '@/lib/functionRouter';
 
-export type OrigemConversao = 'kanban' | 'pipeline' | 'planilha' | 'auto_enrich' | 'manual' | 'backfill';
+export type OrigemConversao = 'kanban' | 'pipeline' | 'planilha' | 'auto_enrich' | 'manual' | 'backfill' | 'zapsign';
 export type EventoConversao = 'Purchase' | 'Lead' | 'CompleteRegistration';
 
 interface PedidoEnfileiramento {
@@ -25,6 +25,27 @@ interface PedidoEnfileiramento {
   origem: OrigemConversao;
   /** Valor capturado na tela agora; sem ele o servidor resolve pelo lead/produto. */
   valor?: number;
+}
+
+/**
+ * Fechar lead é a conversão que importa: é o `Purchase` que ensina a Meta a
+ * procurar mais gente parecida com quem virou cliente.
+ *
+ * Fechar acontece em três telas — arrastar o card para ✅ Fechado, o menu
+ * "marcar como fechado" e salvar a ficha com o desfecho — e até 04/09/2026 só
+ * a terceira lembrava de enfileirar. Resultado medido: 84 fechamentos no CRM,
+ * 3 eventos na fila.
+ *
+ * Tela que fecha lead chama ESTA função, não `enfileiraConversao` na mão. Assim
+ * a próxima tela de fechamento tem uma coisa óbvia para chamar, e a regra do
+ * que um fechamento significa para a Meta mora num lugar só.
+ */
+export function registrarFechamentoDeLead(
+  leadId: string,
+  origem: OrigemConversao,
+  valor?: number,
+): void {
+  void enfileiraConversao({ leadId, evento: 'Purchase', origem, valor });
 }
 
 /**

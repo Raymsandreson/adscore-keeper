@@ -161,6 +161,15 @@ export function ZapSignLeadCreationListener() {
       }
 
       // 2. Create lead as closed
+      //
+      // capi:sem-conversao — procuração assinada É fechamento de verdade e
+      // deveria virar `Purchase`, mas aqui o cliente é `@/integrations/supabase/client`,
+      // que aponta para o Cloud (`VITE_SUPABASE_URL` = gliigkupoebmlbwyvijp),
+      // enquanto `meta-capi-enqueue` procura o lead no Externo. Enfileirar daqui
+      // devolveria "lead não encontrado" para todo mundo. Antes de ligar a
+      // conversão, resolver em qual banco este lead nasce — a linha seguinte
+      // grava `contact_leads` no Externo, então os dois bancos se misturam neste
+      // mesmo bloco. Pendência aberta em 04/09/2026.
       const { data: newLead, error: leadErr } = await supabase
         .from('leads')
         .insert({

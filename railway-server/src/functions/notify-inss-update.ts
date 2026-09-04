@@ -6,16 +6,24 @@ import {
   extrairPontosPendentes,
   separarPendencias,
 } from '../lib/inss-despacho';
-import { donoDaAtualizacaoInss } from '../lib/inss-roteamento';
+import {
+  ASSESSOR_INSS,
+  ASSESSOR_PROTOCOLO,
+  donoDaAtualizacaoInss,
+  type DonoAtividade,
+} from '../lib/inss-roteamento';
+import { mandarAudioDaMensagem } from '../lib/inss-audio';
 import { conferirNomeDoSegurado } from '../lib/inss-nome-confere';
 import {
   classificarMensagemCliente,
   dentroDaJanela,
   eventoElegivelParaZap,
   exigenciaDeAgendamentoDePericia,
+  mensagemVaiAoCliente,
 } from '../lib/inss-mensagem-cliente';
 import {
   descreverErro,
+  enviarAudioAoGrupo,
   enviarDocumentoAoGrupo,
   enviarTextoAoGrupo,
   jaAvisouEsseTipo,
@@ -363,6 +371,11 @@ export const handler: RequestHandler = async (req, res) => {
         zapPatch = { zap_status: 'retroativo', zap_tipo: tipoMensagem };
       } else if (await jaAvisouEsseTipo(processId, tipoMensagem)) {
         zapPatch = { zap_status: 'repetido', zap_tipo: tipoMensagem };
+      } else if (!mensagemVaiAoCliente(tipoMensagem)) {
+        // Deferimento (decisão do usuário, 04/09/2026): a boa notícia não sai
+        // sozinha. Vira tarefa de quem vai conversar com o cliente — ver o
+        // bloco de atividades logo abaixo.
+        zapPatch = { zap_status: 'so_equipe', zap_tipo: tipoMensagem };
       } else {
         const destino = await resolverGrupoDoLead(leadId, { nomeSegurado: proc.nome_segurado });
         if (destino.erro) {
@@ -397,12 +410,27 @@ export const handler: RequestHandler = async (req, res) => {
                 );
               }
             }
+            // O áudio vai DEPOIS do texto, pela mesma instância. É acréscimo:
+            // falhar aqui não desfaz o aviso, que já está no grupo. Ver
+            // lib/inss-audio — áudio genérico só sai quando o despacho trata de
+            // um assunto só; caso contrário narra o próprio texto enviado.
+            let audioPatch: Record<string, any> = {};
+            if (sent.ok) {
+              audioPatch = await mandarAudioDaMensagem({
+                tipo: tipoMensagem,
+                fonte: pendencias.cliente || latest.despacho,
+                texto,
+                group_jid: destino.grupo.group_jid,
+                instancia: sent.instancia || destino.grupo.instance_name,
+              });
+            }
             zapPatch = sent.ok
               ? {
                   zap_status: 'enviado',
                   zap_tipo: tipoMensagem,
                   zap_texto: texto,
                   zap_enviado_at: new Date().toISOString(),
+                  ...audioPatch,
                 }
               : {
                   zap_status: 'erro',
@@ -435,6 +463,50 @@ export const handler: RequestHandler = async (req, res) => {
             'escrito acima. Daqui para frente as atualizações deste requerimento saem sozinhas.',
         })
         .eq('id', atividade.id);
+    }
+
+    // Deferimento: ninguém recebe zap, e as DUAS pessoas do fluxo previdenciário
+    // precisam saber (pedido do usuário, 04/09/2026) — Luana, que protocolou, e
+    // José, que toca o pós-protocolo. A atividade que já nasceu ficou com o
+    // dono de sempre; aqui ela ganha o roteiro e sai uma irmã para quem faltou.
+    if (zapPatch.zap_status === 'so_equipe' && atividade?.id) {
+      const roteiro =
+        '\n\n🎉 O INSS APROVOU ESTE PEDIDO. O cliente NÃO foi avisado pelo robô: quem dá a ' +
+        'notícia é uma pessoa.\nFale com ele no grupo, confira os valores e combine o que o ' +
+        'escritório precisa para acompanhar o pagamento. Se for preciso acessar o Meu INSS do ' +
+        'cliente, combine isso por voz com ele — não peça senha por escrito no grupo.';
+      await supabase
+        .from('lead_activities')
+        .update({ description: `${atividade.description || activityDesc}${roteiro}` })
+        .eq('id', atividade.id);
+
+      const avisar: DonoAtividade[] = [ASSESSOR_INSS, ASSESSOR_PROTOCOLO].filter(
+        (p) => p.id !== dono.id,
+      );
+      for (const pessoa of avisar) {
+        const { error } = await supabase.from('lead_activities').insert({
+          lead_id: leadId,
+          title: activityTitle,
+          description:
+            `${activityDesc}${roteiro}\n\n👥 ${dono.name} recebeu esta mesma tarefa — ` +
+            'combinem quem fala com o cliente para ele não ser procurado duas vezes.',
+          activity_type: 'notificacao',
+          status: 'pendente',
+          priority: 'normal',
+          assigned_to: pessoa.id,
+          assigned_to_name: pessoa.name,
+          deadline: new Date().toISOString().slice(0, 10),
+          case_id: proc.case_id,
+          case_title: formatLabel(caseInfo?.case_number, caseInfo?.title) || null,
+          process_id: process?.id || null,
+          process_title: process ? formatLabel(process.process_number, process.title) || null : null,
+          action_source: 'system',
+          action_source_detail: 'Robô do INSS',
+        } as any);
+        if (error) {
+          console.warn(`[notify-inss-update] atividade de deferimento para ${pessoa.name} falhou: ${error.message}`);
+        }
+      }
     }
 
     if (zapPatch.zap_status === 'sem_grupo' && atividade?.id) {

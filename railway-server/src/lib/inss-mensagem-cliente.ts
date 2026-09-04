@@ -14,6 +14,12 @@
 //      ao cliente algo que nós mesmos fizemos.
 //    - "Concluída" sem veredito (193 de 643): dizer "seu pedido foi concluído"
 //      sem dizer se ganhou ou perdeu é pior que não dizer nada.
+//    - DEFERIDO (decisão do usuário, 04/09/2026): benefício aprovado não é
+//      mensagem automática. O que vem depois da aprovação (conferir valores,
+//      combinar o acesso ao Meu INSS, explicar data e local de pagamento) é
+//      conversa de gente, e a atendente precisa saber o caso antes de falar.
+//      O evento continua classificado como `deferido` — o que muda é que ele
+//      vira ATIVIDADE para Luana e José, não zap. Ver `mensagemVaiAoCliente`.
 //    - "PARSE_FAILED" e status desconhecido: não sabemos o que houve.
 //
 // 2. O TEXTO SAI DO DESPACHO, NÃO DO NOME DO STATUS. A IA recebe o texto real
@@ -64,6 +70,20 @@ export function classificarMensagemCliente(
     return null; // conclusão sem veredito: só atividade interna
   }
   return null;
+}
+
+/**
+ * Tipos que o cliente NÃO recebe por mensagem automática, mesmo classificados.
+ *
+ * `deferido` está aqui desde 04/09/2026: a aprovação vira atividade para a
+ * equipe (Luana e José) em vez de zap. Manter o tipo classificado é o que
+ * permite continuar medindo quantas aprovações chegaram — apagá-lo do
+ * classificador esconderia o evento no histórico.
+ */
+export const TIPOS_SO_PARA_EQUIPE: readonly TipoMensagemCliente[] = ['deferido'];
+
+export function mensagemVaiAoCliente(tipo: TipoMensagemCliente): boolean {
+  return !TIPOS_SO_PARA_EQUIPE.includes(tipo);
 }
 
 /**
@@ -140,10 +160,15 @@ export function fallbackMensagemCliente(
         `A gente vai conferir os valores e te explica o que acontece agora.`
       );
     case 'indeferido':
+      // Alinhado ao áudio que a equipe gravou (decisão do usuário, 04/09/2026):
+      // o caminho depois do indeferimento é a ação judicial, não o pedido de
+      // revisão administrativa. Texto e áudio precisam dizer a mesma coisa —
+      // até 04/09 o texto falava em "pedir pro INSS olhar de novo" enquanto o
+      // áudio prometia entrar na Justiça.
       return (
-        `O INSS não aprovou ${alvo} agora.\n\n` +
-        `Dá pra pedir pro INSS olhar de novo, e a gente já está cuidando disso.\n\n` +
-        `Logo falamos com você. Não precisa fazer nada agora.`
+        `O INSS não aprovou ${alvo}.\n\n` +
+        `Não precisa se preocupar: a gente vai entrar com uma ação na Justiça pra buscar esse benefício.\n\n` +
+        `Assim que entrar, a gente avisa aqui no grupo e vai contando cada etapa. Não precisa fazer nada agora.`
       );
     case 'arquivado_decurso':
       return (
@@ -160,7 +185,7 @@ function maiuscula(s: string): string {
 
 const REGRAS_COMUNS = [
   'Escreva para uma pessoa de baixa renda e pouca escolaridade. Frases curtas, palavras do dia a dia.',
-  'Troque palavra difícil por palavra simples: "mandar" no lugar de "encaminhar"; "papéis" ou "documentos" no lugar de "documentação"; "pedir pro INSS olhar de novo" no lugar de "recorrer"; "pedido" no lugar de "requerimento"; "não aprovou" no lugar de "indeferiu".',
+  'Troque palavra difícil por palavra simples: "mandar" no lugar de "encaminhar"; "papéis" ou "documentos" no lugar de "documentação"; "entrar com uma ação na Justiça" no lugar de "ajuizar" ou "recorrer"; "pedido" no lugar de "requerimento"; "não aprovou" no lugar de "indeferiu".',
   'Nada de termo jurídico, nada de número de lei, nada de "conforme", "referente", "mediante", "providenciar".',
   'Seja breve. É melhor faltar detalhe do que a pessoa não entender.',
   'NUNCA repita número de CPF, RG ou número do benefício que apareça no texto do INSS.',
@@ -193,8 +218,9 @@ const INSTRUCAO_POR_TIPO: Record<TipoMensagemCliente, string> = {
     'agora. No máximo 3 linhas.',
   indeferido:
     'O pedido NÃO foi aprovado. Dê a notícia em uma frase curta e sem drama. Diga o motivo do ' +
-    'INSS em palavras simples. Diga que dá pra pedir pro INSS olhar de novo e que o escritório ' +
-    'já está cuidando disso. Não prometa que vai ganhar. Não peça nada agora. No máximo 4 linhas.',
+    'INSS em palavras simples. Diga que o escritório vai entrar com uma ação na Justiça pra ' +
+    'buscar esse benefício e que avisa no grupo a cada etapa. Não prometa que vai ganhar. Não ' +
+    'peça nada agora. No máximo 4 linhas.',
   arquivado_decurso:
     'O pedido foi encerrado porque o prazo dos documentos acabou. Diga isso sem culpar a pessoa. ' +
     'Diga que o escritório vai ver o melhor jeito de continuar e avisa aqui. No máximo 3 linhas.',

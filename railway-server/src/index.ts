@@ -31,6 +31,7 @@ import { handler as zapsignWebhook } from './functions/zapsign-webhook';
 import { runPostSignExtras } from './functions/zapsign-post-sign-extras';
 import { handler as onboardingCheckpointExecute } from './functions/onboarding-checkpoint-execute';
 import { handler as regenerateLeadName } from './functions/regenerate-lead-name';
+import { handler as resolveClientNames } from './functions/resolve-client-names';
 import { handler as leadCloseSequenceInfo } from './functions/lead-close-sequence-info';
 import { handler as onboardingCheckpointReprocess } from './functions/onboarding-checkpoint-reprocess';
 import { handler as whatsappCloudWebhook } from './functions/whatsapp-cloud-webhook';
@@ -127,6 +128,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'zapsign-webhook': zapsignWebhook,
   'onboarding-checkpoint-execute': onboardingCheckpointExecute,
   'regenerate-lead-name': regenerateLeadName,
+  'resolve-client-names': resolveClientNames,
   'lead-close-sequence-info': leadCloseSequenceInfo,
   'onboarding-checkpoint-reprocess': onboardingCheckpointReprocess,
   'whatsapp-group-exit': whatsappGroupExit,

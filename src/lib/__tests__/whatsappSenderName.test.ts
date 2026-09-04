@@ -1,5 +1,37 @@
 import { describe, it, expect } from 'vitest';
-import { extractSenderName, lastSenderName, matchMemberByName, prefixarRemetente } from '@/lib/whatsappSenderName';
+import { extractSenderName, lastSenderName, matchMemberByName, prefixarRemetente, separarPrefixoRemetente } from '@/lib/whatsappSenderName';
+
+describe('separarPrefixoRemetente', () => {
+  it('tira a assinatura do corpo e devolve o nome como o cliente leu', () => {
+    expect(separarPrefixoRemetente('*Dra. Ana Souza:*\nSegue o documento')).toEqual({
+      nome: 'Dra. Ana Souza',
+      corpo: 'Segue o documento',
+    });
+  });
+
+  it('mensagem sem assinatura sai intacta', () => {
+    const texto = 'Bom dia! A audiência é amanhã.';
+    expect(separarPrefixoRemetente(texto)).toEqual({ nome: null, corpo: texto });
+  });
+
+  it('negrito no começo não vira assinatura', () => {
+    const texto = '*Bom dia Sr(a). Kethellyn*\n\nReferente ao seu processo';
+    expect(separarPrefixoRemetente(texto)).toEqual({ nome: null, corpo: texto });
+  });
+
+  it('mensagem vazia ou nula não inventa autor', () => {
+    expect(separarPrefixoRemetente(null)).toEqual({ nome: null, corpo: '' });
+    expect(separarPrefixoRemetente('')).toEqual({ nome: null, corpo: '' });
+  });
+
+  it('só a assinatura, sem corpo, devolve corpo vazio', () => {
+    expect(separarPrefixoRemetente('*Raym Andreson:*')).toEqual({ nome: 'Raym Andreson', corpo: '' });
+  });
+
+  it('preserva as quebras de linha do corpo', () => {
+    expect(separarPrefixoRemetente('*Raym:*\n\nOi\nTudo bem?').corpo).toBe('\nOi\nTudo bem?');
+  });
+});
 
 describe('extractSenderName', () => {
   it('lê o prefixo que o envio com "Identificar remetente" coloca', () => {

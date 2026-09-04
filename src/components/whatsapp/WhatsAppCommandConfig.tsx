@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { PromptVariableSelector } from './PromptVariableSelector';
 import { PromptBuilderChat } from './PromptBuilderChat';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -20,7 +20,7 @@ import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, MessageSquare, Sparkles, 
   Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2, Volume2, Maximize2, RefreshCw,
-  ChevronUp, ChevronDown, Eye, Check, ChevronsUpDown, Megaphone, Filter
+  ChevronUp, ChevronDown, Eye, EyeOff, Check, ChevronsUpDown, Megaphone, Filter
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -308,6 +308,7 @@ const SECOES_AVANCADAS = ['document', 'followup', 'conversations', 'test', 'auto
 function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', focusAgentId }: { shortcuts: Shortcut[]; profiles: Profile[]; onReload: () => void; commandScope?: string; focusAgentId?: string | null }) {
   const [showForm, setShowForm] = useState(false);
   const [showAI, setShowAI] = useState(false);
+  const [mostrarDesativados, setMostrarDesativados] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; media_extraction_prompt?: string; followup_steps: FollowupStep[] } | null>(null);
   
@@ -731,6 +732,10 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
       .invoke('sync-agent-labels', { body: { agent_id: id, operation: 'upsert' } })
       .catch((e: any) => console.warn('sync-agent-labels (toggle) failed:', e?.message));
 
+    if (isActive && !mostrarDesativados) {
+      toast.success('Agente desativado', { description: 'Ele saiu da lista — use "Desativados" para ver.' });
+    }
+
     onReload();
   };
 
@@ -785,6 +790,12 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
     }
   };
 
+  const agentesDesativados = useMemo(() => shortcuts.filter(s => !s.is_active), [shortcuts]);
+  const agentesVisiveis = useMemo(
+    () => (mostrarDesativados ? shortcuts : shortcuts.filter(s => s.is_active)),
+    [shortcuts, mostrarDesativados]
+  );
+
   const actionLabels: Record<string, { label: string; icon: any; color: string }> = {
     whatsapp_message: { label: 'Mensagem WhatsApp', icon: MessageSquare, color: 'text-green-500' },
     call: { label: 'Ligação', icon: Phone, color: 'text-blue-500' },
@@ -797,6 +808,12 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
     hybrid: '🔄',
   };
 
+  const typeLabels: Record<string, string> = {
+    document: 'Documentos',
+    assistant: 'Agente IA',
+    hybrid: 'Híbrido',
+  };
+
   return (
     <div className="space-y-4 mt-4">
       <div className="flex items-center justify-between">
@@ -804,6 +821,18 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
           Agentes IA — cada um com IA, documentos e follow-up integrados.
         </p>
         <div className="flex gap-2">
+          {agentesDesativados.length > 0 && (
+            <Button
+              size="sm"
+              variant={mostrarDesativados ? 'secondary' : 'outline'}
+              onClick={() => setMostrarDesativados(v => !v)}
+              className="gap-1"
+              title={mostrarDesativados ? 'Mostrar só os agentes ativos' : `Mostrar também os ${agentesDesativados.length} agente(s) desativado(s)`}
+            >
+              {mostrarDesativados ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              {mostrarDesativados ? 'Só ativos' : `Desativados (${agentesDesativados.length})`}
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={handleSyncResultLabels} className="gap-1" title="Cria/atualiza as 5 etiquetas de resultado (Em andamento, Fechado, Recusado, Inviável, Cancelado) em todas as instâncias conectadas">
             🏁 Sync resultados
           </Button>
@@ -2136,7 +2165,17 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
           <Zap className="h-6 w-6 mx-auto mb-2 text-muted-foreground/40" />
           Nenhum agente configurado
         </CardContent></Card>
-      ) : shortcuts.map(s => (
+      ) : agentesVisiveis.length === 0 ? (
+        <Card><CardContent className="py-6 text-center text-sm text-muted-foreground">
+          <Zap className="h-6 w-6 mx-auto mb-2 text-muted-foreground/40" />
+          Nenhum agente ativo — {agentesDesativados.length} desativado(s).
+          <div>
+            <Button size="sm" variant="link" className="h-auto p-0 text-xs" onClick={() => setMostrarDesativados(true)}>
+              Mostrar desativados
+            </Button>
+          </div>
+        </CardContent></Card>
+      ) : agentesVisiveis.map(s => (
         <Card key={s.id} className={!s.is_active ? 'opacity-50' : ''}>
           <CardContent className="p-3">
             <div className="flex items-center gap-3">
@@ -2144,6 +2183,9 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium">#{s.shortcut_name}</span>
+                  <Badge variant="outline" className="text-[10px]" title={ASSISTANT_TYPES.find(t => t.value === s.assistant_type)?.desc}>
+                    {typeLabels[s.assistant_type] || typeLabels.document}
+                  </Badge>
                   {s.template_name && <Badge variant="secondary" className="text-[10px]">{s.template_name}</Badge>}
                   <Badge variant="outline" className="text-[10px]">
                     {MODELS.find(m => m.value === s.model)?.label || s.model}

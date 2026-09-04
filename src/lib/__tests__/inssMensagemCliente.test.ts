@@ -8,6 +8,7 @@ import {
   promptMensagemCliente,
   dentroDaJanela,
   eventoElegivelParaZap,
+  mensagemVaiAoCliente,
   ZAP_CLIENTE_DESDE,
 } from '../../../railway-server/src/lib/inss-mensagem-cliente';
 
@@ -82,9 +83,13 @@ describe('fallbackMensagemCliente', () => {
     expect(txt).toContain('⏳ Prazo: 25/09/2026');
   });
 
-  it('não aprovado não promete vitória nem pede documento', () => {
+  it('não aprovado aponta a ação judicial, sem prometer vitória', () => {
+    // Alinhado ao áudio que a equipe gravou (04/09/2026): depois do
+    // indeferimento o caminho é a Justiça, não o pedido de revisão no INSS.
+    // Texto e áudio precisam dizer a mesma coisa — o cliente recebe os dois.
     const txt = fallbackMensagemCliente('indeferido', {});
-    expect(txt).toMatch(/olhar de novo/);
+    expect(txt).toMatch(/ação na Justiça/i);
+    expect(txt).not.toMatch(/olhar de novo|recorrer/i);
     expect(txt).not.toMatch(/vamos ganhar|com certeza|garant/i);
   });
 });
@@ -137,5 +142,20 @@ describe('eventoElegivelParaZap', () => {
   it('evento a partir do corte é elegível', () => {
     expect(eventoElegivelParaZap(ZAP_CLIENTE_DESDE)).toBe(true);
     expect(eventoElegivelParaZap('2026-09-01T03:00:00Z')).toBe(true);
+  });
+});
+
+describe('mensagemVaiAoCliente', () => {
+  it('deferimento fica só com a equipe', () => {
+    // Decisão do usuário (04/09/2026): aprovação não vira zap automático. O
+    // tipo continua classificado — é o que permite seguir medindo quantas
+    // aprovações chegaram — mas quem fala com o cliente é gente.
+    expect(mensagemVaiAoCliente('deferido')).toBe(false);
+  });
+
+  it('os outros tipos continuam indo ao cliente', () => {
+    for (const tipo of ['protocolado', 'exigencia', 'indeferido', 'arquivado_decurso'] as const) {
+      expect(mensagemVaiAoCliente(tipo)).toBe(true);
+    }
   });
 });

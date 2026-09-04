@@ -338,9 +338,8 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
     }
   };
 
-  const unreadCount = mentions.filter(m => !m.is_read).length;
-  const responderCount = mentions.filter(m => m.status === 'responder').length;
-  const aguardandoCount = mentions.filter(m => m.status === 'aguardando').length;
+  // Total da caixa, sem filtro nenhum — é o que o cabeçalho e o "Todas" usam.
+  const unreadTotal = mentions.filter(m => !m.is_read).length;
 
   // Tipos que realmente aparecem nas menções — não adianta oferecer filtro vazio.
   const availableTypes = useMemo(() => {
@@ -350,14 +349,22 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
     );
   }, [mentions]);
 
-  const visibleMentions = useMemo(() => {
+  /**
+   * Cada filtro é uma dimensão, e o número do chip conta DENTRO do que as
+   * outras dimensões já deixaram passar — por isso o `pular`. Contar sobre a
+   * lista inteira fazia o chip dizer "Aguardando (27)" enquanto a lista abaixo
+   * dizia "ninguém te devendo resposta": o 27 era de outro recorte.
+   */
+  const passa = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return mentions.filter(m => {
-      if (statusFilter === 'unread' && m.is_read) return false;
-      if ((statusFilter === 'responder' || statusFilter === 'aguardando') && m.status !== statusFilter) return false;
-      if (scopeFilter !== 'all' && m.scope !== scopeFilter) return false;
-      if (kindFilter !== 'all' && (m.mentionKind || 'nome') !== kindFilter) return false;
-      if (typeFilter !== 'all' && (m.entity_type || 'team_chat') !== typeFilter) return false;
+    return (m: TeamMentionItem, pular?: 'status' | 'scope' | 'kind' | 'tipo') => {
+      if (pular !== 'status') {
+        if (statusFilter === 'unread' && m.is_read) return false;
+        if ((statusFilter === 'responder' || statusFilter === 'aguardando') && m.status !== statusFilter) return false;
+      }
+      if (pular !== 'scope' && scopeFilter !== 'all' && m.scope !== scopeFilter) return false;
+      if (pular !== 'kind' && kindFilter !== 'all' && (m.mentionKind || 'nome') !== kindFilter) return false;
+      if (pular !== 'tipo' && typeFilter !== 'all' && (m.entity_type || 'team_chat') !== typeFilter) return false;
       if (!term) return true;
       const haystack = [
         m.message?.sender_name,
@@ -370,19 +377,42 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         .join(' ')
         .toLowerCase();
       return haystack.includes(term);
-    });
-  }, [mentions, search, typeFilter, statusFilter, scopeFilter, kindFilter]);
+    };
+  }, [search, typeFilter, statusFilter, scopeFilter, kindFilter]);
+
+  const visibleMentions = useMemo(() => mentions.filter(m => passa(m)), [mentions, passa]);
+
+  // Quantos sobrariam se você ligasse ESTE chip, mantendo o resto do filtro.
+  const unreadCount = useMemo(
+    () => mentions.filter(m => passa(m, 'status') && !m.is_read).length,
+    [mentions, passa]);
+  const responderCount = useMemo(
+    () => mentions.filter(m => passa(m, 'status') && m.status === 'responder').length,
+    [mentions, passa]);
+  const aguardandoCount = useMemo(
+    () => mentions.filter(m => passa(m, 'status') && m.status === 'aguardando').length,
+    [mentions, passa]);
+  const kindCount = (k: 'nome' | 'todos') =>
+    mentions.filter(m => passa(m, 'kind') && (m.mentionKind || 'nome') === k).length;
+  const typeCount = (t: string) =>
+    mentions.filter(m => passa(m, 'tipo') && (m.entity_type || 'team_chat') === t).length;
 
   const hasActiveFilter =
     search.trim() !== '' || typeFilter !== 'all' || statusFilter !== 'all' ||
     scopeFilter !== 'all' || kindFilter !== 'all';
+
+  // Lista vazia com escopo/tipo/nome ligados não é "ninguém te deve resposta":
+  // é a combinação que não devolve nada. A mensagem tem que dizer isso.
+  const outrosFiltrosAlemDoStatus =
+    search.trim() !== '' || typeFilter !== 'all' || scopeFilter !== 'all' || kindFilter !== 'all';
 
   const limparFiltros = () => {
     setSearch(''); setTypeFilter('all'); setStatusFilter('all');
     setScopeFilter('all'); setKindFilter('all');
   };
 
-  const scopeCount = (s: MentionScope) => mentions.filter(m => m.scope === s).length;
+  const scopeCount = (s: MentionScope) =>
+    mentions.filter(m => passa(m, 'scope') && m.scope === s).length;
 
   // Gente do escritório que casa com o texto buscado (sem você e sem desativado).
   const pessoasDaBusca = useMemo(() => {
@@ -443,11 +473,11 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 <div className="text-[10px] text-muted-foreground font-normal">
                   {chatView
                     ? 'Conversas diretas e em grupo'
-                    : (unreadCount > 0 ? `${unreadCount} não lida${unreadCount > 1 ? 's' : ''}` : 'Todas lidas')
+                    : (unreadTotal > 0 ? `${unreadTotal} não lida${unreadTotal > 1 ? 's' : ''}` : 'Todas lidas')
                   }
                 </div>
               </div>
-              {!chatView && unreadCount > 0 && (
+              {!chatView && unreadTotal > 0 && (
                 <Button variant="ghost" size="sm" className="text-xs h-7" onClick={markAllAsRead}>
                   <CheckCheck className="h-3.5 w-3.5 mr-1" /> Todas
                 </Button>
@@ -487,7 +517,9 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 <SelectContent>
                   <SelectItem value="all">Todos os tipos</SelectItem>
                   {availableTypes.map(t => (
-                    <SelectItem key={t} value={t}>{entityLabels[t] || t}</SelectItem>
+                    <SelectItem key={t} value={t}>
+                      {entityLabels[t] || t} ({typeCount(t)})
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -554,7 +586,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 title="Marcaram você pelo nome"
                 className={cn(CHIP_BASE, kindFilter === 'nome' ? CHIP_ON.violet : CHIP_OFF)}
               >
-                Pelo nome
+                Pelo nome{kindCount('nome') > 0 ? ` (${kindCount('nome')})` : ''}
               </button>
               <button
                 type="button"
@@ -562,7 +594,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 title="Chamaram a equipe inteira com @todos — não era só com você"
                 className={cn(CHIP_BASE, kindFilter === 'todos' ? CHIP_ON.slate : CHIP_OFF)}
               >
-                @todos
+                @todos{kindCount('todos') > 0 ? ` (${kindCount('todos')})` : ''}
               </button>
             </div>
             {/* Só aparece quando há filtro valendo — é a saída óbvia de "voltei
@@ -637,11 +669,13 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 <p>
                   {pessoasDaBusca.length > 0
                     ? 'Nenhuma menção com esse nome — mas dá pra abrir a conversa aí em cima.'
-                    : statusFilter === 'responder'
-                      ? 'Nada pendente de resposta sua. 🎉'
-                      : statusFilter === 'aguardando'
-                        ? 'Ninguém te devendo resposta.'
-                        : 'Nenhuma menção com esse filtro.'}
+                    : outrosFiltrosAlemDoStatus
+                      ? 'Nada com essa combinação de filtros.'
+                      : statusFilter === 'responder'
+                        ? 'Nada pendente de resposta sua. 🎉'
+                        : statusFilter === 'aguardando'
+                          ? 'Ninguém te devendo resposta.'
+                          : 'Nenhuma menção com esse filtro.'}
                 </p>
                 {hasActiveFilter && (
                   <Button

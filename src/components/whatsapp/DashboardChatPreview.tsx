@@ -71,6 +71,8 @@ import { bindDownload } from '@/lib/downloadFile';
 import { midiasDaMensagem, rotuloDaMidia } from '@/lib/midiaDaConversa';
 import { avisarLeituraDeAnexos, gerarRascunhoDaConversa } from '@/lib/rascunhoDaConversa';
 import { linkWhatsAppMessagesToActivity } from '@/lib/whatsappMessageActivities';
+import { separarPrefixoRemetente } from '@/lib/whatsappSenderName';
+import { useAutoriaDasMensagens } from '@/hooks/useAutoriaDasMensagens';
 import { ehInstanciaCloud } from '@/lib/cloudApiInstances';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
@@ -260,6 +262,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       });
   }, [open, canTogglePrivate]);
   const [messages, setMessages] = useState<Message[]>([]);
+  /** Quem da equipe mandou cada envio — cobre áudio e mídia, que não têm assinatura no texto. */
+  const autorPorMensagem = useAutoriaDasMensagens(messages);
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -2482,6 +2486,15 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
 
                   const msg = item.data as Message;
                   const isInbound = msg.direction === 'inbound';
+                  // Quem da equipe assinou o envio: a assinatura `*Nome:*` sobe
+                  // pro cabeçalho da bolha e sai do corpo. Mesma leitura da aba
+                  // WhatsApp. Áudio e mídia saem sem assinatura — para esses, o
+                  // autor vem do banco (`useAutoriaDasMensagens`).
+                  const autoriaEnviada = isInbound ? null : separarPrefixoRemetente(msg.message_text);
+                  const textoDaBolha = autoriaEnviada?.nome ? autoriaEnviada.corpo : msg.message_text;
+                  const nomeDeQuemEnviou = isInbound
+                    ? null
+                    : (autorPorMensagem[msg.external_message_id || ''] || autoriaEnviada?.nome || null);
                   return (
                     <div key={msg.id} data-msg-id={msg.id}>
                       {showDateSep && (
@@ -2548,12 +2561,20 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                               {msg.media_type === 'image' ? '📷 Imagem' : msg.media_type === 'audio' ? '🎵 Áudio' : msg.media_type === 'video' ? '🎬 Vídeo' : msg.media_type === 'document' ? '📄 Documento' : '📎 Mídia'}
                             </span>
                           )}
-                          {msg.message_text && (
+                          {nomeDeQuemEnviou && (
+                            <p
+                              className="text-[9px] font-semibold mb-0.5 text-primary-foreground/80"
+                              title="Quem da equipe enviou esta mensagem"
+                            >
+                              {nomeDeQuemEnviou}
+                            </p>
+                          )}
+                          {textoDaBolha && (
                             <p className="whitespace-pre-wrap break-words">
                               {msg.message_type === 'audio' && (
                                 <span className="text-[10px] font-medium opacity-70 block mb-0.5">🎤 Transcrição:</span>
                               )}
-                              {msg.message_text}
+                              {textoDaBolha}
                             </p>
                           )}
                           <div className="flex items-center gap-0.5 mt-0.5 flex-wrap">

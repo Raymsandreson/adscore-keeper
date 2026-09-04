@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { safeSelectValue } from '@/utils/selectValue';
-import { sendLeadConversionEvent } from '@/utils/metaConversionTracking';
-import { enfileiraConversao } from '@/services/metaCapiQueue';
+import { registrarFechamentoDeLead } from '@/services/metaCapiQueue';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
@@ -60,6 +59,7 @@ import { AcolhedorCombobox } from '@/components/leads/AcolhedorCombobox';
 import { TRABALHISTA_ACOLHEDORES, isTrabalhistaBoard } from '@/lib/trabalhistaAcolhedores';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
+import { ehSoCodigoDeDossie } from '@/lib/leadDisplayName';
 import { Lead } from '@/hooks/useLeads';
 import { useLeadCustomFields, FieldType, CustomFieldValue } from '@/hooks/useLeadCustomFields';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
@@ -1552,6 +1552,22 @@ ${scrapeData.content || ''}
       return;
     }
 
+    // "Obrigatório" só pegava o campo vazio, e "LEAD314" passava. Em 04/09/2026
+    // eram 1.307 leads vivos rotulados com o código no lugar do nome — e a maior
+    // fonte dos últimos 60 dias era digitação manual, não robô.
+    //
+    // A trava vale só para valor NOVO: quem abre um dos leads já rotulados assim
+    // continua salvando as outras alterações normalmente, senão o conserto viraria
+    // um cadeado em cima de 1.307 fichas. O código do dossiê tem campo próprio
+    // (Nº do caso) e é o que a sequência do funil usa.
+    if (
+      ehSoCodigoDeDossie(leadName) &&
+      leadName.trim() !== String(currentLead.lead_name || '').trim()
+    ) {
+      toast.error('Coloque o nome da pessoa — o código do dossiê vai no campo Nº do caso');
+      return;
+    }
+
     // CEP da visita é opcional em todos os funis (ago/2026): quem pede o CEP é o
     // dialog da tarefa de Marketing, não o salvamento do lead.
 
@@ -1906,12 +1922,7 @@ ${scrapeData.content || ''}
            // Conversão entra na fila da Meta CAPI. O valor digitado agora tem
            // precedência; sem ele o servidor cai no conversion_value salvo e,
            // se também faltar, na faixa de preço do produto do lead.
-           void enfileiraConversao({
-             leadId: currentLead.id,
-             evento: 'Purchase',
-             origem: 'kanban',
-             valor: parsedConversionValue ?? undefined,
-           });
+           registrarFechamentoDeLead(currentLead.id, 'kanban', parsedConversionValue ?? undefined);
             // Rename WhatsApp group with closed prefix + sync participants/contacts
             if ((currentLead as any).whatsapp_group_id) {
               cloudFunctions.invoke('rename-whatsapp-group', {
@@ -2022,32 +2033,10 @@ ${scrapeData.content || ''}
         }
        } else if (leadOutcome === 'refused') {
          await externalSupabase.from('leads').update({ lead_status: 'refused' } as any).eq('id', currentLead.id);
-         // Send conversion event to Meta CAPI
-         sendLeadConversionEvent({
-           id: currentLead.id,
-           lead_name: currentLead.lead_name,
-           lead_phone: (currentLead as any).lead_phone,
-           ctwa_context: (currentLead as any).ctwa_context,
-           campaign_id: (currentLead as any).campaign_id,
-         }, 'refused');
        } else if (leadOutcome === 'inviavel') {
          await externalSupabase.from('leads').update({ lead_status: 'inviavel' } as any).eq('id', currentLead.id);
-         sendLeadConversionEvent({
-           id: currentLead.id,
-           lead_name: currentLead.lead_name,
-           lead_phone: (currentLead as any).lead_phone,
-           ctwa_context: (currentLead as any).ctwa_context,
-           campaign_id: (currentLead as any).campaign_id,
-         }, 'inviavel');
        } else if (leadOutcome === 'cancelled') {
          await externalSupabase.from('leads').update({ lead_status: 'cancelled' } as any).eq('id', currentLead.id);
-         sendLeadConversionEvent({
-           id: currentLead.id,
-           lead_name: currentLead.lead_name,
-           lead_phone: (currentLead as any).lead_phone,
-           ctwa_context: (currentLead as any).ctwa_context,
-           campaign_id: (currentLead as any).campaign_id,
-         }, 'cancelled');
         } else if (!leadOutcome && (
          (currentLead as any).became_client_date ||
          (currentLead as any).inviavel_date ||
