@@ -67,7 +67,7 @@ para as **colunas** de `leads`, não para o texto de `notes`:
 
 | Coluna em `leads` | Coluna na planilha |
 |---|---|
-| `facebook_lead_id` | `id` (o Meta Lead ID, 15-17 dígitos) |
+| `facebook_lead_id` | `id`, **sem o prefixo `l:`** (ver abaixo) |
 | `campaign_id` / `campaign_name` | idem |
 | `adset_id` / `adset_name` | idem |
 | `ad_name` | idem |
@@ -80,6 +80,14 @@ O `facebook_lead_id` é o que destrava otimizar por **lead qualificado**
 formulário que originou o lead. Até 04/09/2026 essa coluna estava vazia em
 19.420 de 19.420 leads, porque o import jogava o id dentro de `notes` como
 texto solto.
+
+**O `id` vem com prefixo.** A exportação de Lead Ads escreve
+`l:1009263962139850`; a Conversion Leads API espera o número puro de 15-17
+dígitos. Id com prefixo é o mesmo que id nenhum, e falha **do lado da Meta**,
+sem erro deste lado. Quem tira é `normalizaLeadIdMeta`
+(`railway-server/src/lib/leadAdsSheet.ts`, com teste). Descoberto em
+04/09/2026 depois de 131 linhas já gravadas com prefixo — o que denunciou foi
+olhar o dado no banco (`length = 18`), não o import, que não reclamou de nada.
 
 `colunas_da_planilha` no `dry_run` lista os cabeçalhos vistos: é o que permite
 afirmar de qual coluna veio cada campo, e denuncia renome de coluna pela Meta
