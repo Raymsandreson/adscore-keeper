@@ -47,6 +47,17 @@ export interface MirrorAuthorFields {
   group_sender_name: string | null;
   /** Telefone de quem falou (só dígitos) — null quando é nossa ou quando só há `@lid`. */
   group_sender_phone: string | null;
+  /**
+   * Por qual das NOSSAS instâncias a mensagem saiu — null quando não é nossa ou
+   * quando não dá pra saber.
+   *
+   * Não confunda com o `instance_name` da linha: em grupo, a linha canônica é o
+   * primeiro espelho da lista, que quase sempre é de uma instância que apenas
+   * RECEBEU. Mostrar aquele nome na bolha diria o número errado. Quem enviou é
+   * o espelho gravado como `outbound`; para mensagem digitada no celular, que
+   * não gera espelho outbound nenhum, resta o telefone do autor.
+   */
+  sent_by_instance: string | null;
   /** Ids de todas as linhas espelhadas desta mensagem (a canônica inclusa). */
   mirror_ids: string[];
 }
@@ -100,27 +111,44 @@ function readSender(m: MirroredMessage): { name: string | null; phone: string; l
  * não gera espelho `outbound` nenhum: no PREV 1428, "Dom-Abraci" e uma da
  * "Atendimento Previdenciário" só foram reconhecidas por aí.
  *
+ * A mesma varredura diz POR QUAL instância a mensagem saiu (`sent_by_instance`):
+ * o espelho `outbound` é da instância remetente; sem ele, o telefone do autor
+ * resolve pelo mapa das nossas instâncias.
+ *
  * @param ourPhones telefones das instâncias (`whatsapp_instances.owner_phone`),
  *                  só dígitos. Vazio degrada para o sinal 1 apenas.
+ * @param instanceNameByPhone telefone → nome da instância. Só faz diferença na
+ *                  mensagem mandada do celular, que não tem espelho outbound.
  */
 export function resolveMirrorAuthor(
   mirrors: MirroredMessage[],
-  ourPhones?: ReadonlySet<string>
+  ourPhones?: ReadonlySet<string>,
+  instanceNameByPhone?: ReadonlyMap<string, string>
 ): Omit<MirrorAuthorFields, 'mirror_ids'> {
   const senders = mirrors.map(readSender);
   const senderPhone = senders.find(s => s.phone)?.phone || '';
   const senderName = senders.find(s => s.name)?.name || null;
 
-  const hasOutbound = mirrors.some(m => m.direction === 'outbound');
+  const espelhoOutbound = mirrors.find(m => m.direction === 'outbound');
   const fromOurNumber = !!senderPhone && !!ourPhones?.has(senderPhone);
 
-  if (hasOutbound || fromOurNumber) {
-    return { direction: 'outbound', group_sender_name: null, group_sender_phone: null };
+  if (espelhoOutbound || fromOurNumber) {
+    const nomeDaInstancia =
+      (espelhoOutbound?.instance_name || '').trim()
+      || (senderPhone ? instanceNameByPhone?.get(senderPhone) || '' : '')
+      || null;
+    return {
+      direction: 'outbound',
+      group_sender_name: null,
+      group_sender_phone: null,
+      sent_by_instance: nomeDaInstancia,
+    };
   }
   return {
     direction: 'inbound',
     group_sender_name: senderName,
     group_sender_phone: senderPhone || null,
+    sent_by_instance: null,
   };
 }
 
@@ -133,7 +161,7 @@ export function resolveMirrorAuthor(
  */
 export function dedupeMirroredMessages<T extends MirroredMessage>(
   rows: T[],
-  options?: { ourPhones?: ReadonlySet<string> }
+  options?: { ourPhones?: ReadonlySet<string>; instanceNameByPhone?: ReadonlyMap<string, string> }
 ): Array<T & MirrorAuthorFields> {
   const byKey = new Map<string, T[]>();
   const order: string[] = [];
@@ -149,7 +177,7 @@ export function dedupeMirroredMessages<T extends MirroredMessage>(
     const canonical = mirrors[0];
     return {
       ...canonical,
-      ...resolveMirrorAuthor(mirrors, options?.ourPhones),
+      ...resolveMirrorAuthor(mirrors, options?.ourPhones, options?.instanceNameByPhone),
       mirror_ids: mirrors.map(m => m.id),
     };
   });

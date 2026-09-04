@@ -46,7 +46,7 @@ import { escolherInstanciaDeGrupo } from '@/lib/whatsappQuickReply';
 import { dispararPrimeiraMensagemProativa } from '@/lib/agentePrimeiraMensagem';
 import { abrirConfigDoAgente } from '@/lib/agentConfigSheet';
 import { dedupeMirroredMessages } from '@/lib/whatsappGroupMirror';
-import { getOurInstancePhones, getOurInstancePhonesSync } from '@/integrations/supabase/external-rpc';
+import { getOurInstancePhones, getOurInstancePhonesSync, getInstanceNameByPhoneSync } from '@/integrations/supabase/external-rpc';
 import { withTimeout } from '@/lib/promiseTimeout';
 import type { Contact } from '@/hooks/useContacts';
 import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
@@ -174,6 +174,8 @@ interface Message {
   /** Preenchidos por `dedupeMirroredMessages` a partir de TODOS os espelhos. */
   group_sender_name?: string | null;
   group_sender_phone?: string | null;
+  /** Por qual instância nossa a mensagem saiu (não é o `instance_name` da linha). */
+  sent_by_instance?: string | null;
   mirror_ids?: string[];
 }
 
@@ -460,7 +462,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       // canônica — igual ao chat — e o autor sai do conjunto todo, não de um
       // espelho só. Depois inverte para exibir em ordem cronológica.
       const coldPhones = getOurInstancePhonesSync();
-      setMessages(dedupeMirroredMessages(rows, { ourPhones: coldPhones }).slice().reverse() as any);
+      setMessages(dedupeMirroredMessages(rows, { ourPhones: coldPhones, instanceNameByPhone: getInstanceNameByPhoneSync() }).slice().reverse() as any);
       setHasMoreOlder(hasMore);
       setLoadFailed(failed);
       setLoading(false);
@@ -471,7 +473,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       if (failed || rows.length === 0 || coldPhones.size > 0) return;
       const ourPhones = await getOurInstancePhones();
       if (cancelled || ourPhones.size === 0) return;
-      const refined = dedupeMirroredMessages(rows, { ourPhones }).slice().reverse();
+      const refined = dedupeMirroredMessages(rows, { ourPhones, instanceNameByPhone: getInstanceNameByPhoneSync() }).slice().reverse();
       setMessages(prev => {
         // Preserva o que chegou por realtime enquanto o refino rodava.
         const known = new Set(refined.map(m => m.id));
@@ -1811,7 +1813,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
         fetchMessagePage((phone || '').replace(/\D/g, ''), instanceName, isPrivateAllView, oldest),
         getOurInstancePhones(),
       ]);
-      const older = dedupeMirroredMessages(rows, { ourPhones }).slice().reverse();
+      const older = dedupeMirroredMessages(rows, { ourPhones, instanceNameByPhone: getInstanceNameByPhoneSync() }).slice().reverse();
       setMessages(prev => {
         const seen = new Set(prev.map(m => m.id));
         return [...older.filter(m => !seen.has(m.id)), ...prev] as any;
@@ -2495,6 +2497,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                   const nomeDeQuemEnviou = isInbound
                     ? null
                     : (autorPorMensagem[idDaMensagemNoWhatsApp(msg.external_message_id)] || autoriaEnviada?.nome || null);
+                  // Instância que enviou: `sent_by_instance` vem do dedupe (o
+                  // espelho outbound). Fora de grupo, a da conversa. Nunca o
+                  // `instance_name` da linha em grupo — seria o número errado.
+                  const instanciaQueEnviou = isInbound
+                    ? null
+                    : (msg.sent_by_instance || (isGroupChat ? null : (instanceName || msg.instance_name)) || null);
                   return (
                     <div key={msg.id} data-msg-id={msg.id}>
                       {showDateSep && (
@@ -2580,6 +2588,13 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                           <div className="flex items-center gap-0.5 mt-0.5 flex-wrap">
                             <p className={cn("text-[9px] mr-1", isInbound ? "text-muted-foreground" : "text-primary-foreground/70")}>
                               {format(parseISO(msg.created_at), 'HH:mm')}
+                              {/* Por qual número da casa saiu — em grupo convivem
+                                  várias instâncias nossas na mesma conversa. */}
+                              {instanciaQueEnviou && (
+                                <span className="opacity-90" title={`Enviada pela instância "${instanciaQueEnviou}"`}>
+                                  {' · '}{instanciaQueEnviou}
+                                </span>
+                              )}
                             </p>
                             {msg.message_text && (
                               <>

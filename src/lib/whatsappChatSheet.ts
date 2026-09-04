@@ -23,6 +23,14 @@ export interface WhatsAppChatSheetIntent {
    * pra cima, que é o padrão do sistema.
    */
   direction?: 'top' | 'bottom';
+  /**
+   * Abre o painel SEMPRE, inclusive dentro de /whatsapp. Sem isso o host
+   * desvia para a inbox por parâmetro — o que é certo para notificação (a
+   * pessoa já está na tela da conversa) e errado para clique de lista: quem
+   * clicou numa menção com o painel aberto por cima da inbox via a conversa
+   * trocar ATRÁS do painel, e a leitura é "fui jogado na sessão".
+   */
+  forceSheet?: boolean;
   nonce: string;
 }
 

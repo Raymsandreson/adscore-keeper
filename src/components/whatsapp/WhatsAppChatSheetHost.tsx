@@ -11,8 +11,11 @@ import { subscribeToWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
  * Ter um segundo drawer só para a notificação seria duas conversas diferentes
  * para manter e dois visuais para a mesma coisa.
  *
- * Na própria /whatsapp o drawer não entra: ali a conversa abre na inbox, pelos
- * parâmetros `?openChat=&instance=` que a página já sabia consumir.
+ * Na própria /whatsapp o drawer não entra para NOTIFICAÇÃO: ali a conversa
+ * abre na inbox, pelos parâmetros `?openChat=&instance=` que a página já sabia
+ * consumir. Clique de lista (menções, relatório) manda `forceSheet` e abre o
+ * painel do mesmo jeito — quem clicou de dentro de um painel aberto por cima
+ * da inbox não quer a conversa trocando atrás dele.
  */
 const DashboardChatPreview = lazy(() =>
   import('@/components/whatsapp/DashboardChatPreview').then((m) => ({ default: m.DashboardChatPreview }))
@@ -31,8 +34,8 @@ export function WhatsAppChatSheetHost() {
 
   useEffect(
     () =>
-      subscribeToWhatsAppChatSheet(({ phone, instanceName, contactName, direction }) => {
-        if (window.location.pathname.startsWith('/whatsapp')) {
+      subscribeToWhatsAppChatSheet(({ phone, instanceName, contactName, direction, forceSheet }) => {
+        if (!forceSheet && window.location.pathname.startsWith('/whatsapp')) {
           const params = new URLSearchParams(window.location.search);
           params.set('openChat', phone);
           if (instanceName) params.set('instance', instanceName);
