@@ -117,10 +117,20 @@ Deno.serve(async (req) => {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(
-          `ZapSign get template error: ${response.status} - ${errorText}`,
+        // Regra de negócio (modelo apagado/token de outra conta) devolve 200,
+        // senão o front recebe 500 e a tela fica em branco.
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: response.status === 404
+              ? "Modelo não encontrado na ZapSign. Ele pode ter sido apagado ou pertence a outra conta — selecione outro modelo."
+              : `ZapSign get template error: ${response.status} - ${errorText}`,
+            not_found: response.status === 404,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
+
 
       const templateData = await response.json();
       console.log("ZapSign template details:", JSON.stringify(templateData));
