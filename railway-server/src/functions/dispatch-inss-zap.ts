@@ -8,7 +8,8 @@ import {
   LEGENDA_PROCURACAO,
   resolverGrupoDoLead,
 } from '../lib/inss-zap';
-import { exigeProcuracao, extrairPontosPendentes } from '../lib/inss-despacho';
+import { exigeProcuracao, extrairPontosPendentes, separarPendencias } from '../lib/inss-despacho';
+import { mandarAudioDaMensagem } from '../lib/inss-audio';
 import { buscarProcuracaoDoCliente } from '../lib/inss-procuracao';
 
 /**
@@ -122,6 +123,21 @@ export const handler: RequestHandler = async (req, res) => {
                   );
                 }
               }
+            }
+            // Áudio pelo mesmo caminho do envio na hora. A fonte do assunto é a
+            // pendência do CLIENTE, igual ao notify — o que é pendência nossa
+            // ficou na atividade e não pode escolher o áudio dele.
+            if (item.zap_tipo) {
+              Object.assign(
+                patch,
+                await mandarAudioDaMensagem({
+                  tipo: item.zap_tipo,
+                  fonte: separarPendencias(pontos).cliente || item.despacho,
+                  texto: item.zap_texto,
+                  group_jid: destino.grupo.group_jid,
+                  instancia: sent.instancia || destino.grupo.instance_name,
+                }),
+              );
             }
           } else {
             patch.zap_status = 'erro';

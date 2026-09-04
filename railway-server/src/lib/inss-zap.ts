@@ -292,6 +292,74 @@ export async function enviarDocumentoAoGrupo(args: {
 }
 
 /**
+ * Manda uma nota de voz por UMA instância.
+ *
+ * `type: 'ptt'` é obrigatório: áudio mandado como `audio` comum chega no iPhone
+ * como "Este áudio não está mais disponível" (incidente 13/07/2026). E o
+ * arquivo vai em mp3 de propósito — a UazAPI reencoda o que não é ogg, e o
+ * reencode dela toca em iOS, enquanto ogg saído do nosso ffmpeg não toca em
+ * bitrate nenhum (matriz de testes de 21/07/2026).
+ */
+export async function enviarAudioUazapi(args: {
+  group_jid: string;
+  file_url: string;
+  instance_name?: string | null;
+}): Promise<{ ok: boolean; status: number; body?: any }> {
+  let q = supabase
+    .from('whatsapp_instances')
+    .select('id, instance_name, instance_token, base_url')
+    .eq('is_active', true);
+  if (args.instance_name) q = q.eq('instance_name', args.instance_name);
+  const { data: instances } = await q.limit(1);
+  const inst = instances?.[0];
+  if (!inst) return { ok: false, status: 0, body: 'no active instance' };
+  const base = (inst.base_url || 'https://abraci.uazapi.com').replace(/\/$/, '');
+  const resp = await fetch(`${base}/send/media`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', token: inst.instance_token },
+    body: JSON.stringify({
+      number: jidDeGrupo(args.group_jid),
+      type: 'ptt',
+      file: args.file_url,
+    }),
+  });
+  let body: any = null;
+  try {
+    body = await resp.json();
+  } catch {
+    body = await resp.text().catch(() => null);
+  }
+  return { ok: resp.ok, status: resp.status, body };
+}
+
+/**
+ * Nota de voz para o grupo, tentando as instâncias-membro na mesma ordem do
+ * texto. Recebe a instância que ENTREGOU o texto: áudio e texto têm que sair
+ * pelo mesmo número, senão o grupo vê a mensagem de um remetente e o áudio de
+ * outro (incidente FAMÍLIA 250, 04/08/2026).
+ */
+export async function enviarAudioAoGrupo(args: {
+  group_jid: string;
+  file_url: string;
+  instance_name?: string | null;
+}): Promise<{ ok: boolean; status: number; body?: any; instancia?: string; tentativas: number }> {
+  const candidatas = await instanciasCandidatasDoGrupo(args.group_jid, args.instance_name);
+  if (candidatas.length === 0) {
+    const r = await enviarAudioUazapi(args);
+    return { ...r, tentativas: 1 };
+  }
+  let ultimo: { ok: boolean; status: number; body?: any } = { ok: false, status: 0 };
+  let tentativas = 0;
+  for (const inst of candidatas.slice(0, 4)) {
+    tentativas++;
+    ultimo = await enviarAudioUazapi({ ...args, instance_name: inst });
+    if (ultimo.ok) return { ...ultimo, instancia: inst, tentativas };
+    console.warn(`[inss-zap] áudio falhou por "${inst}": ${descreverErro(ultimo)}`);
+  }
+  return { ...ultimo, tentativas };
+}
+
+/**
  * Envia tentando as instâncias-membro do grupo, uma a uma.
  *
  * Sem isto o envio ia pela "primeira instância ativa" que o banco devolvesse —
