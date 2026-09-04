@@ -12,9 +12,19 @@ const DEFAULT_MAX_TOKENS = 8192;
 const ANTHROPIC_MODEL_MAP: Record<string, string> = {
   "anthropic/claude-haiku-4-5": "claude-haiku-4-5",
   "anthropic/claude-sonnet-4-6": "claude-sonnet-4-6",
+  "anthropic/claude-sonnet-5": "claude-sonnet-5",
   "anthropic/claude-opus-4-8": "claude-opus-4-8",
+  "anthropic/claude-opus-5": "claude-opus-5",
   "anthropic/claude-fable-5": "claude-fable-5",
 };
+
+/**
+ * Modelos que REJEITAM parâmetros de sampling (temperature/top_p/top_k) com
+ * HTTP 400: família Opus 5/4.8/4.7, Sonnet 5 e Fable/Mythos. Quem chama manda
+ * temperature achando que é inofensivo — aqui o parâmetro é filtrado em vez de
+ * derrubar a chamada.
+ */
+const NO_SAMPLING = /^claude-(opus-(5|4-8|4-7)|sonnet-5|fable|mythos)/;
 
 /** Resolve a provider-prefixed model string into a real Anthropic model ID. */
 export function resolveAnthropicModel(model?: string): string {
@@ -32,6 +42,10 @@ export interface AnthropicCallOptions {
   temperature?: number;
   stream?: boolean;
   signal?: AbortSignal;
+  /** output_config.effort: low|medium|high|xhigh|max. Profundidade do raciocínio — e do custo. */
+  effort?: string;
+  /** Marca o system prompt com cache_control ephemeral (prompt grande reenviado várias vezes). */
+  cache_system?: boolean;
 }
 
 function convertContentPart(p: any): any {
@@ -82,8 +96,17 @@ export async function callAnthropic(options: AnthropicCallOptions): Promise<Resp
     max_tokens: options.max_tokens || DEFAULT_MAX_TOKENS,
     messages,
   };
-  if (systemText) body.system = systemText;
-  if (options.temperature !== undefined) body.temperature = options.temperature;
+  if (systemText) {
+    // cache_system: prompt grande e repetido (ex.: o catálogo de schema do
+    // relatório, reenviado a cada passo da mesma pergunta). Leitura do cache
+    // custa ~10% do token normal; a primeira gravação custa ~1,25x.
+    body.system = options.cache_system
+      ? [{ type: "text", text: systemText, cache_control: { type: "ephemeral" } }]
+      : systemText;
+  }
+  // Sampling foi removido nos modelos novos (400 se mandar) — só vai pra quem aceita.
+  if (options.temperature !== undefined && !NO_SAMPLING.test(model)) body.temperature = options.temperature;
+  if (options.effort) body.output_config = { effort: options.effort };
   if (options.stream) body.stream = true;
 
   if (options.tools?.length) {

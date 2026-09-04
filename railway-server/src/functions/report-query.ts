@@ -26,7 +26,9 @@
  * resultado. A tabela mostra o que está no banco; o conserto é na origem.
  *
  * Só devolve dados pra tela — não há geração de arquivo/download.
- * Custo: 2 a 4 chamadas Gemini Flash por pergunta (1 por consulta + a resposta).
+ * Custo: 2 a 4 chamadas Claude Opus 5 por pergunta (1 por consulta + a resposta).
+ * Ordem de grandeza por pergunta: ~30k tokens de entrada (o catálogo de schema
+ * repete a cada passo, mas vai cacheado) + ~4k de saída ≈ US$ 0,15–0,25.
  */
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
@@ -39,13 +41,22 @@ import { aiChat } from '../lib/gemini';
  * withTools=false na última rodada: sem ferramenta declarada o modelo não tem
  * como pedir "mais uma consulta", então a conversa sempre termina em texto.
  *
- * thinking_budget: 0 → thinkingLevel mínimo. Sem isso o Gemini 3.x roda com
- * thinking dinâmico (alto) quando há tools e, em perguntas complexas, consome
- * todo o max_tokens no raciocínio ANTES de emitir o functionCall — a resposta
- * volta vazia. max_tokens folgado garante espaço pra SQL longa + análise.
+ * thinking_budget: 0 → thinkingLevel mínimo. Só vale pro fallback Gemini: sem
+ * isso o Gemini 3.x roda com thinking dinâmico (alto) quando há tools e, em
+ * perguntas complexas, consome todo o max_tokens no raciocínio ANTES de emitir
+ * o functionCall — a resposta volta vazia. No Claude quem controla isso é
+ * `effort`, e o `temperature` é descartado pelo lib/anthropic (modelo novo
+ * devolve 400 se receber sampling). max_tokens folgado porque no Claude o
+ * raciocínio também sai do mesmo teto.
+ *
+ * cache_system: o SYSTEM_PROMPT (catálogo de schema, ~4k tokens) volta inteiro
+ * a cada passo da mesma pergunta — cacheado, os passos 2..4 custam ~10% disso.
  */
 async function callLLM(messages: any[], withTools = true): Promise<{ completion: any; engine: string }> {
-  const base: any = { max_tokens: 3000, temperature: 0, messages, thinking_budget: 0 };
+  const base: any = {
+    max_tokens: 8000, temperature: 0, messages, thinking_budget: 0,
+    effort: REPORT_EFFORT, cache_system: true,
+  };
   if (withTools) base.tools = [runSqlTool];
   try {
     const completion = await aiChat({ ...base, model: PRIMARY_MODEL });
@@ -64,11 +75,17 @@ const CLOUD_FUNCTIONS_URL =
   'https://gliigkupoebmlbwyvijp.supabase.co';
 const CLOUD_ANON_KEY = process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
-// Primário = Gemini Flash (Anthropic sem crédito em jul/2026 — cada chamada ao
-// Claude falhava e caía no fallback, pagando a latência da tentativa perdida).
-// Fallback = Gemini Pro. Voltar pro Claude = setar REPORT_QUERY_MODEL.
-const PRIMARY_MODEL = process.env.REPORT_QUERY_MODEL || 'google/gemini-3.6-flash';
-const FALLBACK_MODEL = process.env.REPORT_QUERY_FALLBACK_MODEL || 'google/gemini-3.1-pro-preview';
+// Primário = Claude Opus 5 (set/2026): o analista precisa escrever SQL correta
+// no primeiro tiro e depois LER o resultado com ceticismo — foi aí que o Gemini
+// escorregou (inventava diagnóstico que a consulta não sustentava).
+// Fallback = Gemini Flash, que continua respondendo se a chave Anthropic estiver
+// sem crédito/limite. Trocar qualquer um dos dois = REPORT_QUERY_MODEL /
+// REPORT_QUERY_FALLBACK_MODEL, sem mexer em código.
+const PRIMARY_MODEL = process.env.REPORT_QUERY_MODEL || 'anthropic/claude-opus-5';
+const FALLBACK_MODEL = process.env.REPORT_QUERY_FALLBACK_MODEL || 'google/gemini-3.6-flash';
+// Profundidade do raciocínio do Claude. 'medium' responde pergunta de relatório
+// sem gastar o dobro de token; subir pra 'high' se a análise vier rasa.
+const REPORT_EFFORT = process.env.REPORT_QUERY_EFFORT || 'medium';
 // Bootstrap: e-mails que sempre têm acesso (dono/diretoria), separados por vírgula.
 const ADMIN_EMAILS = (process.env.REPORT_ADMIN_EMAILS || 'processual@rprudencioadv.com')
   .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
@@ -218,6 +235,32 @@ activity_types — tipos de atividade. id, key, label.
 // SYSTEM_PROMPT porque o prompt interpola esse número (TDZ se vier depois).
 const MAX_SQL_STEPS = Number(process.env.REPORT_MAX_SQL_STEPS || 3);
 
+/** Fuso do escritório — é o "hoje" que vale pra quem lê o relatório. */
+const TIMEZONE = process.env.REPORT_TIMEZONE || 'America/Sao_Paulo';
+
+/**
+ * Bloco de tempo do prompt — montado A CADA pergunta, nunca no load do módulo
+ * (senão o processo do Railway congela a data do último deploy).
+ *
+ * Sem isto o modelo cai no ano do próprio treinamento e trata data do ano
+ * corrente como "futura/mockada": foi exatamente o que apareceu no painel, um
+ * registro do mês atual descrito como "falha de parseamento na importação".
+ */
+function contextoDeTempo(): string {
+  const agora = new Date();
+  const dia = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: TIMEZONE, weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric',
+  }).format(agora);
+  const ano = new Intl.DateTimeFormat('pt-BR', { timeZone: TIMEZONE, year: 'numeric' }).format(agora);
+  return [
+    'QUANDO É AGORA (leia antes de julgar qualquer data)',
+    `- Hoje é ${dia} — fuso ${TIMEZONE}. O ano corrente é ${ano}.`,
+    `- Logo, data de ${ano} é PRESENTE, não futuro. Só é futura a data POSTERIOR a hoje.`,
+    '- Nunca use o ano que você "lembra" do treinamento: use a data acima, ou CURRENT_DATE dentro da SQL.',
+    '- Não chame dado de "mockado", "de teste" ou "erro de importação" sem consulta que sustente. Desconfiou? Meça (quantos registros, qual o intervalo de datas) e mostre o número — suspeita sem consulta é chute, e chute aqui vira decisão errada da diretoria.',
+  ].join('\n');
+}
+
 const SYSTEM_PROMPT = `Você é o analista de dados do escritório, conversando com a diretoria dentro do sistema WhatsJUD.
 Você tem acesso SOMENTE LEITURA ao banco e a ferramenta run_sql para consultar.
 
@@ -245,6 +288,11 @@ FORMATO DA RESPOSTA
 ${SCHEMA_CATALOG}
 
 Nunca use INSERT/UPDATE/DELETE/DDL. Nunca acesse auth, vault, pg_catalog, information_schema, whatsapp_messages.`;
+
+/** Prompt do turno: contexto de tempo do momento da pergunta + o prompt fixo. */
+function buildSystemPrompt(): string {
+  return `${contextoDeTempo()}\n\n${SYSTEM_PROMPT}`;
+}
 
 const runSqlTool = {
   type: 'function' as const,
@@ -503,7 +551,7 @@ export const handler = async (req: Request, res: Response) => {
 
   try {
     const messages: any[] = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: buildSystemPrompt() },
       ...priorMessages,
       { role: 'user', content: question },
     ];
