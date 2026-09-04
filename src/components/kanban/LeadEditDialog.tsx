@@ -60,6 +60,7 @@ import { AcolhedorCombobox } from '@/components/leads/AcolhedorCombobox';
 import { TRABALHISTA_ACOLHEDORES, isTrabalhistaBoard } from '@/lib/trabalhistaAcolhedores';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
+import { ehSoCodigoDeDossie } from '@/lib/leadDisplayName';
 import { Lead } from '@/hooks/useLeads';
 import { useLeadCustomFields, FieldType, CustomFieldValue } from '@/hooks/useLeadCustomFields';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
@@ -1549,6 +1550,22 @@ ${scrapeData.content || ''}
 
     if (!leadName.trim()) {
       toast.error('Nome é obrigatório');
+      return;
+    }
+
+    // "Obrigatório" só pegava o campo vazio, e "LEAD314" passava. Em 04/09/2026
+    // eram 1.307 leads vivos rotulados com o código no lugar do nome — e a maior
+    // fonte dos últimos 60 dias era digitação manual, não robô.
+    //
+    // A trava vale só para valor NOVO: quem abre um dos leads já rotulados assim
+    // continua salvando as outras alterações normalmente, senão o conserto viraria
+    // um cadeado em cima de 1.307 fichas. O código do dossiê tem campo próprio
+    // (Nº do caso) e é o que a sequência do funil usa.
+    if (
+      ehSoCodigoDeDossie(leadName) &&
+      leadName.trim() !== String(currentLead.lead_name || '').trim()
+    ) {
+      toast.error('Coloque o nome da pessoa — o código do dossiê vai no campo Nº do caso');
       return;
     }
 

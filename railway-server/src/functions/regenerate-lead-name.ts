@@ -4,6 +4,7 @@
 // Se o lead ainda não está fechado, usa total_closed+1 como projeção.
 import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
+import { CAMPOS_DE_PESSOA, temNomeDePessoa } from '../lib/lead-nome-pessoa';
 
 const CLOUD_FUNCTIONS_URL =
   process.env.CLOUD_FUNCTIONS_URL ||
@@ -247,6 +248,38 @@ export const handler: RequestHandler = async (req, res) => {
         else missingFields.push(field);
       } else {
         missingFields.push(field);
+      }
+    }
+
+    // Trava de identidade. A receita intercala literais (`text:`) com campos do
+    // lead: os literais entram sempre, os campos só quando têm valor. Sem o nome
+    // do cliente sobra a pontuação sozinha, e o rótulo vira "PREV 1512 - ( ) Acd- -".
+    // Medido em 04/09/2026: 995 leads com grupo carregam rótulo assim, e ainda
+    // nascem de 20 a 62 por semana.
+    //
+    // A conferência é sobre o DADO, não sobre o resultado do loop: o railway não
+    // resolve os tokens `_upper` (quem resolve é a edge create-whatsapp-group), e
+    // medir o loop reprovaria board inteiro por uma diferença de implementação.
+    // Aqui a pergunta é só uma: sabemos de quem é este lead?
+    {
+      const pedeNomeDePessoa = leadFields.some(
+        (f) => typeof f === 'string' && CAMPOS_DE_PESSOA.has(f),
+      );
+      const baseDeIdentidade = [
+        stripCaseFallbackPrefix(
+          stripExistingSequence(String(lead.lead_name || ''), manualClosedPrefix || activePrefix),
+        ),
+        String(lead.victim_name || ''),
+      ].join(' ');
+      if (pedeNomeDePessoa && !temNomeDePessoa(baseDeIdentidade)) {
+        return ok({
+          success: false,
+          error:
+            'lead sem nome de pessoa: o rótulo sairia só com código e pontuação. ' +
+            'Preencha o nome do cliente antes de regerar.',
+          missing_fields: missingFields,
+          identity_blocked: true,
+        });
       }
     }
 

@@ -1012,6 +1012,54 @@ Deno.serve(async (req) => {
       }
 
       groupName = parts.join(' ')
+
+      // Trava de identidade. Os literais `text:` entram sempre; os campos do lead
+      // só quando têm valor. Sem o nome do cliente sobra a pontuação sozinha e o
+      // grupo nasce "✅LEAD 1512 - - (BPC/LOAS) -" — que o sync devolve para o
+      // lead_name, fechando o ciclo: rótulo sem nome gera grupo sem nome, que
+      // regrava o rótulo sem nome. Medido em 04/09/2026: 995 leads com grupo
+      // nesse estado, 20 a 62 novos por semana.
+      //
+      // A pergunta é sobre o DADO, não sobre o que o loop montou: sabemos de quem
+      // é este lead? O acolhedor não conta — foi justamente ele ocupando o lugar
+      // do cliente que produziu os 141 rótulos "Acd- Mateus Santos Saraiva".
+      const CAMPOS_DE_PESSOA = ['lead_name', 'lead_name_upper', 'lead_first_name', 'victim_name', 'victim_name_upper']
+      const PALAVRAS_DE_DOSSIE = new Set([
+        'PREV','LEAD','CASO','BPC','LOAS','ANUNCIO','AUX','AUXILIO','ACD','MATERNIDADE','ACIDENTE',
+        'TRABALHO','PROCESSUAL','MANUAL','ATENDIMENTO','WHATSAPP','PENSAO','APOSENTADORIA','SALARIO',
+        'RURAL','URBANO','INVALIDEZ','DOENCA','INCAPACIDADE','OBITO','REVISAO','MORTE','SEGURO',
+        'DEFESA','RECURSO','PERICIA','ANALISE','ADMINISTRATIVO','JUDICIAL','AUTISMO','POP','NAO',
+        'INFORMADO','SEM','NOME','BAIRRO','PARTO','ACOLHEDOR','NOVO','NOVA','TESTE',
+        'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI',
+        'RJ','RN','RS','RO','RR','SC','SP','SE','TO',
+      ])
+      const temNomeDePessoa = (rotulo: string) =>
+        String(rotulo || '')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .toUpperCase()
+          .replace(/\b(PREV|LEAD|CASO)\s*[-_|:.]?\s*\d+/g, ' ')
+          .replace(/[^A-Z\s]/g, ' ')
+          .split(/\s+/)
+          .some((t) => t.length >= 3 && !PALAVRAS_DE_DOSSIE.has(t))
+
+      if (leadFields.some((f: string) => CAMPOS_DE_PESSOA.includes(f))) {
+        const baseDeIdentidade = [
+          stripExistingSequenceFromName(leadData?.lead_name || lead_name, activePrefix),
+          leadData?.victim_name || '',
+        ].join(' ')
+        if (!temNomeDePessoa(baseDeIdentidade)) {
+          // Devolve o slot: o ATOMIC CLAIM acima já gravou "PENDING:<uuid>" em
+          // leads.whatsapp_group_id, e sair daqui sem liberar deixaria o lead
+          // com sentinela grudada, bloqueando a criação por 2 minutos (STALE_MS)
+          // e entregando lixo pra quem lê a coluna.
+          await releaseSentinelIfOurs()
+          return new Response(JSON.stringify({
+            success: false,
+            identity_blocked: true,
+            error: 'lead sem nome de pessoa: o grupo sairia rotulado só com código e pontuação. Preencha o nome do cliente antes de criar o grupo.',
+          }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+      }
     }
 
     // Override do nome: quando o chamador passa `group_name_override`, esse valor
