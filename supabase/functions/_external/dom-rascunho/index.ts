@@ -177,6 +177,33 @@ function instrucaoDaIntencao(cod: string): string {
   ].join("\n");
 }
 
+/**
+ * Toda decisão vira linha em dom_decisoes — inclusive o silêncio.
+ *
+ * Sem isto o piloto não responde a pergunta que importa: "ele está calando
+ * demais, ou de menos?". Um atendente que nunca fala parece estar funcionando,
+ * e esse é o pior jeito de falhar.
+ */
+async function registrar(
+  supabase: any,
+  g: any,
+  decisao: "respondeu" | "silencio" | "humano" | "pulou",
+  motivo: string,
+  extra: { intencao?: string | null; pergunta?: string | null; pendente_id?: string | null } = {},
+) {
+  const { error } = await supabase.from("dom_decisoes").insert({
+    group_jid: g.group_jid,
+    group_name: g.group_name ?? null,
+    decisao,
+    motivo,
+    intencao: extra.intencao ?? null,
+    pergunta: extra.pergunta ?? null,
+    pendente_id: extra.pendente_id ?? null,
+  });
+  // O registro nunca pode derrubar a rodada.
+  if (error) console.error("[dom-rascunho] falha ao registrar decisão", error.message);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
 
@@ -243,13 +270,13 @@ Deno.serve(async (req) => {
       }
       lista.reverse();
 
-      if (lista.length === 0) { pulados.push({ grupo: g.group_jid, motivo: "sem mensagens" }); continue; }
+      if (lista.length === 0) { pulados.push({ grupo: g.group_jid, motivo: "sem mensagens" }); await registrar(supabase, g, "pulou", "sem mensagens"); continue; }
 
       const ultima = lista[lista.length - 1];
-      if (ultima.daEquipe) { pulados.push({ grupo: g.group_jid, motivo: "equipe falou por último" }); continue; }
+      if (ultima.daEquipe) { pulados.push({ grupo: g.group_jid, motivo: "equipe falou por último" }); await registrar(supabase, g, "pulou", "equipe falou por último"); continue; }
 
       const pergunta = ultima.texto;
-      if (pergunta.length < 3) { pulados.push({ grupo: g.group_jid, motivo: "última mensagem sem texto" }); continue; }
+      if (pergunta.length < 3) { pulados.push({ grupo: g.group_jid, motivo: "última mensagem sem texto" }); await registrar(supabase, g, "pulou", "última mensagem sem texto"); continue; }
 
       const { data: jaTem } = await supabase
         .from("dom_respostas_pendentes").select("id")
@@ -272,7 +299,11 @@ Deno.serve(async (req) => {
       //    convidado na conversa, não dono dela — não insiste em ter a última
       //    palavra.
       if (cls.conversa_encerrada || grupoIntencao === "D") {
+        const motivoSilencio = cls.conversa_encerrada
+          ? "conversa encerrada: o cliente só reconheceu, não pediu nada novo"
+          : "a intenção não pede resposta";
         pulados.push({ grupo: g.group_jid, motivo: `silêncio (${cls.intencao}${cls.conversa_encerrada ? ", conversa encerrada" : ""})` });
+        await registrar(supabase, g, "silencio", motivoSilencio, { pergunta, intencao: cls.intencao });
         continue;
       }
 
@@ -285,8 +316,8 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ group_jid: g.group_jid, pergunta }),
       });
       const domCtx = await ctxResp.json().catch(() => null);
-      if (!domCtx || domCtx.error) { pulados.push({ grupo: g.group_jid, motivo: "contexto indisponível" }); continue; }
-      if (domCtx.atende === false) { pulados.push({ grupo: g.group_jid, motivo: domCtx.motivo || "fora do piloto" }); continue; }
+      if (!domCtx || domCtx.error) { pulados.push({ grupo: g.group_jid, motivo: "contexto indisponível" }); await registrar(supabase, g, "pulou", "contexto indisponível", { pergunta, intencao: cls.intencao }); continue; }
+      if (domCtx.atende === false) { pulados.push({ grupo: g.group_jid, motivo: domCtx.motivo || "fora do piloto" }); await registrar(supabase, g, "pulou", domCtx.motivo || "fora do piloto", { pergunta, intencao: cls.intencao }); continue; }
 
       const historico = lista
         .map((m) => {
@@ -315,7 +346,7 @@ Deno.serve(async (req) => {
         pulados.push({ grupo: g.group_jid, motivo: `modelo falhou: ${(e as Error).message}` });
         continue;
       }
-      if (!resposta) { pulados.push({ grupo: g.group_jid, motivo: "resposta vazia" }); continue; }
+      if (!resposta) { pulados.push({ grupo: g.group_jid, motivo: "resposta vazia" }); await registrar(supabase, g, "pulou", "resposta vazia", { pergunta, intencao: cls.intencao }); continue; }
 
       let motivo: string | null = null;
       resposta = resposta
@@ -334,7 +365,7 @@ Deno.serve(async (req) => {
         motivo = motivo || `intenção ${cls.intencao}: precisa de atendente humano`;
       }
 
-      const { error: errFila } = await supabase.from("dom_respostas_pendentes").insert({
+      const { data: linhaFila, error: errFila } = await supabase.from("dom_respostas_pendentes").insert({
         group_jid: g.group_jid,
         group_name: g.group_name || domCtx.contexto?.grupo || null,
         instance_name: ultima.instancia,
@@ -347,9 +378,19 @@ Deno.serve(async (req) => {
         motivo_revisao: motivo || "modo rascunho: tudo passa por revisão",
         contexto_usado: domCtx.contexto || null,
         status: "pendente",
-      });
-      if (errFila) { pulados.push({ grupo: g.group_jid, motivo: `fila: ${errFila.message}` }); continue; }
+      }).select("id").maybeSingle();
+      if (errFila) {
+        pulados.push({ grupo: g.group_jid, motivo: `fila: ${errFila.message}` });
+        await registrar(supabase, g, "pulou", `fila: ${errFila.message}`, { pergunta, intencao: cls.intencao });
+        continue;
+      }
 
+      await registrar(
+        supabase, g,
+        atendenteId ? "humano" : "respondeu",
+        motivo || "rascunho gerado",
+        { pergunta, intencao: cls.intencao, pendente_id: (linhaFila as any)?.id ?? null },
+      );
       rascunhos++;
       console.log(`[dom-rascunho] grupo=${g.group_jid} intencao=${cls.intencao} humano=${!!atendenteId} (${resposta.length}ch)`);
     }
