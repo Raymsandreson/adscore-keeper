@@ -268,17 +268,34 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
     uniqueRows.push(r);
   }
 
-  // 3) Busca leads existentes no board pra dedup contra o banco
-  const { data: existing, error: existErr } = await ext
-    .from('leads')
-    .select('id, lead_phone')
-    .eq('board_id', boardId)
-    .not('lead_phone', 'is', null);
-  if (existErr) return falha(`dedup query: ${existErr.message}`);
+  // 3) Busca leads existentes no board pra dedup contra o banco.
+  //
+  // PAGINADO de proposito: o PostgREST corta em 1000 linhas por request e o
+  // board BPC tem 7.255 leads com telefone. Sem paginar, o dedup so conhecia
+  // 14% deles — e quem ficasse de fora seria recriado a cada rodada do cron,
+  // de 10 em 10 minutos, sem nunca entrar no conjunto conhecido. O `.order`
+  // nao e enfeite: sem ordem estavel a paginacao pula e repete linhas.
+  const PAGINA_DEDUP = 1000;
   const existingKeys = new Set<string>();
-  for (const l of existing || []) {
-    const k = phoneKey(String(l.lead_phone || '').replace(/\D/g, ''));
-    if (k) existingKeys.add(k);
+  let lidosDedup = 0;
+  for (let inicio = 0; ; inicio += PAGINA_DEDUP) {
+    const { data: pagina, error: existErr } = await ext
+      .from('leads')
+      .select('id, lead_phone')
+      .eq('board_id', boardId)
+      .not('lead_phone', 'is', null)
+      .order('id', { ascending: true })
+      .range(inicio, inicio + PAGINA_DEDUP - 1);
+    if (existErr) return falha(`dedup query: ${existErr.message}`);
+    const linhas = pagina || [];
+    lidosDedup += linhas.length;
+    for (const l of linhas) {
+      const k = phoneKey(String(l.lead_phone || '').replace(/\D/g, ''));
+      if (k) existingKeys.add(k);
+    }
+    if (linhas.length < PAGINA_DEDUP) break;
+    // Trava: board absurdo nao pode virar loop infinito dentro do cron.
+    if (inicio >= 200_000) break;
   }
 
   // 4) Decide quem criar
@@ -315,6 +332,10 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
     // aqui antes de virar coluna vazia no banco.
     colunas_da_planilha: [...cabecalhos].sort(),
     com_facebook_lead_id: toCreate.filter((r) => r.facebook_lead_id).length,
+    // Quantos telefones o dedup realmente conhecia. Se isto vier redondo em
+    // 1000 num board maior que isso, a paginacao quebrou de novo.
+    dedup_leads_lidos: lidosDedup,
+    dedup_telefones_conhecidos: existingKeys.size,
   };
 
   if (opts.dryRun) {
