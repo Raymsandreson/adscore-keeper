@@ -263,6 +263,18 @@ export const handler: RequestHandler = async (req, res) => {
     // 5) Decide quem criar
     const toCreate = uniqueRows.filter((r) => !existingKeys.has(r.phone_key));
 
+    // Contagem por aba. Sem ela, "li 8 abas" e promessa sem prova: uma aba pode
+    // voltar vazia (renomeada, range errado, permissao) que o total geral nao
+    // denuncia. `recentes` e antes do dedup por telefone; `novos` e depois, e a
+    // soma de `novos` fecha com would_create/created.
+    const porAba = SHEET_TABS.map((t) => ({
+      aba: t.tab,
+      operador: t.operator,
+      linhas: sheetRows.filter((r) => r.tab === t.tab).length,
+      recentes: recentRows.filter((r) => r.tab === t.tab).length,
+      novos: toCreate.filter((r) => r.tab === t.tab).length,
+    }));
+
     if (dry_run) {
       return ok({
         success: true,
@@ -276,6 +288,7 @@ export const handler: RequestHandler = async (req, res) => {
         would_create: toCreate.length,
         abas_lidas: SHEET_TABS.map((t) => `${t.tab} -> ${t.operator}`),
         abas_ignoradas: abasIgnoradas,
+        linhas_por_aba: porAba,
         tab_errors: tabErrors,
         sample: toCreate.slice(0, 5).map((r) => ({
           name: r.name,
@@ -353,6 +366,7 @@ export const handler: RequestHandler = async (req, res) => {
       // Tambem na execucao real: aba ignorada e lead que nao entrou, e isso
       // precisa aparecer no log de quem roda, nao so no diagnostico.
       abas_ignoradas: abasIgnoradas,
+      linhas_por_aba: porAba,
       tab_errors: tabErrors,
       errors: errors.slice(0, 20),
     });
