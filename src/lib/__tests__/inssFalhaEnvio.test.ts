@@ -3,6 +3,8 @@ import {
   classificarFalha,
   avisoDeFalhaNoEnvio,
   avisoDeVinculoSuspeito,
+  explicarDestinoDaMensagem,
+  avisoDeProcuracaoNaoEntregue,
 } from '../../../railway-server/src/lib/inss-falha-envio';
 
 // Os dois primeiros são o `zap_erro` literal das duas falhas registradas em
@@ -128,5 +130,69 @@ describe('avisoDeVinculoSuspeito', () => {
     const falha = avisoDeFalhaNoEnvio({ zapErro: 'uazapi 503: disconnected', tipo: 'indeferido' });
     expect(suspeito).not.toMatch(/o WhatsApp recusou/);
     expect(falha).not.toMatch(/não bate com o nome deste lead/);
+  });
+});
+
+describe('explicarDestinoDaMensagem', () => {
+  // Os quatro que antes não diziam nada e somam 78 eventos no histórico.
+  it.each([
+    ['silencio', /NÃO VIRA MENSAGEM/],
+    ['retroativo', /anterior à ativação/],
+    ['repetido', /JÁ FOI AVISADO/],
+    ['expirado', /tempo demais na fila/],
+  ])('explica %s, que antes ficava mudo', (st, esperado) => {
+    const t = explicarDestinoDaMensagem({ zapStatus: st });
+    expect(t).toBeTruthy();
+    expect(t).toMatch(esperado);
+  });
+
+  it('diz também quando deu certo — a atividade tem que responder "o cliente já sabe?"', () => {
+    expect(explicarDestinoDaMensagem({ zapStatus: 'enviado' })).toMatch(/JÁ FOI AVISADO/);
+  });
+
+  it('agendado avisa que sai sozinha, para ninguém mandar em dobro à toa', () => {
+    const t = explicarDestinoDaMensagem({ zapStatus: 'agendado' });
+    expect(t).toMatch(/SAI SOZINHA/);
+    expect(t).toMatch(/8h às 20h/);
+  });
+
+  it('cala nos desfechos que já se explicam na descrição', () => {
+    for (const st of ['suspeito', 'so_equipe', 'pericia_escritorio', 'so_escritorio']) {
+      expect(explicarDestinoDaMensagem({ zapStatus: st })).toBeNull();
+    }
+  });
+
+  it('status desconhecido não inventa texto', () => {
+    expect(explicarDestinoDaMensagem({ zapStatus: 'coisa_nova' })).toBeNull();
+    expect(explicarDestinoDaMensagem({})).toBeNull();
+  });
+
+  it('erro reaproveita o aviso de falha, com a instrução da causa', () => {
+    const t = explicarDestinoDaMensagem({
+      zapStatus: 'erro',
+      zapErro: 'uazapi 503: WhatsApp disconnected: session is not reconnectable',
+      tipo: 'indeferido',
+    });
+    expect(t).toMatch(/Reconecte a instância/);
+    expect(t).toMatch(/INDEFERIMENTO/);
+  });
+
+  it('sem_grupo carrega o motivo e o caminho de vincular', () => {
+    const t = explicarDestinoDaMensagem({ zapStatus: 'sem_grupo', zapErro: 'lead sem grupo vinculado' });
+    expect(t).toMatch(/lead sem grupo vinculado/);
+    expect(t).toMatch(/vincular grupo/);
+  });
+
+  it('todo desfecho que não entrega diz explicitamente que o cliente não foi avisado', () => {
+    for (const st of ['retroativo', 'expirado', 'sem_grupo', 'vinculo_retroativo']) {
+      expect(explicarDestinoDaMensagem({ zapStatus: st })).toMatch(/CLIENTE NÃO FOI AVISADO|NÃO FOI AVISADO/);
+    }
+  });
+});
+
+describe('avisoDeProcuracaoNaoEntregue', () => {
+  it('separa a mensagem agendada de qualquer outra não entrega', () => {
+    expect(avisoDeProcuracaoNaoEntregue('agendado')).toMatch(/vai junto com ela/);
+    expect(avisoDeProcuracaoNaoEntregue('sem_grupo')).toMatch(/não saiu \(sem_grupo\)/);
   });
 });
