@@ -16,6 +16,20 @@ cola **dentro do texto**. Isso deixava de fora justamente o que mais importa num
 conversa de grupo: **áudio e mídia saem sem assinatura** (`/send/media` só aceita
 `caption`, e áudio nem isso).
 
+## Antes de prometer autoria: a maior parte do envio não passa pelo sistema
+
+Medido em 04/09/2026, das 13h às 14h: **71 mensagens enviadas, 1 com autoria**, e
+a edge de envio teve **3 chamadas em 2 horas**. Confirmado pelo Raym: a equipe
+responde majoritariamente pelo **celular / WhatsApp Web**, fora do sistema.
+
+Isso não é defeito da autoria — é o alcance dela. Quem responde pelo aparelho não
+passa por lugar nenhum onde exista um usuário logado; a mensagem só chega ao
+banco pelo eco do webhook, que não carrega usuário. Para essas, o que dá para
+dizer com verdade é **por qual número saiu**, nunca quem digitou.
+
+Portanto: ao propor qualquer coisa baseada em "quem enviou", diga antes qual
+fatia isso cobre. Prometer autoria da carteira inteira, hoje, é prometer 1 em 71.
+
 ## Como funciona hoje
 
 Duas fontes, nesta ordem de preferência:
@@ -49,6 +63,13 @@ Sem nenhuma das duas, a bolha fica **sem autor**. Nunca se chuta.
   foi gravada pelo WEBHOOK. Como coluna, a autoria sumiria na corrida.
 - **Gravar autoria nunca pode derrubar um envio.** É best-effort, dentro de
   try/catch, e sai do caminho da resposta via `EdgeRuntime.waitUntil`.
+- **Nunca use o `instance_name` da linha para dizer por qual número a mensagem
+  saiu, em grupo.** A linha canônica do dedupe é o primeiro espelho da lista, que
+  quase sempre é de uma instância que apenas RECEBEU. No PREV 2209, isso diria
+  "Atendimento Previdenciário 2" para uma mensagem que saiu pela "Raym". O campo
+  certo é `sent_by_instance`, que `dedupeMirroredMessages` deriva do espelho
+  `outbound` (ou, para mensagem do celular, do telefone do autor via
+  `getInstanceNameByPhoneSync`).
 
 ## Onde está cada peça
 
