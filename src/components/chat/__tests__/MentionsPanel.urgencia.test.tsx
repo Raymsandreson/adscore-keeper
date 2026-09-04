@@ -245,23 +245,43 @@ describe('MentionsPanel — filtros de onde e de como te chamaram', () => {
   it('separa quem te chamou pelo nome de quem disparou @todos', () => {
     renderMentionsTab(todas);
 
-    fireEvent.click(screen.getByRole('button', { name: '@todos' }));
+    fireEvent.click(screen.getByRole('button', { name: /^@todos/ }));
     expect(screen.getByText('@todos reunião às 9h')).toBeInTheDocument();
     expect(screen.queryByText('@Eu Mesmo prazo hoje nessa atividade')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pelo nome' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Pelo nome/ }));
     expect(screen.getByText('@Eu Mesmo prazo hoje nessa atividade')).toBeInTheDocument();
     expect(screen.queryByText('@todos reunião às 9h')).not.toBeInTheDocument();
+  });
+
+  /**
+   * O número do chip é promessa: "clica aqui e vem tanto". Contando sobre a
+   * lista inteira ele mentia — dizia "Aguardando (27)" com a lista vazia,
+   * porque o 27 era de outro recorte.
+   */
+  it('o número do chip conta dentro do filtro que já está ligado', () => {
+    renderMentionsTab(todas);
+
+    expect(screen.getByRole('button', { name: /^Pelo nome \(2\)$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^@todos \(1\)$/ })).toBeInTheDocument();
+
+    // Ligou "Ficha": sobra só a menção da ficha, que é "pelo nome".
+    fireEvent.click(screen.getByRole('button', { name: /^Ficha/ }));
+
+    expect(screen.getByRole('button', { name: /^Pelo nome \(1\)$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^@todos$/ })).toBeInTheDocument();
+    // A dimensão do próprio chip não se filtra: escopo continua contando tudo.
+    expect(screen.getByRole('button', { name: /^Privado \(1\)$/ })).toBeInTheDocument();
   });
 
   it('cruza as duas dimensões: grupo + pelo nome não devolve o @todos do grupo', () => {
     renderMentionsTab(todas);
 
     fireEvent.click(screen.getByRole('button', { name: /^Grupo/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Pelo nome' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Pelo nome/ }));
 
     expect(screen.queryByText('@todos reunião às 9h')).not.toBeInTheDocument();
-    expect(screen.getByText(/Nenhuma menção com esse filtro/)).toBeInTheDocument();
+    expect(screen.getByText(/Nada com essa combinação de filtros/)).toBeInTheDocument();
   });
 });
 
