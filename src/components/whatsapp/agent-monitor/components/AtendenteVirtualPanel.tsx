@@ -33,7 +33,7 @@ import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 const dbAny = db as unknown as SupabaseClient;
 
 interface Pendente {
-  id: string; group_jid: string; instance_name: string | null;
+  id: string; group_jid: string; instance_name: string | null; agendamento_id: string | null;
   group_name: string | null; pergunta: string | null; pergunta_autor: string | null;
   resposta_sugerida: string; resposta_final: string | null; intencao: string | null;
   motivo_revisao: string | null; status: string; criado_em: string; enviado_em: string | null;
@@ -120,10 +120,14 @@ export function AtendenteVirtualPanel() {
     setCarregando(true);
     try {
       await ensureExternalSession();
-      const sel = 'id, group_jid, instance_name, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, dom_atendentes(nome)';
+      const sel = 'id, group_jid, instance_name, agendamento_id, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, dom_atendentes(nome)';
       const [f, e, h, s, gp] = await Promise.all([
+        // "Na fila" é tudo que AINDA NÃO SAIU — inclusive o que alguém já
+        // aprovou. Filtrar só por 'pendente' fazia a resposta aprovada sumir
+        // das quatro abas: não estava mais na fila, nunca chegou em enviadas,
+        // e ficava parada para sempre sem ninguém ver.
         dbAny.from('dom_respostas_pendentes').select(sel)
-          .eq('status', 'pendente').is('atendente_id', null)
+          .in('status', ['pendente', 'aprovada', 'editada']).is('atendente_id', null)
           .order('criado_em', { ascending: false }).limit(100),
         dbAny.from('dom_respostas_pendentes').select(sel)
           .eq('status', 'enviada')
@@ -306,10 +310,14 @@ export function AtendenteVirtualPanel() {
           {fila.length === 0 && vazio('Nada esperando revisão.')}
           {fila.map(p => (
             <LinhaPendente key={p.id} p={p}
-              onClick={() => { setAberto(p); setTexto(p.resposta_sugerida); }}
-              rodape={p.motivo_revisao
-                ? <p className="text-[10px] text-amber-700 truncate">{p.motivo_revisao}</p>
-                : null} />
+              onClick={() => { setAberto(p); setTexto(p.resposta_final || p.resposta_sugerida); }}
+              rodape={p.status !== 'pendente' && !p.agendamento_id
+                ? <p className="text-[10px] text-amber-700">
+                    Marcada como boa, mas ainda não saiu — abra e use "Aprovar e enviar".
+                  </p>
+                : p.motivo_revisao
+                  ? <p className="text-[10px] text-amber-700 truncate">{p.motivo_revisao}</p>
+                  : null} />
           ))}
         </TabsContent>
 
@@ -327,7 +335,7 @@ export function AtendenteVirtualPanel() {
           {comHumano.length === 0 && vazio('Nada foi encaminhado para atendente.')}
           {comHumano.map(p => (
             <LinhaPendente key={p.id} p={p}
-              onClick={() => { setAberto(p); setTexto(p.resposta_sugerida); }}
+              onClick={() => { setAberto(p); setTexto(p.resposta_final || p.resposta_sugerida); }}
               rodape={<p className="text-[10px] text-blue-700">
                 Para {nomeDoAtendente(p) || 'atendente'} · {p.motivo_revisao}
               </p>} />
