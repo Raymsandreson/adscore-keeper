@@ -808,6 +808,12 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
     hybrid: '🔄',
   };
 
+  const typeLabels: Record<string, string> = {
+    document: 'Documentos',
+    assistant: 'Agente IA',
+    hybrid: 'Híbrido',
+  };
+
   return (
     <div className="space-y-4 mt-4">
       <div className="flex items-center justify-between">
@@ -2166,6 +2172,9 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium">#{s.shortcut_name}</span>
+                  <Badge variant="outline" className="text-[10px]" title={ASSISTANT_TYPES.find(t => t.value === s.assistant_type)?.desc}>
+                    {typeLabels[s.assistant_type] || typeLabels.document}
+                  </Badge>
                   {s.template_name && <Badge variant="secondary" className="text-[10px]">{s.template_name}</Badge>}
                   <Badge variant="outline" className="text-[10px]">
                     {MODELS.find(m => m.value === s.model)?.label || s.model}
