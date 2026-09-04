@@ -29,7 +29,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal } from 'lucide-react';
+import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2 } from 'lucide-react';
 import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 import { ContagemAteEnvio } from '@/components/whatsapp/ContagemAteEnvio';
 
@@ -37,6 +37,7 @@ const dbAny = db as unknown as SupabaseClient;
 
 interface Pendente {
   id: string; group_jid: string; instance_name: string | null; agendamento_id: string | null;
+  audio_url: string | null; audio_voz: string | null; audio_erro: string | null;
   group_name: string | null; pergunta: string | null; pergunta_autor: string | null;
   resposta_sugerida: string; resposta_final: string | null; intencao: string | null;
   motivo_revisao: string | null; status: string; criado_em: string; enviado_em: string | null;
@@ -165,7 +166,7 @@ export function AtendenteVirtualPanel() {
     setCarregando(true);
     try {
       await ensureExternalSession();
-      const sel = 'id, group_jid, instance_name, agendamento_id, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, dom_atendentes(nome)';
+      const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, dom_atendentes(nome)';
       const [f, e, h, s, gp] = await Promise.all([
         // "Na fila" é tudo que AINDA NÃO SAIU — inclusive o que alguém já
         // aprovou. Filtrar só por 'pendente' fazia a resposta aprovada sumir
@@ -541,17 +542,23 @@ export function AtendenteVirtualPanel() {
               marcada={marcadas.has(p.id)}
               onMarcar={(v) => marcar(p.id, v)}
               onClick={() => { setAberto(p); setTexto(p.resposta_final || p.resposta_sugerida); }}
-              rodape={p.agendamento_id && saiEm[p.agendamento_id]
-                ? <p className="text-[10px] text-emerald-700 font-medium">
+              rodape={
+                p.audio_url ? (
+                  <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    <Volume2 className="h-3 w-3" />gravou em áudio — abra para escutar
+                  </p>
+                ) : p.agendamento_id && saiEm[p.agendamento_id] ? (
+                  <p className="text-[10px] text-emerald-700 font-medium">
                     Vai sozinha — <ContagemAteEnvio quando={saiEm[p.agendamento_id]} />
                   </p>
-                : p.status !== 'pendente'
-                  ? <p className="text-[10px] text-amber-700">
-                      Marcada como boa, mas ainda não saiu — abra e use "Aprovar e enviar".
-                    </p>
-                  : p.motivo_revisao
-                    ? <p className="text-[10px] text-amber-700 truncate">{p.motivo_revisao}</p>
-                    : null} />
+                ) : p.status !== 'pendente' ? (
+                  <p className="text-[10px] text-amber-700">
+                    Marcada como boa, mas ainda não saiu — abra e use "Aprovar e enviar".
+                  </p>
+                ) : p.motivo_revisao ? (
+                  <p className="text-[10px] text-amber-700 truncate">{p.motivo_revisao}</p>
+                ) : null
+              } />
           ))}
         </TabsContent>
 
@@ -626,6 +633,28 @@ export function AtendenteVirtualPanel() {
                 <Label className="text-xs">Resposta sugerida (dá para editar)</Label>
                 <Textarea className="text-xs min-h-[180px]" value={texto} onChange={e => setTexto(e.target.value)} />
               </div>
+
+              {/* O cliente falou por áudio, então ele gravou a resposta também.
+                  Isto NÃO foi enviado e não vai ser: é só para escutar. */}
+              {(aberto.audio_url || aberto.audio_erro) && (
+                <div className="space-y-1 rounded border border-dashed p-2">
+                  <Label className="text-xs flex items-center gap-1">
+                    <Volume2 className="h-3.5 w-3.5" />
+                    Como ficaria falado
+                    {aberto.audio_voz && (
+                      <span className="font-normal text-muted-foreground">· voz {aberto.audio_voz}</span>
+                    )}
+                  </Label>
+                  {aberto.audio_url
+                    ? <audio controls src={aberto.audio_url} className="w-full h-8" />
+                    : <p className="text-[11px] text-destructive">Não consegui gerar: {aberto.audio_erro}</p>}
+                  <p className="text-[10px] text-muted-foreground">
+                    Este áudio <strong>não foi enviado</strong> e não vai sair sozinho — nem em grupo
+                    que responde sozinho, onde quem sai é o texto. Ele existe para você ouvir antes
+                    de decidir se o atendente pode falar.
+                  </p>
+                </div>
+              )}
               <Button size="sm" variant="outline" className="w-full text-xs gap-1"
                 onClick={() => abrirConversa(aberto.group_jid, aberto.instance_name, aberto.group_name)}>
                 <MessagesSquare className="h-3.5 w-3.5" />Abrir a conversa do grupo

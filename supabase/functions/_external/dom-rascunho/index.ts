@@ -203,6 +203,85 @@ function instrucaoDaIntencao(cod: string): string {
 }
 
 /**
+ * Gera o áudio do rascunho — e SÓ isso. Não envia nada.
+ *
+ * O cliente manda áudio e recebe texto: quebra o combinado e quebra o ritmo,
+ * porque quem fala espera ouvir. Mas áudio erra diferente de texto. Uma frase
+ * torta escrita a pessoa relê e entende; uma voz dizendo algo errado sobre o
+ * processo dela soa como o escritório falando, e não tem como desdizer.
+ *
+ * Por isso aqui é rascunho de verdade: grava, guarda a URL, e o áudio fica no
+ * painel para alguém escutar. Nem em grupo `automatico` ele sai — o texto sai
+ * como sempre, e o áudio espera liberação humana.
+ *
+ * Falha de áudio NUNCA derruba o rascunho de texto: devolve o motivo e segue.
+ */
+async function gerarAudioDoRascunho(
+  supabase: any,
+  texto: string,
+  vozConfigurada: string | null,
+  instanceName: string | null,
+  maxChars: number,
+): Promise<{ url: string | null; voz: string | null; erro: string | null }> {
+  try {
+    const chave = Deno.env.get("ELEVENLABS_API_KEY");
+    if (!chave) return { url: null, voz: null, erro: "ELEVENLABS_API_KEY não configurada" };
+
+    // O que se fala é diferente do que se escreve: asterisco de negrito virava
+    // "asterisco" na boca da voz, e link lido em voz alta é ruído puro.
+    const limpo = texto
+      .replace(/\*([^*]+)\*/g, "$1")
+      .replace(/_([^_]+)_/g, "$1")
+      .replace(/https?:\/\/\S+/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    if (limpo.length < 5) return { url: null, voz: null, erro: "texto curto demais para virar áudio" };
+
+    // Mesma cascata de resolução do whatsapp-ai-agent-reply, para a voz do
+    // atendente virtual ser a MESMA em qualquer caminho.
+    let voiceId = vozConfigurada || "FGY2WhTYpPnrIDTdsKH5";
+    let nomeDaVoz: string | null = null;
+    if (voiceId === "instance_owner") {
+      const { data: inst } = await supabase.from("whatsapp_instances")
+        .select("voice_id").eq("instance_name", instanceName).maybeSingle();
+      voiceId = inst?.voice_id || "FGY2WhTYpPnrIDTdsKH5";
+    }
+    if (voiceId.length === 36 && voiceId.includes("-")) {
+      const { data: vozCustom } = await supabase.from("custom_voices")
+        .select("name, elevenlabs_voice_id").eq("id", voiceId).eq("status", "ready").maybeSingle();
+      nomeDaVoz = vozCustom?.name ?? null;
+      voiceId = vozCustom?.elevenlabs_voice_id || "FGY2WhTYpPnrIDTdsKH5";
+    }
+
+    const trecho = limpo.length > maxChars ? limpo.slice(0, maxChars) : limpo;
+    const resp = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
+      {
+        method: "POST",
+        headers: { "xi-api-key": chave, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: trecho,
+          model_id: "eleven_multilingual_v2",
+          voice_settings: { stability: 0.6, similarity_boost: 0.75, style: 0.3, speed: 1.1 },
+        }),
+      },
+    );
+    if (!resp.ok) return { url: null, voz: nomeDaVoz, erro: `ElevenLabs HTTP ${resp.status}` };
+
+    const audio = await resp.arrayBuffer();
+    const arquivo = `tts/dom-rascunho-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+    const { error: errUp } = await supabase.storage.from("whatsapp-media")
+      .upload(arquivo, new Uint8Array(audio), { contentType: "audio/mpeg", upsert: false });
+    if (errUp) return { url: null, voz: nomeDaVoz, erro: `storage: ${errUp.message}` };
+
+    const { data: pub } = supabase.storage.from("whatsapp-media").getPublicUrl(arquivo);
+    return { url: pub?.publicUrl ?? null, voz: nomeDaVoz, erro: null };
+  } catch (e) {
+    return { url: null, voz: null, erro: (e as Error)?.message ?? "erro" };
+  }
+}
+
+/**
  * Toda decisão vira linha em dom_decisoes — inclusive o silêncio.
  *
  * Sem isto o piloto não responde a pergunta que importa: "ele está calando
@@ -245,7 +324,7 @@ Deno.serve(async (req) => {
     // Prompt vem da TABELA, não da view: é lido mesmo com is_active = false.
     const { data: agente } = await supabase
       .from("wjia_command_shortcuts")
-      .select("prompt_instructions, base_prompt, temperature, max_tokens, history_limit, model")
+      .select("prompt_instructions, base_prompt, temperature, max_tokens, history_limit, model, reply_with_audio, reply_voice_id, max_tts_chars")
       .eq("id", DOM_AGENT_ID)
       .maybeSingle();
     if (!agente) return json({ error: "agente Dom não encontrado" }, 500);
@@ -460,7 +539,25 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // 6. Modo automático: o rascunho entra na MESMA fila de agendamento que a
+      // 6. O cliente falou por áudio? Então a resposta nasce falada também —
+      //    mas SÓ como rascunho. Ver gerarAudioDoRascunho: nem em grupo
+      //    automático o áudio sai; quem sai é o texto, como sempre.
+      const clientePorAudio = ["audio", "ptt", "voice"].includes(String(ultima.tipo || "").toLowerCase());
+      if (clientePorAudio && agente.reply_with_audio === true && (linhaFila as any)?.id) {
+        const som = await gerarAudioDoRascunho(
+          supabase,
+          resposta,
+          agente.reply_voice_id ?? null,
+          ultima.instancia,
+          Math.min(Math.max(agente.max_tts_chars || 500, 100), 1000),
+        );
+        await supabase.from("dom_respostas_pendentes")
+          .update({ audio_url: som.url, audio_voz: som.voz, audio_erro: som.erro })
+          .eq("id", (linhaFila as any).id);
+        if (som.erro) console.warn(`[dom-rascunho] áudio falhou grupo=${g.group_jid}: ${som.erro}`);
+      }
+
+      // 7. Modo automático: o rascunho entra na MESMA fila de agendamento que a
       //    equipe já usa. É de lá que sai a bolha tracejada com o cronômetro na
       //    conversa, o "tirar da fila" e o "enviar agora" — nada disso precisou
       //    ser escrito de novo.
