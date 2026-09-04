@@ -30,6 +30,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal } from 'lucide-react';
 import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
+import { ContagemAteEnvio } from '@/components/whatsapp/ContagemAteEnvio';
 
 const dbAny = db as unknown as SupabaseClient;
 
@@ -138,6 +139,13 @@ export function AtendenteVirtualPanel() {
   const [enviando, setEnviando] = useState(false);
   const [familia, setFamilia] = useState('todas');
   const [marcadas, setMarcadas] = useState<Set<string>>(new Set());
+  /**
+   * Quando cada rascunho agendado vai sair, indexado por agendamento_id.
+   *
+   * Sem isto o painel mostrava botão de aprovar em cima de mensagem que já ia
+   * sair sozinha — e quem lia concluía, com razão, que ainda precisava aprovar.
+   */
+  const [saiEm, setSaiEm] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState<Pendente | null>(null);
   const [texto, setTexto] = useState('');
@@ -174,6 +182,20 @@ export function AtendenteVirtualPanel() {
       setComHumano((h.data as unknown as Pendente[]) || []);
       setSilenciadas((s.data as unknown as Decisao[]) || []);
       setGrupos((gp.data as unknown as GrupoPiloto[]) || []);
+
+      const ids = [...((f.data as unknown as Pendente[]) || [])]
+        .map(p => p.agendamento_id).filter(Boolean) as string[];
+      if (ids.length) {
+        const { data: ags } = await dbAny.from('whatsapp_mensagens_agendadas')
+          .select('id, proximo_envio_at, ativo').in('id', ids);
+        const mapa: Record<string, string> = {};
+        for (const a of (ags as { id: string; proximo_envio_at: string; ativo: boolean }[]) || []) {
+          if (a.ativo) mapa[a.id] = a.proximo_envio_at;
+        }
+        setSaiEm(mapa);
+      } else {
+        setSaiEm({});
+      }
     } catch (err) {
       console.error('[AtendenteVirtualPanel]', err);
     } finally {
@@ -307,6 +329,33 @@ export function AtendenteVirtualPanel() {
     carregar();
   };
 
+  /** Desistir de um envio que já está agendado — o mesmo "tirar da fila" da conversa. */
+  const tirarDaFila = async (p: Pendente) => {
+    if (!p.agendamento_id) return;
+    setEnviando(true);
+    try {
+      const { error } = await dbAny.from('whatsapp_mensagens_agendadas')
+        .update({
+          ativo: false,
+          cancelado_em: new Date().toISOString(),
+          cancelado_por_nome: 'Tirado da fila no painel',
+          encerrado_motivo: 'cancelada',
+        } as never)
+        .eq('id', p.agendamento_id);
+      if (error) throw error;
+      await dbAny.from('dom_respostas_pendentes')
+        .update({ motivo_revisao: 'tirado da fila à mão — não vai sair' } as never)
+        .eq('id', p.id);
+      setAberto(null);
+      toast.success('Tirado da fila — não vai sair');
+      carregar();
+    } catch (e) {
+      toast.error('Não consegui tirar: ' + ((e as Error)?.message || 'erro'));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
   const marcar = (id: string, v: boolean) => {
     setMarcadas(atual => {
       const novo = new Set(atual);
@@ -433,13 +482,17 @@ export function AtendenteVirtualPanel() {
               marcada={marcadas.has(p.id)}
               onMarcar={(v) => marcar(p.id, v)}
               onClick={() => { setAberto(p); setTexto(p.resposta_final || p.resposta_sugerida); }}
-              rodape={p.status !== 'pendente' && !p.agendamento_id
-                ? <p className="text-[10px] text-amber-700">
-                    Marcada como boa, mas ainda não saiu — abra e use "Aprovar e enviar".
+              rodape={p.agendamento_id && saiEm[p.agendamento_id]
+                ? <p className="text-[10px] text-emerald-700 font-medium">
+                    Vai sozinha — <ContagemAteEnvio quando={saiEm[p.agendamento_id]} />
                   </p>
-                : p.motivo_revisao
-                  ? <p className="text-[10px] text-amber-700 truncate">{p.motivo_revisao}</p>
-                  : null} />
+                : p.status !== 'pendente'
+                  ? <p className="text-[10px] text-amber-700">
+                      Marcada como boa, mas ainda não saiu — abra e use "Aprovar e enviar".
+                    </p>
+                  : p.motivo_revisao
+                    ? <p className="text-[10px] text-amber-700 truncate">{p.motivo_revisao}</p>
+                    : null} />
           ))}
         </TabsContent>
 
@@ -518,29 +571,50 @@ export function AtendenteVirtualPanel() {
                 onClick={() => abrirConversa(aberto.group_jid, aberto.instance_name, aberto.group_name)}>
                 <MessagesSquare className="h-3.5 w-3.5" />Abrir a conversa do grupo
               </Button>
-              <Button size="sm" className="w-full text-xs gap-1"
-                disabled={enviando || !texto.trim()}
-                onClick={() => aprovarEEnviar(aberto)}>
-                {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SendHorizonal className="h-3.5 w-3.5" />}
-                Aprovar e enviar (sai em 5 min)
-              </Button>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="text-xs gap-1 flex-1"
-                  onClick={() => decidir(aberto, texto === aberto.resposta_sugerida ? 'aprovada' : 'editada')}>
-                  <Check className="h-3.5 w-3.5" />Só marcar como boa
-                </Button>
-                <Button size="sm" variant="outline" className="text-xs gap-1"
-                  onClick={() => decidir(aberto, 'descartada')}>
-                  <X className="h-3.5 w-3.5" />Descartar
-                </Button>
-              </div>
-              <p className="text-[10px] text-muted-foreground">
-                <strong>Aprovar e enviar</strong> põe na fila com 5 minutos de atraso — ainda dá
-                para cancelar pela bolha tracejada na conversa, e o envio some sozinho se alguém
-                escrever no grupo antes.{' '}
-                <strong>Só marcar como boa</strong> não manda nada: serve para o atendente aprender
-                com a correção antes de falar sozinho.
-              </p>
+              {aberto.agendamento_id && saiEm[aberto.agendamento_id] ? (
+                // Já está indo. Mostrar "aprovar" aqui seria mentira — e pior,
+                // faria a pessoa achar que a mensagem depende dela.
+                <>
+                  <div className="rounded border border-emerald-600/40 bg-emerald-600/5 p-2 text-center">
+                    <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                      Esta resposta vai sozinha — <ContagemAteEnvio quando={saiEm[aberto.agendamento_id]} />
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Você não precisa aprovar. Ela some sozinha se alguém escrever no grupo antes.
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" className="w-full text-xs gap-1"
+                    disabled={enviando} onClick={() => tirarDaFila(aberto)}>
+                    {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                    Tirar da fila — não deixar sair
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button size="sm" className="w-full text-xs gap-1"
+                    disabled={enviando || !texto.trim()}
+                    onClick={() => aprovarEEnviar(aberto)}>
+                    {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SendHorizonal className="h-3.5 w-3.5" />}
+                    Aprovar e enviar (sai em 5 min)
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="text-xs gap-1 flex-1"
+                      onClick={() => decidir(aberto, texto === aberto.resposta_sugerida ? 'aprovada' : 'editada')}>
+                      <Check className="h-3.5 w-3.5" />Só marcar como boa
+                    </Button>
+                    <Button size="sm" variant="outline" className="text-xs gap-1"
+                      onClick={() => decidir(aberto, 'descartada')}>
+                      <X className="h-3.5 w-3.5" />Descartar
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Esta não vai sair sozinha — ou é de antes de o grupo passar a responder
+                    sozinho, ou é assunto que precisa de gente (reclamação, dinheiro, prazo), ou o
+                    próprio agente pediu revisão. <strong>Aprovar e enviar</strong> põe na fila com
+                    5 minutos de atraso, e ainda dá para cancelar pela conversa.
+                  </p>
+                </>
+              )}
             </div>
           )}
         </SheetContent>
