@@ -188,6 +188,12 @@ export const handler: RequestHandler = async (_req, res) => {
       Boolean(l.facebook_lead_id) || String(l.source || '').toLowerCase().includes('planilha meta ads');
     const leadsPagos = leads.filter(ehPago);
     const fechamentosPagos = fechados.filter(ehPago).length;
+    const pagos7 = leadsPagos.filter((l) => dia(l.created_at) >= corte7).length;
+    const diasPagos = leadsPagos.map((l) => dia(l.created_at)).filter(Boolean).sort();
+    const primeiroDiaPago = diasPagos[0] || null;
+    // "Completo" = existe lead pago desde o inicio da janela. Sem isso o CPL de
+    // 30 dias divide gasto de 30 por lead de 7 e mente para baixo.
+    const cobertura_completa_30d = Boolean(primeiroDiaPago && primeiroDiaPago <= corte30);
 
     const serieDias = Array.from({ length: 30 }, (_, i) => diasAtras(29 - i));
 
@@ -224,17 +230,29 @@ export const handler: RequestHandler = async (_req, res) => {
       // 30 dias são `google_alerts` (notícia raspada, que não custou anúncio
       // nenhum). Dividir por todos dava R$ 8,14 de CPL — número errado com cara
       // de métrica, que é pior que número nenhum.
+      // JANELAS IGUAIS. Dividir 30 dias de investimento por 7 dias de lead
+      // importado dava R$ 211,55 de CPL — formula certa, denominador incompleto.
+      // O CPL de 7 dias e o unico confiavel hoje; o de 30 so passa a valer
+      // quando o backlog das planilhas entrar (ver planilhas-lead-ads.md).
       custo: {
+        leads_pagos_7d: pagos7,
         leads_pagos_30d: leadsPagos.length,
         fechamentos_pagos_30d: fechamentosPagos,
+        por_lead_pago_7d: gasto.total_7d > 0 && pagos7 ? Number((gasto.total_7d / pagos7).toFixed(2)) : null,
         por_lead_pago_30d:
-          gasto.total_30d > 0 && leadsPagos.length
+          cobertura_completa_30d && gasto.total_30d > 0 && leadsPagos.length
             ? Number((gasto.total_30d / leadsPagos.length).toFixed(2))
             : null,
         por_fechamento_pago_30d:
-          gasto.total_30d > 0 && fechamentosPagos
+          cobertura_completa_30d && gasto.total_30d > 0 && fechamentosPagos
             ? Number((gasto.total_30d / fechamentosPagos).toFixed(2))
             : null,
+        // A tela precisa poder dizer POR QUE o numero de 30 dias esta vazio.
+        cobertura_pagos_desde: primeiroDiaPago,
+        cobertura_completa_30d,
+        aviso_30d: cobertura_completa_30d
+          ? null
+          : `lead pago so existe no CRM desde ${primeiroDiaPago || 'nunca'}; o investimento de 30 dias nao tem com o que ser dividido. Importar o backlog das planilhas resolve.`,
       },
     });
   } catch (err) {

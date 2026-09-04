@@ -353,6 +353,63 @@ Sinal negativo de qualidade precisa de outro mecanismo, não deste.
 
 ---
 
+## O gatilho da tela não bastava — medido em 04/09/2026
+
+Depois de ligar a conversão nos caminhos da interface, a fila continuou vazia:
+**69 leads fechados em 7 dias, ZERO eventos**. A causa não era o gatilho estar
+errado, era estar no lugar errado.
+
+Quem fecha lead nesta operação é **backend**, não tela:
+
+| Caminho | Arquivo |
+|---|---|
+| Etiqueta do WhatsApp | `railway-server/src/functions/whatsapp-webhook.ts:957` |
+| Assinatura da procuração | `railway-server/src/functions/zapsign-webhook.ts:347` |
+| Checkpoint de onboarding | `railway-server/src/functions/onboarding-checkpoint-execute.ts:503` |
+| Sync do funil por planilha | `railway-server/src/functions/sync-funnel-status-from-sheet.ts:300` |
+
+O teste-guarda de fechamento (`src/services/__tests__/`) varria só `src/` — era
+estruturalmente cego para `railway-server/` e `supabase/functions/`, que é
+justamente onde o volume mora.
+
+### A saída foi não perguntar quem fechou
+
+`meta-capi-reconcile` pergunta outra coisa: **"existe lead fechado dentro da
+janela da Meta sem evento de Purchase?"** Se existe, enfileira. Isso cobre os
+quatro caminhos de hoje, o quinto que alguém criar amanhã, e fechamento feito
+por SQL na mão — sem precisar tocar em nenhum deles.
+
+É seguro rodar junto com o gatilho da tela porque `meta-capi-enqueue` faz upsert
+com `onConflict: event_id, ignoreDuplicates`: quem já foi enfileirado volta como
+`ja_existia`. Cron a cada 15 min, janela de 7 dias (o `event_time` do evento é o
+`became_client_date`, e a Meta descarta evento mais velho que isso).
+
+Estado observável em `/health` → `capi_reconcile`.
+
+### Primeira execução real (04/09/2026, 20:02)
+
+```
+fechados_na_janela: 69   sem_evento: 69
+enfileirados: 12   ignorados: 57   erros: 0
+resultado na fila: status=sent, http=200, events_received=12
+```
+
+Primeira conversão entregue à Meta desde 31/07/2026.
+
+**Os 57 ignorados não são falha do envio.** São leads fechados sem telefone nem
+e-mail — a Meta descartaria. O recorte por origem explica: 59 dos 69 vieram de
+`whatsapp` (orgânico) e só 3 desses têm contato; os **9 de origem paga têm
+contato em 9/9**. Para o propósito da CAPI, que é atribuir conversão de anúncio,
+a cobertura é boa; o buraco eram os eventos nunca enfileirados.
+
+### `became_client_date` é a auditoria de fechamento
+
+3.150 de 3.182 fechados têm a data. `converted_at` existe na tabela e **nunca foi
+escrita** (0 de 3.182) — não usar. `closed_at` **não existe**, e
+`zapsign-webhook.ts:347` tenta gravá-la ao criar lead órfão de assinatura: o
+PostgREST recusa o insert inteiro, e por isso há **0 leads com
+`source='zapsign_manual'`**. Esse caminho nunca funcionou.
+
 ## O que ficou de fora
 
 - **Backfill dos fechados anteriores.** A Meta só usa ~7 dias para otimização,

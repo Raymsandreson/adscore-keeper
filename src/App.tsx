@@ -155,6 +155,7 @@ const LeadsCenter = lazyRetry(() => import("./pages/LeadsCenter"), "LeadsCenter"
 const NoticiasPage = lazyRetry(() => import("./pages/NoticiasPage"), "NoticiasPage");
 const RelatosGruposPage = lazyRetry(() => import("./pages/RelatosGruposPage"), "RelatosGruposPage");
 const AnalyticsPage = lazyRetry(() => import("./pages/AnalyticsPage"), "AnalyticsPage");
+const MetricasPage = lazyRetry(() => import("./pages/MetricasPage"), "MetricasPage");
 const LeaderboardPage = lazyRetry(() => import("./pages/LeaderboardPage"), "LeaderboardPage");
 const TeamPage = lazyRetry(() => import("./pages/TeamPage"), "TeamPage");
 const WorkflowPage = lazyRetry(() => import("./pages/WorkflowPage"), "WorkflowPage");
@@ -373,6 +374,7 @@ function SidebarLayout() {
                 <Route path="/relatos-grupos" element={<Navigate to="/leads/relatos-grupos" replace />} />
                 <Route path="/mapa-leads" element={<ProtectedRoute><LeadsMapPage /></ProtectedRoute>} />
                 <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
+                <Route path="/metricas" element={<ProtectedRoute><MetricasPage /></ProtectedRoute>} />
                 <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
                 <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
                 <Route path="/workflow" element={<ProtectedRoute><WorkflowPage /></ProtectedRoute>} />
