@@ -45,7 +45,7 @@ import { CommitmentAssigneeDialog } from './CommitmentAssigneeDialog';
 import { useClientCommitments, type CommitmentReminder } from '@/hooks/useClientCommitments';
 import { buildReminderText } from '@/lib/clientCommitments';
 import { lastSenderName, matchMemberByName, prefixarRemetente, separarPrefixoRemetente } from '@/lib/whatsappSenderName';
-import { useAutoriaDasMensagens } from '@/hooks/useAutoriaDasMensagens';
+import { useAutoriaDasMensagens, idDaMensagemNoWhatsApp } from '@/hooks/useAutoriaDasMensagens';
 import { AgendarMensagemDialog } from './AgendarMensagemDialog';
 import { descreverRepeticao, regraDaLinha } from '@/lib/mensagemAgendada';
 import { useMensagensAgendadas } from '@/hooks/useMensagensAgendadas';
@@ -4885,7 +4885,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           // Nome de quem enviou: o registrado no banco (cobre áudio e mídia)
           // vem antes da assinatura no texto, que só existe em mensagem escrita.
           const nomeDeQuemEnviou = msg.direction === 'outbound'
-            ? (autorPorMensagem[msg.external_message_id || ''] || autoriaEnviada?.nome || null)
+            ? (autorPorMensagem[idDaMensagemNoWhatsApp(msg.external_message_id)] || autoriaEnviada?.nome || null)
             : null;
           return (
             <div key={msg.id} data-msg-id={msg.id}>

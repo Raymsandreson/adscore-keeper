@@ -22,6 +22,7 @@ interface OpenChat {
   phone: string;
   contactName: string | null;
   instanceName: string | null;
+  direction: 'top' | 'bottom';
 }
 
 export function WhatsAppChatSheetHost() {
@@ -30,7 +31,7 @@ export function WhatsAppChatSheetHost() {
 
   useEffect(
     () =>
-      subscribeToWhatsAppChatSheet(({ phone, instanceName, contactName }) => {
+      subscribeToWhatsAppChatSheet(({ phone, instanceName, contactName, direction }) => {
         if (window.location.pathname.startsWith('/whatsapp')) {
           const params = new URLSearchParams(window.location.search);
           params.set('openChat', phone);
@@ -41,7 +42,12 @@ export function WhatsAppChatSheetHost() {
           return;
         }
 
-        setChat({ phone, contactName: contactName ?? null, instanceName: instanceName ?? null });
+        setChat({
+          phone,
+          contactName: contactName ?? null,
+          instanceName: instanceName ?? null,
+          direction: direction ?? 'top',
+        });
       }),
     [setSearchParams]
   );
@@ -53,11 +59,12 @@ export function WhatsAppChatSheetHost() {
       <DashboardChatPreview
         open
         onOpenChange={(open) => { if (!open) setChat(null); }}
-        // De cima pra baixo: quem clicou num popup de notificação mantém os
-        // popups (top-center) à vista ACIMA do painel — o drawer começa abaixo
-        // da pilha de toasts (ver useTopToastStackHeight), então nenhum aviso
-        // cobre a conversa e nenhum se perde.
-        direction="top"
+        // Notificação entra de cima pra baixo: mantém a pilha de popups
+        // (top-center) à vista ACIMA do painel — o drawer começa abaixo dos
+        // toasts (ver useTopToastStackHeight), então nenhum aviso cobre a
+        // conversa e nenhum se perde. Clique em lista (menções) pede 'bottom',
+        // o painel de baixo pra cima que é o padrão do sistema.
+        direction={chat.direction}
         phone={chat.phone}
         contactName={chat.contactName}
         instanceName={chat.instanceName}
