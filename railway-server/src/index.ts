@@ -301,6 +301,9 @@ app.get('/health', (_req, res) => {
     // Cron da planilha de Lead Ads. `ligado` diz se a env var SHEET_LEAD_SYNC
     // pegou; `execucoes`/`ultima_em` provam que ele roda de verdade.
     sheet_lead_sync: sheetSyncEstado,
+    // Reconciliador da CAPI: mesma razao do bloco acima — rodada correta com
+    // fila em dia nao cria nada e nao deixa rastro no banco.
+    capi_reconcile: capiReconcileEstado,
     // Webhook da UazAPI: entra sem credencial de proposito (servico externo).
     // Aqui se mede se da pra exigir o instance_token como prova de origem —
     // `sem_token_por_evento` e a lista que precisa esvaziar antes disso.
@@ -1025,3 +1028,59 @@ if (SHEET_SYNC_LIGADO) {
 } else {
   console.log('[cron:sheet-lead-sync] DESLIGADO (defina SHEET_LEAD_SYNC=on para ligar)');
 }
+
+// ============================================================
+// CRON: reconciliador da Meta CAPI
+//
+// O gatilho de conversão vive nas telas (kanban, ficha do lead), e quem fecha
+// lead de verdade é webhook: etiqueta do WhatsApp, assinatura do ZapSign,
+// checkpoint de onboarding. Medido em 04/09/2026: 69 fechamentos em 7 dias,
+// ZERO eventos na fila.
+//
+// Este cron não pergunta quem fechou. Pergunta se existe fechado na janela sem
+// evento, e enfileira. Caminho novo que alguém criar amanhã entra sozinho.
+//
+// Idempotente: `meta-capi-enqueue` faz upsert por `event_id`, então rodar de 15
+// em 15 min não duplica nem reenvia — quem já foi volta como `ja_existia`.
+// ============================================================
+const CAPI_RECONCILE_INTERVAL_MS = 15 * 60 * 1000;
+const capiReconcileEstado = {
+  execucoes: 0,
+  ultima_em: null as string | null,
+  ultimo_resultado: null as string | null,
+  enfileirados_acumulado: 0,
+};
+
+async function runCapiReconcile() {
+  capiReconcileEstado.execucoes += 1;
+  capiReconcileEstado.ultima_em = new Date().toISOString();
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/meta-capi-reconcile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: JSON.stringify({ dias: 7, dry_run: false }),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    if (json?.error) {
+      console.error(`[cron:capi-reconcile] ${json.error}`);
+      capiReconcileEstado.ultimo_resultado = `erro: ${String(json.error).slice(0, 120)}`;
+      return;
+    }
+    capiReconcileEstado.enfileirados_acumulado += Number(json?.enfileirados || 0);
+    capiReconcileEstado.ultimo_resultado =
+      `fechados=${json?.fechados_na_janela ?? 0} sem_evento=${json?.sem_evento ?? 0} ` +
+      `enfileirados=${json?.enfileirados ?? 0} ignorados=${json?.ignorados ?? 0}`;
+    if (json?.enfileirados > 0 || json?.erros > 0) {
+      console.log(`[cron:capi-reconcile] ${capiReconcileEstado.ultimo_resultado}`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[cron:capi-reconcile] failed:', msg);
+    capiReconcileEstado.ultimo_resultado = `falha: ${msg.slice(0, 120)}`;
+  }
+}
+
+// 420s: depois do sheet-lead-sync (360s), pra não competir por I/O no boot.
+setTimeout(runCapiReconcile, 420_000);
+setInterval(runCapiReconcile, CAPI_RECONCILE_INTERVAL_MS);
+console.log('[cron:capi-reconcile] ligado — janela de 7 dias, a cada 15 min');

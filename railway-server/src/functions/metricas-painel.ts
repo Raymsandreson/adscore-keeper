@@ -76,8 +76,12 @@ async function investimento() {
   let t30 = 0, t7 = 0, tHoje = 0;
 
   for (const c of contas?.data ?? []) {
+    // `date_preset=last_30d` da Meta EXCLUI o dia corrente — com ele o card
+    // "investido hoje" fica zerado para sempre, que e justamente o numero que
+    // se quer ver ao vivo. `time_range` explicito com `until` = hoje inclui.
+    const janela = encodeURIComponent(JSON.stringify({ since: diasAtras(29), until: hojeISO() }));
     const ins = await g(
-      `${c.id}/insights?fields=spend,impressions,clicks&date_preset=last_30d&time_increment=1&limit=100`,
+      `${c.id}/insights?fields=spend,impressions,clicks&time_range=${janela}&time_increment=1&limit=100`,
     );
     if (ins?.error) {
       detalhe.push({ conta: c.name, id: c.id, erro: ins.error.message });
@@ -130,7 +134,7 @@ export const handler: RequestHandler = async (_req, res) => {
       leTudo<any>((de, ate) =>
         supabase
           .from('leads')
-          .select('created_at, source, board_id')
+          .select('created_at, source, board_id, facebook_lead_id')
           .is('deleted_at', null)
           .gte('created_at', `${corte30}T00:00:00Z`)
           .order('created_at', { ascending: false })
@@ -139,7 +143,7 @@ export const handler: RequestHandler = async (_req, res) => {
       leTudo<any>((de, ate) =>
         supabase
           .from('leads')
-          .select('became_client_date, source, board_id')
+          .select('became_client_date, source, board_id, facebook_lead_id')
           .is('deleted_at', null)
           .eq('lead_status', 'closed')
           .gte('became_client_date', corte30)
@@ -178,6 +182,13 @@ export const handler: RequestHandler = async (_req, res) => {
     const fech7 = fechados.filter((f) => dia(f.became_client_date) >= corte7).length;
     const fechHoje = fechados.filter((f) => dia(f.became_client_date) === hoje).length;
 
+    // Lead pago = veio de formulário de anúncio. Duas provas independentes:
+    // o `source` que a planilha de Lead Ads carimba, ou o id do lead na Meta.
+    const ehPago = (l: any) =>
+      Boolean(l.facebook_lead_id) || String(l.source || '').toLowerCase().includes('planilha meta ads');
+    const leadsPagos = leads.filter(ehPago);
+    const fechamentosPagos = fechados.filter(ehPago).length;
+
     const serieDias = Array.from({ length: 30 }, (_, i) => diasAtras(29 - i));
 
     return res.status(200).json({
@@ -188,6 +199,7 @@ export const handler: RequestHandler = async (_req, res) => {
         hoje: leadsHoje,
         ultimos_7d: leads7,
         ultimos_30d: leads.length,
+        pagos_30d: leadsPagos.length,
         por_fonte: contaPor(leads, (l) => l.source || '(sem origem)').slice(0, 15),
         por_board: contaPor(leads, (l) => nomeBoard[l.board_id] || null).slice(0, 15),
       },
@@ -207,10 +219,22 @@ export const handler: RequestHandler = async (_req, res) => {
       capi: Object.fromEntries(filaCapi),
       // Custo só existe se houve gasto: dividir por zero e mostrar "R$ 0,00 por
       // lead" mentiria tanto quanto esconder o número.
+      //
+      // E o divisor é LEAD PAGO, não lead qualquer: 3.019 dos 3.496 dos últimos
+      // 30 dias são `google_alerts` (notícia raspada, que não custou anúncio
+      // nenhum). Dividir por todos dava R$ 8,14 de CPL — número errado com cara
+      // de métrica, que é pior que número nenhum.
       custo: {
-        por_lead_30d: gasto.total_30d > 0 && leads.length ? Number((gasto.total_30d / leads.length).toFixed(2)) : null,
-        por_fechamento_30d:
-          gasto.total_30d > 0 && fechados.length ? Number((gasto.total_30d / fechados.length).toFixed(2)) : null,
+        leads_pagos_30d: leadsPagos.length,
+        fechamentos_pagos_30d: fechamentosPagos,
+        por_lead_pago_30d:
+          gasto.total_30d > 0 && leadsPagos.length
+            ? Number((gasto.total_30d / leadsPagos.length).toFixed(2))
+            : null,
+        por_fechamento_pago_30d:
+          gasto.total_30d > 0 && fechamentosPagos
+            ? Number((gasto.total_30d / fechamentosPagos).toFixed(2))
+            : null,
       },
     });
   } catch (err) {
