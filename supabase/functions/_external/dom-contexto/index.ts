@@ -1,25 +1,31 @@
 // =============================================================================
-// dom-contexto — monta o contexto do Dom (Assessor Jurídico Virtual). Roda no
-// projeto EXTERNO (kmedldlepwiityjsdahz), NÃO no cloud. Deploy:
-// supabase functions deploy dom-contexto --project-ref kmedldlepwiityjsdahz
+// dom-contexto — monta o contexto do assessor virtual. Roda no projeto EXTERNO.
 //
-// POR QUE ISTO EXISTE
-// O agente "DOM-Atendente Processual" tem no base_prompt a instrução "Extraia do
-// histórico todos os dados do(s) processo(s)" e "Nunca peça o número do
-// processo". Ou seja: hoje ele tenta deduzir o andamento lendo conversa antiga.
-// É a razão de ele estar desligado. Esta função entrega o andamento pronto, dos
-// dados reais, e as respostas que a EQUIPE já deu para perguntas parecidas.
+// ORDEM DOS BLOCOS IMPORTA: o modelo responde com o que vier primeiro.
+//   1 quem você é  2 como falar  3 andamento  4 atividade da equipe  5 exemplos
 //
-// Fica separada de whatsapp-ai-agent-reply (44 mil chars, v42, em produção)
-// justamente para não mexer no que já funciona: lá entra só a chamada.
+// TRÊS DEFEITOS REAIS QUE MOLDARAM ISTO
+//   a) "está na fase de intimação eletrônica" (05/09) — ele repetia o andamento
+//      mais recente, que era rotina do sistema, como se fosse a fase. Faltava
+//      fase_atual, documentos e atividade no contexto. Agora vêm, e a
+//      movimentação vem por último, rótulada como rotina.
+//   b) resposta que copiou o template do WhatsJUD (04/09) — número de processo,
+//      barra de progresso, link, menu "digite 1" e assinatura de um advogado
+//      real. Veio de exemplo cru. Agora o bloco de exemplos diz que dali sai só
+//      o jeito de falar.
+//   c) relatório de sete processos em cima de um "muito obrigada". 317 grupos
+//      têm dois ou mais casos e um tem dez: listar todos vira muralha.
 //
 // CONTRATO
 //   POST { group_jid, pergunta?, limite_exemplos? }
 //   →    { atende, modo, tem_vinculo, blocos, contexto, exemplos_usados }
 //
 //   atende=false  → o grupo não está em dom_grupos_piloto. O chamador deve
-//                   ficar calado. Fora do piloto o Dom não responde.
+//                   ficar calado. Fora do piloto o assessor não responde.
 //   blocos        → texto pronto para concatenar no system prompt.
+//
+// Deploy: projeto EXTERNO kmedldlepwiityjsdahz. Fica separada de
+// whatsapp-ai-agent-reply (v42, em produção) para não mexer no que funciona.
 // =============================================================================
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -141,6 +147,20 @@ function blocoProcessual(ctx: any): string {
     "as suas palavras, como quem explica para alguém sem formação jurídica.",
     "",
   ];
+
+  // Quantos são, dito em voz alta e ANTES de qualquer lista. Sem isto o modelo
+  // trata "resuma cada processo" como ordem literal e devolve dez parágrafos —
+  // que é exatamente o primeiro defeito grave que este agente teve.
+  const totalCasos = procs.length + reqs.length;
+  if (totalCasos > 3) {
+    linhas.push(
+      `>>> ATENÇÃO: este cliente tem ${totalCasos} processos/requerimentos com a` +
+        " casa. NÃO liste todos. Responda sobre o que a conversa indica; se não" +
+        " der para saber, diga quantos são, conte o mais recente e pergunte de" +
+        " qual ele quer saber.",
+    );
+    linhas.push("");
+  }
 
   // --- Lado administrativo (INSS) ---
   // Vem primeiro de propósito: é o que tem prazo curto correndo contra o
@@ -313,7 +333,16 @@ function blocoExemplos(exemplos: any[]): string {
   const linhas = [
     "=== COMO A EQUIPE JÁ RESPONDEU NESTE MESMO GRUPO ===",
     "Atendimentos anteriores DESTE grupo, deste mesmo cliente. Use-os para calibrar",
-    "TOM, tamanho e abordagem.",
+    "TOM, tamanho e abordagem — e NADA MAIS.",
+    "",
+    "NÃO COPIE A FORMA. Alguns destes exemplos são modelos automáticos do sistema,",
+    "com título em negrito, barra de progresso, número de processo, link e assinatura",
+    "de advogado. Copiar isso já aconteceu e o resultado foi uma resposta que citava",
+    "o número do processo, falava em despacho e gabinete, e assinava com o nome de uma",
+    "pessoa real que não escreveu nada daquilo.",
+    "Você escreve SUAS próprias frases, curtas, sem cabeçalho, sem assinatura, sem",
+    "link e sem número de processo.",
+    "",
     "NUNCA copie um dado factual daqui (data, valor, prazo, fase do processo): estes",
     "exemplos são ANTIGOS e o processo andou desde então. O fato de hoje vem do bloco",
     "de andamento processual; daqui vem só o jeito de falar.",
@@ -399,9 +428,31 @@ function blocoComoFalar(): string {
     "  - assinatura com nome de pessoa da equipe. Assinar com o nome de outra",
     "    pessoa é se passar por ela.",
     "  - PEDIR O NÚMERO DO PROCESSO ao cliente. Você JÁ TEM os processos dele",
-    "    acima. Pedir escancara que ninguém está acompanhando o caso. Se ele tem",
-    "    mais de um e não dá para saber de qual fala, resuma TODOS, um parágrafo",
-    "    curto cada.",
+    "    acima. Pedir escancara que ninguém está acompanhando o caso.",
+    "",
+    "-----------------------------------------------------------------------",
+    "QUANDO O CLIENTE TEM MAIS DE UM PROCESSO",
+    "-----------------------------------------------------------------------",
+    "Medido em 05/09/2026: 317 grupos do piloto têm dois ou mais processos, e um",
+    "tem dez. Listar todos vira muralha — e listar tudo a cada pergunta foi o",
+    "primeiro defeito grave deste agente: o cliente escreveu \"muito obrigada\" e",
+    "recebeu de volta um relatório de sete processos.",
+    "",
+    "A pessoa perguntou do CASO dela, não da carteira dela. Então:",
+    "",
+    "  1. Se a conversa deixa claro de qual processo ela fala (citou um nome, um",
+    "     benefício, a empresa, ou é o assunto das últimas mensagens), responda",
+    "     SÓ sobre esse. Os outros não entram.",
+    "  2. Se não dá para saber e são DOIS OU TRÊS, cubra todos: um parágrafo",
+    "     curto cada, começando pelo que a pessoa mais provavelmente quer.",
+    "  3. Se são QUATRO OU MAIS, NÃO LISTE. Diga quantos são, conte o que",
+    "     aconteceu de mais recente em um deles, e pergunte de qual ela quer",
+    "     saber. Uma pergunta só, curta. Exemplo do jeito: \"A senhora tem cinco",
+    "     processos com a gente. O que mexeu agora foi o da pensão — [o que",
+    "     mudou]. Quer que eu veja algum outro em especial?\"",
+    "",
+    "Nunca identifique processo por número. Use o nome de quem é, o benefício ou",
+    "a empresa: \"o da Alana\", \"o do auxílio-doença\", \"o da construtora\".",
     "",
     "-----------------------------------------------------------------------",
     "MOVIMENTAÇÃO DE ROTINA NÃO É RESPOSTA",
@@ -495,8 +546,7 @@ function blocoComoFalar(): string {
     "Do outro lado tem alguém esperando dinheiro ou saúde, muitas vezes há",
     "meses. Reconheça a espera antes de explicar. Frases curtas, como se você",
     "estivesse escrevendo no WhatsApp — porque está.",
-    "No máximo três parágrafos curtos. Se tiver mais de um processo, um",
-    "parágrafo por processo e nada além.",
+    "No máximo três parágrafos curtos.",
     'Nada de "prezado", "venho por meio desta", "informamos que", "cumpre',
     'esclarecer". Fale como gente.',
     "=== FIM COMO FALAR ===",

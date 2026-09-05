@@ -383,3 +383,50 @@ A anotação da atividade é escrita em editor rico e saía do banco como
 HTML cru (`<p class="lexical-paragraph">`) direto para o prompt. Modelo
 imita o que recebe. A limpeza é na origem, preservando as quebras de
 parágrafo.
+
+### Cliente com mais de um processo — a regra em três degraus
+
+O grupo é "Caso 217 - Bruno", mas o cliente tem **sete** processos com a
+casa. Foi essa a confusão que gerou o primeiro defeito grave: o cliente
+escreveu "muito obrigada" e recebeu um relatório de sete processos.
+
+Distribuição medida em 05/09/2026, nos 1149 grupos do piloto
+(`dom_contexto_processual` por grupo):
+
+| processos/requerimentos | grupos |
+| --- | --- |
+| nenhum vínculo | 309 |
+| 1 | 200 |
+| 2 | 236 |
+| 3 a 4 | 72 |
+| 5 a 7 | 7 |
+| 8 ou mais (máx. 10) | 2 |
+
+Ou seja: **317 grupos têm dois ou mais**. Não é exceção, é o caso comum —
+e por isso a regra não pode ser "resuma todos" nem "resuma um".
+
+A regra vive em dois lugares, de propósito:
+
+1. `blocoComoFalar`, seção "QUANDO O CLIENTE TEM MAIS DE UM PROCESSO",
+   em três degraus:
+   - a conversa deixa claro de qual processo se fala → responde **só** esse;
+   - não dá para saber e são **dois ou três** → um parágrafo curto cada;
+   - **quatro ou mais** → não lista: diz quantos são, conta o que mexeu
+     mais recente e pergunta de qual a pessoa quer saber.
+2. `blocoProcessual`, um aviso com o **número real** logo no topo, antes
+   de qualquer lista, quando `processos + requerimentos > 3`:
+   `>>> ATENÇÃO: este cliente tem 7 processos/requerimentos com a casa.`
+
+O aviso com o número existe porque a regra genérica sozinha não segurava:
+lendo sete blocos `PROCESSO ...` em sequência, o modelo trata "resuma o
+andamento" como ordem literal e devolve sete parágrafos. Dizer o número
+antes da lista é o que muda o comportamento.
+
+Duas regras contraditórias conviveram no mesmo bloco por algumas horas
+("no máximo três parágrafos curtos" e "um parágrafo por processo e nada
+além"). Com 7 processos elas se anulam. Os três degraus substituem as duas.
+
+Verificado em 05/09/2026 no grupo `120363312825541116` (Caso 217, sete
+processos): o prompt montado traz a linha
+`>>> ATENÇÃO: este cliente tem 7 processos/requerimentos com a casa`
+imediatamente antes do primeiro `PROCESSO`.
