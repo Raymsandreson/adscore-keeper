@@ -62,6 +62,13 @@ Ano = `data_distribuicao` → `data_inicio` → `ano_inicio`; sem nenhum, `sem_d
 - **Não esconde buraco.** CNPJ que falhou, ou que parou na trava de páginas,
   vira aviso na tela e no CSV — o total sai marcado como incompleto em vez de
   parecer completo.
+- **Não conta o mesmo processo duas vezes.** Matriz e filial podem ser partes da
+  MESMA ação; a varredura une por número CNJ, avisa quantos foram unidos e o
+  detalhe mostra todos os CNPJs que acharam aquele processo. Sem isso o volume
+  da empresa — o número que se usa para precificar — sairia inflado.
+- **Não relê a mesma página.** Se a busca devolver a página que já veio (é o que
+  a edge sem repasse de cursor faz), a varredura para naquele CNPJ e avisa, em
+  vez de multiplicar a primeira página pela trava de páginas.
 - **Não é "todos os processos da empresa"** — é o que o Escavador indexou.
   Segredo de justiça e tribunal fora da cobertura não aparecem.
 

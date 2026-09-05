@@ -3,7 +3,7 @@ import {
   agregarPorAno, anoDoProcesso, classificarMateria, cnpjDaFilial, cnpjValido,
   cnpjsDaRaiz, csvPorAno, csvProcessos, digitosVerificadores, formatarCnpj,
   itensDaResposta, mapearProcessoDaEmpresa, percentualAcidentarios, poloDaEmpresa,
-  proximaPagina, raizDoCnpj, totalizar,
+  proximaPagina, raizDoCnpj, totalizar, unificarPorProcesso,
 } from '../processosDaEmpresa';
 
 // Recorte real da resposta v2 (mesma forma do fixture de escavadorCapa.test.ts).
@@ -185,5 +185,45 @@ describe('leitura da resposta paginada', () => {
     const next = 'https://api.escavador.com/api/v2/processos/cnpj/01588098000102?cursor=abc&li=9';
     expect(proximaPagina({ success: true, data: { links: { next } } })).toBe(next);
     expect(proximaPagina({ data: { links: { next: null } } })).toBeNull();
+  });
+});
+
+describe('unificarPorProcesso', () => {
+  it('conta uma vez só o processo achado por matriz e filial', () => {
+    const mesmo = item('0000972-32.2020.5.07.0001', '2023-03-01', 'Acidente de Trabalho');
+    const achados = [
+      mapearProcessoDaEmpresa(mesmo, '01588098000102'),
+      mapearProcessoDaEmpresa(mesmo, '01588098005333'),
+      mapearProcessoDaEmpresa(item('outro', '2023-04-01', 'Horas Extras'), '01588098000102'),
+    ];
+    const { processos, duplicados } = unificarPorProcesso(achados);
+    expect(processos).toHaveLength(2);
+    expect(duplicados).toBe(1);
+    expect(processos[0].cnpjs_encontrados).toEqual(['01588098000102', '01588098005333']);
+  });
+
+  it('processo sem número não é fundido por semelhança', () => {
+    const semNumero = { ...item('x', '2023-01-01', null), numero_cnj: null };
+    const achados = [
+      mapearProcessoDaEmpresa(semNumero, '01588098000102'),
+      mapearProcessoDaEmpresa(semNumero, '01588098000293'),
+    ];
+    const { processos, duplicados } = unificarPorProcesso(achados);
+    expect(processos).toHaveLength(2);
+    expect(duplicados).toBe(0);
+  });
+
+  it('polo conhecido por um CNPJ vence o INDETERMINADO do outro', () => {
+    const cnj = '0000972-32.2020.5.07.0001';
+    const semEnvolvido = item(cnj, '2023-03-01', 'Horas Extras');
+    const comEnvolvido = item(cnj, '2023-03-01', 'Horas Extras', {
+      envolvidos: [{ nome: 'Empresa X Ltda', cnpj: '01588098005333', polo: 'PASSIVO' }],
+    });
+    const { processos } = unificarPorProcesso([
+      mapearProcessoDaEmpresa(semEnvolvido, '01588098000102'),
+      mapearProcessoDaEmpresa(comEnvolvido, '01588098005333'),
+    ]);
+    expect(processos).toHaveLength(1);
+    expect(processos[0].polo_da_empresa).toBe('PASSIVO');
   });
 });

@@ -26,7 +26,7 @@
 import {
   agregarPorAno, cnpjValido, cnpjsDaRaiz, csvPorAno, csvProcessos, formatarCnpj,
   itensDaResposta, limparCnpj, mapearProcessoDaEmpresa, percentualAcidentarios,
-  proximaPagina, raizDoCnpj, totalizar,
+  proximaPagina, raizDoCnpj, totalizar, unificarPorProcesso,
 } from '../src/lib/processosDaEmpresa.ts';
 
 const ESCAVADOR_BASE = 'https://api.escavador.com/api/v2';
@@ -61,6 +61,9 @@ async function buscarCnpj(cnpj, { viaEdge, token, maxPaginas }) {
   let url = `${ESCAVADOR_BASE}/processos/cnpj/${cnpj}`;
   let cursor = null;
   let pagina = 0;
+  // Se a mesma página voltar, é a edge antiga (sem repasse de cursor)
+  // devolvendo sempre a primeira — sem esta trava o laço a releria N vezes.
+  const jaVistos = new Set();
 
   while (pagina < maxPaginas) {
     pagina += 1;
@@ -69,6 +72,11 @@ async function buscarCnpj(cnpj, { viaEdge, token, maxPaginas }) {
     processos.push(...itens.map((it) => mapearProcessoDaEmpresa(it, cnpj)));
     const proxima = proximaPagina(corpo);
     if (!proxima) return { processos, avisos };
+    if (jaVistos.has(proxima)) {
+      avisos.push(`${formatarCnpj(cnpj)}: a busca repetiu a mesma página — edge sem repasse de cursor (falta deploy). Só a 1ª página entrou.`);
+      return { processos, avisos };
+    }
+    jaVistos.add(proxima);
     url = proxima;
     cursor = proxima;
   }
@@ -136,7 +144,11 @@ async function main() {
     }
   }
 
-  const linhas = agregarPorAno(processos);
+  const { processos: unicos, duplicados } = unificarPorProcesso(processos);
+  if (duplicados > 0) {
+    avisos.push(`${duplicados} processo(s) apareceram por mais de um CNPJ da raiz e foram contados uma vez só.`);
+  }
+  const linhas = agregarPorAno(unicos);
   const totais = totalizar(linhas);
   const pct = percentualAcidentarios(totais);
 
@@ -155,8 +167,8 @@ async function main() {
     const { mkdirSync, writeFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     mkdirSync(out, { recursive: true });
-    writeFileSync(join(out, 'processos.json'), JSON.stringify(processos, null, 2));
-    writeFileSync(join(out, 'processos.csv'), csvProcessos(processos));
+    writeFileSync(join(out, 'processos.json'), JSON.stringify(unicos, null, 2));
+    writeFileSync(join(out, 'processos.csv'), csvProcessos(unicos));
     writeFileSync(join(out, 'por-ano.csv'), csvPorAno(linhas));
     console.log(`\nGravado em ${out}/ (processos.json, processos.csv, por-ano.csv)`);
   }

@@ -403,7 +403,7 @@ export default function JurimetriaEmpresaPage() {
                 ['Réu', aberto.polo_passivo],
                 ['Papel da empresa', aberto.polo_da_empresa === 'INDETERMINADO'
                   ? 'não informado nesta resposta' : aberto.polo_da_empresa.toLowerCase()],
-                ['CNPJ consultado', formatarCnpj(aberto.cnpj_consultado)],
+                ['CNPJ consultado', (aberto.cnpjs_encontrados ?? [aberto.cnpj_consultado]).map(formatarCnpj).join(' · ')],
                 ['Classe', aberto.classe],
                 ['Área', aberto.area],
                 ['Assunto principal', aberto.assunto_principal],

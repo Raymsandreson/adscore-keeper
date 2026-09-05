@@ -193,6 +193,8 @@ export interface ProcessoDaEmpresa {
   valor_causa: number | null;
   materia: Materia;
   polo_da_empresa: Polo;
+  /** Todos os CNPJs da raiz que acharam este processo (preenchido ao unificar). */
+  cnpjs_encontrados?: string[];
 }
 
 const obj = (v: unknown): Record<string, unknown> =>
@@ -353,6 +355,44 @@ export function totalizar(linhas: LinhaAno[]): TotaisEmpresa {
 export function percentualAcidentarios(t: Pick<TotaisEmpresa, 'total' | 'indeterminado' | 'acidentarios'>): number | null {
   const base = t.total - t.indeterminado;
   return base > 0 ? (t.acidentarios / base) * 100 : null;
+}
+
+/**
+ * Junta o mesmo processo achado por CNPJs diferentes da mesma raiz.
+ *
+ * POR QUE: matriz e filial podem ser partes do MESMO processo. Sem juntar, a
+ * varredura da raiz contaria a ação duas vezes e inflaria o volume da empresa —
+ * exatamente o número que se usa para precificar. Guarda todos os CNPJs que
+ * bateram naquele processo, para não perder a informação de quem estava lá.
+ */
+export function unificarPorProcesso(processos: ProcessoDaEmpresa[]): {
+  processos: ProcessoDaEmpresa[];
+  duplicados: number;
+} {
+  const porCnj = new Map<string, ProcessoDaEmpresa>();
+  const semNumero: ProcessoDaEmpresa[] = [];
+  let duplicados = 0;
+
+  for (const p of processos) {
+    // Sem número de processo não dá para afirmar que é o mesmo — fica de fora
+    // da unificação em vez de ser fundido por semelhança.
+    if (!p.numero_cnj) { semNumero.push(p); continue; }
+    const existente = porCnj.get(p.numero_cnj);
+    if (!existente) {
+      porCnj.set(p.numero_cnj, { ...p, cnpjs_encontrados: [p.cnpj_consultado] });
+      continue;
+    }
+    duplicados += 1;
+    const cnpjs = existente.cnpjs_encontrados ?? [existente.cnpj_consultado];
+    if (!cnpjs.includes(p.cnpj_consultado)) cnpjs.push(p.cnpj_consultado);
+    existente.cnpjs_encontrados = cnpjs;
+    // Polo conhecido por qualquer um dos CNPJs vale mais que INDETERMINADO.
+    if (existente.polo_da_empresa === 'INDETERMINADO' && p.polo_da_empresa !== 'INDETERMINADO') {
+      existente.polo_da_empresa = p.polo_da_empresa;
+    }
+  }
+
+  return { processos: [...porCnj.values(), ...semNumero], duplicados };
 }
 
 // -----------------------------------------------------------------------------

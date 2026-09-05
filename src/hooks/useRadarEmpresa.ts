@@ -12,7 +12,7 @@ import { useCallback, useRef, useState } from 'react';
 import { cloudFunctions } from '@/lib/functionRouter';
 import {
   itensDaResposta, limparCnpj, mapearProcessoDaEmpresa, proximaPagina,
-  type ProcessoDaEmpresa,
+  unificarPorProcesso, type ProcessoDaEmpresa,
 } from '@/lib/processosDaEmpresa';
 
 export interface ProgressoRadar {
@@ -76,6 +76,10 @@ export function useRadarEmpresa() {
 
         let cursor: string | null = null;
         let pagina = 0;
+        // Páginas já pedidas neste CNPJ. Se a mesma voltar, é a edge ANTIGA
+        // (sem repasse de cursor) devolvendo sempre a primeira: sem esta trava
+        // o laço releria a página 1 vinte vezes e multiplicaria os processos.
+        const jaVistos = new Set<string>();
 
         do {
           if (cancelar.current) break;
@@ -95,7 +99,17 @@ export function useRadarEmpresa() {
           paginas += 1;
           const itens = itensDaResposta(data);
           achados.push(...itens.map(it => mapearProcessoDaEmpresa(it, cnpj)));
-          cursor = proximaPagina(data);
+          const proxima = proximaPagina(data);
+          if (proxima && jaVistos.has(proxima)) {
+            recados.push({
+              cnpj,
+              texto: 'a busca devolveu a mesma página de novo — a edge search-escavador ainda está sem o repasse de cursor (precisa de deploy). Só a 1ª página foi contada.',
+            });
+            cursor = null;
+          } else {
+            if (proxima) jaVistos.add(proxima);
+            cursor = proxima;
+          }
 
           setProgresso(p => ({ ...p, paginas, encontrados: achados.length }));
 
@@ -109,16 +123,22 @@ export function useRadarEmpresa() {
         } while (cursor);
       }
 
-      setProcessos(achados);
+      // Matriz e filial podem estar no MESMO processo: sem unificar, a raiz
+      // contaria a ação duas vezes.
+      const { processos: unicos, duplicados } = unificarPorProcesso(achados);
+      if (duplicados > 0) {
+        recados.push({ cnpj: '—', texto: `${duplicados} processo(s) apareceram por mais de um CNPJ da raiz e foram contados uma vez só.` });
+      }
+      setProcessos(unicos);
       setAvisos(recados);
-      setProgresso(p => ({ ...p, cnpjAtual: null, cnpjsFeitos: p.cnpjsTotal, encontrados: achados.length }));
+      setProgresso(p => ({ ...p, cnpjAtual: null, cnpjsFeitos: p.cnpjsTotal, encontrados: unicos.length }));
       setConcluidoEm(new Date());
     } catch (e) {
       const msg = (e as { message?: string })?.message || 'falha ao consultar o Escavador';
       console.error('[useRadarEmpresa]', msg);
       setErro(msg);
       // O que já veio fica na tela: 40 processos lidos valem mais que zero.
-      setProcessos(achados);
+      setProcessos(unificarPorProcesso(achados).processos);
       setAvisos(recados);
     } finally {
       setBuscando(false);
