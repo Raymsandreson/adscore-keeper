@@ -324,7 +324,7 @@ Deno.serve(async (req) => {
     // Prompt vem da TABELA, não da view: é lido mesmo com is_active = false.
     const { data: agente } = await supabase
       .from("wjia_command_shortcuts")
-      .select("prompt_instructions, base_prompt, temperature, max_tokens, history_limit, model, reply_with_audio, reply_voice_id, max_tts_chars")
+      .select("prompt_instructions, base_prompt, temperature, max_tokens, history_limit, model, reply_with_audio, reply_voice_id, max_tts_chars, genero_voz")
       .eq("id", DOM_AGENT_ID)
       .maybeSingle();
     if (!agente) return json({ error: "agente Dom não encontrado" }, 500);
@@ -479,9 +479,27 @@ Deno.serve(async (req) => {
         })
         .filter(Boolean);
 
+      // O gênero morava no banco e não chegava ao modelo. Em texto ninguém
+      // nota; falado por uma voz de mulher, "obrigado" soa errado na hora — e o
+      // primeiro áudio gerado saiu exatamente assim, feminino na boca de uma voz
+      // masculina.
+      const generoVoz = String(agente.genero_voz || "").toLowerCase();
+      const blocoDeGenero = generoVoz === "feminina" || generoVoz === "masculina"
+        ? [
+            "=== COMO VOCÊ SE REFERE A SI MESMO ===",
+            generoVoz === "feminina"
+              ? 'Você é uma mulher. Escreva sempre no feminino ao falar de si: "obrigada", "eu mesma", "fico à disposição".'
+              : 'Você é um homem. Escreva sempre no masculino ao falar de si: "obrigado", "eu mesmo", "fico à disposição".',
+            "Isto vale mesmo quando a resposta virar áudio — a voz e o texto têm que",
+            "combinar. Não muda nada sobre o cliente: trate-o como ele se apresenta.",
+            "=== FIM ===",
+          ].join("\n")
+        : "";
+
       const systemPrompt = [
         agente.prompt_instructions || agente.base_prompt || "",
         domCtx.blocos || "",
+        blocoDeGenero,
         instrucaoDaIntencao(cls.intencao),
       ].filter(Boolean).join("\n\n");
 
