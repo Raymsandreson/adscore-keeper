@@ -510,3 +510,84 @@ Depois (mesma pergunta, mesmo grupo):
 > com o processo na Justiça**. […] o juiz pediu para a gente se manifestar
 > sobre **um mandado que não foi cumprido, ou seja, o oficial de justiça
 > não conseguiu entregar um aviso**.
+
+### A frase que se contradizia — e o dado que a causava
+
+> "O que teve movimentação mais recente foi o da ação de indenização,
+> **que continua sem novidades**."
+
+As duas metades se anulam. Não foi invenção do modelo: ele juntou, com
+honestidade, duas fontes que discordavam — e não tinha a data para
+desempatar.
+
+**Medido em 05/09/2026, nos 644 processos dos grupos do piloto:**
+
+| `lead_processes.data_ultima_movimentacao` | processos |
+| --- | --- |
+| NULA, com andamento gravado | **333** |
+| ATRASADA em relação ao andamento real (pior: **1363 dias**) | **140** |
+| correta | **30** |
+| sem andamento nenhum (aí vazia está certa) | 141 |
+
+**473 dos 503 processos com movimento — 94% — carregavam data errada ou
+vazia.** Na base inteira, 2091 de 2686 não têm data nenhuma.
+
+E o estrago passava do campo: o `order by ord desc nulls last` da lista de
+processos usava essa mesma coluna. Com ela nula em 333 processos, a lista
+chegava ao modelo praticamente sem ordem — e a regra dos três degraus manda
+justamente "conte o que aconteceu de mais recente em UM deles". Estávamos
+pedindo uma resposta que o contexto não permitia dar.
+
+**Por que o feed é confiável e a coluna não:**
+
+| fonte | linhas | tipo | datas no futuro |
+| --- | --- | --- | --- |
+| `process_updates` | 5741 | `date` | **0** |
+| `jm_decisoes` | — | `date` | **0** |
+| `lead_processes.data_ultima_movimentacao` | 2686 | `text` | **16** |
+
+A coluna é campo de cadastro, preenchido por sincronização que falha calada.
+O feed é o registro de quem viu acontecer. Passa a mandar o feed.
+
+**Detector, não filtro** (CLAUDE.md, processo e rigor #8): a coluna errada
+não é escondida. Continua saindo em `ultima_movimentacao_cadastro`, e
+`cadastro_desatualizado` marca a divergência. A fila de conserto da
+sincronização é exatamente:
+
+```sql
+select p ->> 'numero', p ->> 'ultima_movimentacao', p ->> 'ultima_movimentacao_cadastro'
+from dom_grupos_piloto g,
+     lateral jsonb_array_elements(dom_contexto_processual(g.group_jid) -> 'processos') p
+where g.ativo and (p ->> 'cadastro_desatualizado')::boolean;
+```
+
+Ainda **falta** ligar essa fila na rotina do Escavador — hoje ela é uma
+consulta, não um gatilho. É o próximo passo, não está feito.
+
+Mais duas coisas que saíram junto:
+
+- `processo_mais_recente` no topo do JSON, e a lista ordenada pela data real.
+  O modelo parou de adivinhar qual andou por último.
+- `blocoAtividade` compara a data da anotação com a da movimentação: se o
+  processo mexeu **depois** da nota, o prompt avisa que a nota está velha.
+
+Depois da correção, mesma pergunta, mesmo grupo:
+
+> "Você tem sete processos com a gente. O que teve movimentação mais
+> recente foi o trabalhista, **em 24 de julho**, que está na fase de
+> instrução, **ou seja, é o momento de juntar as provas e ouvir as
+> pessoas**. […] a próxima audiência de encerramento de instrução está
+> marcada para 22 de outubro."
+
+### Migrations que existiam só em produção
+
+Quatro mudanças de 05/09 foram aplicadas direto no banco e não tinham
+arquivo no repositório: `dom_texto_limpo`, `dom_grupos_para_olhar`, as
+colunas de áudio em `dom_respostas_pendentes` e `genero_voz` em
+`wjia_command_shortcuts`. Uma sessão futura leria `dom_contexto_processual`
+na versão de 04/09 e concluiria, errado, que fase e documentos não chegam
+ao prompt.
+
+Reconstituídas em `20260905120000_dom_contexto_estado_de_producao.sql`,
+todas como `create or replace` / `add column if not exists` — reaplicar é
+seguro e não muda nada.

@@ -99,7 +99,7 @@ function diasDesde(v: unknown): number | null {
  * protocolou novo ED"). Serve para o agente NÃO CONTRADIZER a equipe — não
  * para ser repetida ao cliente.
  */
-function blocoAtividade(atv: any): string {
+function blocoAtividade(atv: any, movMaisRecente: string | null): string {
   if (!atv?.titulo && !atv?.como_esta) return "";
 
   const linhas = ["=== O QUE A EQUIPE JÁ FEZ E COMBINOU (anotação interna) ==="];
@@ -115,6 +115,20 @@ function blocoAtividade(atv: any): string {
     linhas.push(`Próximo passo definido pela equipe: ${atv.proximo_passo}`);
   }
   linhas.push("");
+  // A anotação envelhece; o processo continua andando. Sem datar as duas, o
+  // modelo repetia "permanece sem novas movimentações" de uma nota antiga em
+  // cima de um andamento novo — e a mesma frase dizia as duas coisas.
+  if (movMaisRecente && atv.quando) {
+    const nota = Date.parse(String(atv.quando));
+    const mov = Date.parse(String(movMaisRecente));
+    if (!Number.isNaN(nota) && !Number.isNaN(mov) && mov > nota) {
+      linhas.push(
+        `ATENÇÃO: o processo MEXEU em ${dataBR(movMaisRecente)}, DEPOIS desta` +
+          ` anotação (${dataBR(atv.quando)}). A anotação está velha. Quem vale é a` +
+          " movimentação. NÃO diga que não houve novidade.",
+      );
+    }
+  }
   linhas.push("COMO USAR: isto é recado interno, em telegrama e com abreviação. NUNCA");
   linhas.push("copie. Serve para você não dizer o contrário do que a equipe já disse ao");
   linhas.push("cliente, e para saber o que ela combinou de fazer em seguida.");
@@ -198,8 +212,24 @@ function blocoProcessual(ctx: any): string {
   }
 
   // --- Lado judicial ---
+  // A lista vem ordenada pela data REAL do último movimento (ver a migration
+  // 20260905203000). Dizer isso poupa o modelo de deduzir a ordem lendo sete
+  // blocos — que era o que ele fazia, e errava.
+  const maisRecente = String(ctx?.processo_mais_recente ?? "");
+  if (maisRecente && procs.length > 1) {
+    linhas.push(
+      ">>> A LISTA ABAIXO ESTÁ EM ORDEM: o primeiro é o que mexeu mais" +
+        " recentemente. Quando precisar dizer \"o que andou por último\", é ele" +
+        " — e diga a DATA junto, senão a frase fica sem sentido.",
+    );
+    linhas.push("");
+  }
+
   for (const p of procs) {
     linhas.push(`PROCESSO ${p.numero} — ${p.esfera}`);
+    if (maisRecente && String(p.numero) === maisRecente) {
+      linhas.push("  >>> ESTE É O QUE MEXEU POR ÚLTIMO entre os processos deste cliente.");
+    }
 
     // A FASE vem PRIMEIRO porque é a resposta curta a "como está meu
     // processo?". Sem ela o modelo pegava o andamento mais recente e o
@@ -264,6 +294,22 @@ function blocoProcessual(ctx: any): string {
             (dias !== null ? ` (há ${dias} dias)` : ""),
         );
       }
+    }
+
+    // DETECTOR, não filtro. Em 05/09/2026, 473 dos 503 processos do piloto que
+    // têm movimento carregavam data de cadastro errada ou vazia. A data boa
+    // (do feed) já foi usada acima; esta linha marca a linha torta para a fila
+    // de conserto da sincronização, em vez de deixá-la sumir de vista.
+    // Não muda uma palavra do que o cliente lê.
+    if (p.cadastro_desatualizado) {
+      linhas.push(
+        "  NOTA DE SISTEMA (não é para o cliente, não comente): o cadastro deste" +
+          " processo está com a data de última movimentação " +
+          (p.ultima_movimentacao_cadastro
+            ? `atrasada (diz ${dataBR(p.ultima_movimentacao_cadastro)})`
+            : "vazia") +
+          ". A data acima veio do feed e é a correta.",
+      );
     }
 
     if (p.resultado?.situacao) {
@@ -446,6 +492,9 @@ function blocoComoFalar(): string {
     "    correria, e vem em caixa alta e com erro de digitação. Diga o assunto",
     '    com as suas palavras: "o inventário do avô do senhor", não',
     '    "o caso do IVENTÁRIO AVÔ DO BRUNO".',
+    "  - qualquer linha marcada NOTA DE SISTEMA ou NOTA INTERNA. São recados",
+    "    para a equipe sobre o estado do cadastro. O cliente não tem nada a ver",
+    "    com isso e comentar assusta à toa.",
     "  - PEDIR O NÚMERO DO PROCESSO ao cliente. Você JÁ TEM os processos dele",
     "    acima. Pedir escancara que ninguém está acompanhando o caso.",
     "",
@@ -469,6 +518,11 @@ function blocoComoFalar(): string {
     "     saber. Uma pergunta só, curta. Exemplo do jeito: \"A senhora tem cinco",
     "     processos com a gente. O que mexeu agora foi o da pensão — [o que",
     "     mudou]. Quer que eu veja algum outro em especial?\"",
+    "",
+    "Ao dizer que um processo foi o que mexeu por último, DIGA A DATA. \"O que",
+    "andou por último foi o trabalhista, em 24 de julho\" é uma frase; sem a data",
+    "ela vira \"o que mexeu mais recentemente continua sem novidade\", que se",
+    "contradiz e já aconteceu.",
     "",
     "Nunca identifique processo por número. Use o nome de quem é, o benefício ou",
     "a empresa: \"o da Alana\", \"o do auxílio-doença\", \"o da construtora\".",
@@ -678,7 +732,14 @@ Deno.serve(async (req) => {
       blocoIdentidadeERevisao(modo),
       blocoComoFalar(),
       blocoProcessual(ctx ?? {}),
-      blocoAtividade((ctx as any)?.ultima_atividade),
+      blocoAtividade(
+        (ctx as any)?.ultima_atividade,
+        ((ctx as any)?.processos ?? [])
+          .map((p: any) => p?.ultima_movimentacao)
+          .filter(Boolean)
+          .sort()
+          .pop() ?? null,
+      ),
       blocoExemplos(exemplos),
     ]
       .filter(Boolean)
