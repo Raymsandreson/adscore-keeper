@@ -4,7 +4,7 @@
 // ORDEM DOS BLOCOS IMPORTA: o modelo responde com o que vier primeiro.
 //   1 quem você é  2 como falar  3 andamento  4 atividade da equipe  5 exemplos
 //
-// TRÊS DEFEITOS REAIS QUE MOLDARAM ISTO
+// QUATRO DEFEITOS REAIS QUE MOLDARAM ISTO
 //   a) "está na fase de intimação eletrônica" (05/09) — ele repetia o andamento
 //      mais recente, que era rotina do sistema, como se fosse a fase. Faltava
 //      fase_atual, documentos e atividade no contexto. Agora vêm, e a
@@ -15,6 +15,10 @@
 //      o jeito de falar.
 //   c) relatório de sete processos em cima de um "muito obrigada". 317 grupos
 //      têm dois ou mais casos e um tem dez: listar todos vira muralha.
+//   d) "o caso do IVENTÁRIO AVÔ DO BRUNO" e "o que mais entender de direito"
+//      (05/09) — título de pasta e redação de tribunal copiados crus. Agora o
+//      título vai rotulado como interno e a movimentação é proibida de ser
+//      repetida.
 //
 // CONTRATO
 //   POST { group_jid, pergunta?, limite_exemplos? }
@@ -211,7 +215,8 @@ function blocoProcessual(ctx: any): string {
           (d !== null && d >= 0 ? ` (há ${d} dias nesta fase)` : ""),
       );
       linhas.push("      É ISTO que responde \"como está meu processo?\". Movimentação de");
-      linhas.push("      rotina não é fase.");
+      linhas.push("      rotina não é fase. E o nome da fase é TERMO TÉCNICO: traduza pelo");
+      linhas.push("      glossário antes de escrever. Nunca deixe o nome solto na mensagem.");
     }
 
     const marcos: any[] = p.marcos ?? [];
@@ -220,7 +225,13 @@ function blocoProcessual(ctx: any): string {
         .map((m: any) => `${m.fase} (${dataBR(m.desde)})`).join(" → ")}`);
     }
 
-    if (p.titulo) linhas.push(`  Caso: ${p.titulo}`);
+    // RÓTULO INTERNO, não nome. Estes títulos são digitados pela equipe na
+    // correria: vêm em CAIXA ALTA, com erro de digitação e apelido de pasta
+    // ("IVENTÁRIO AVÔ DO BRUNO"). Sem dizer isso, o modelo copia cru — foi o
+    // que aconteceu no teste do grupo Caso 217, em 05/09/2026.
+    if (p.titulo) {
+      linhas.push(`  Como a equipe chama este caso na pasta (RÓTULO INTERNO): ${p.titulo}`);
+    }
     if (p.status) linhas.push(`  Situação: ${p.status}`);
     if (p.tribunal) linhas.push(`  Tribunal: ${p.tribunal}${p.grau ? ` (${p.grau})` : ""}`);
     if (p.orgao) linhas.push(`  Vara/Órgão: ${p.orgao}`);
@@ -289,7 +300,11 @@ function blocoProcessual(ctx: any): string {
 
     const andamentos: any[] = p.andamentos ?? [];
     if (andamentos.length) {
-      linhas.push("  Movimentações do sistema (rotina — NÃO são a fase do caso):");
+      linhas.push("  Movimentações do sistema (rotina — NÃO são a fase do caso).");
+      linhas.push("  O texto abaixo é a redação OFICIAL do tribunal, escrita para advogado.");
+      linhas.push("  NUNCA a repita, nem em parte, nem \"resumida\": diga o que ela significa");
+      linhas.push("  para a pessoa, em palavra de gente. Se não souber o que significa, não");
+      linhas.push("  cite essa movimentação.");
       for (const a of andamentos) {
         const txt = String(a.resumo ?? a.titulo ?? "").replace(/\s+/g, " ").trim();
         if (txt) linhas.push(`    - ${dataBR(a.data)}: ${txt.slice(0, 300)}`);
@@ -427,6 +442,10 @@ function blocoComoFalar(): string {
     '    ("Etapa:", "Objetivo:", "Passo atual:").',
     "  - assinatura com nome de pessoa da equipe. Assinar com o nome de outra",
     "    pessoa é se passar por ela.",
+    "  - o RÓTULO INTERNO do caso, cru. Ele é apelido de pasta, digitado na",
+    "    correria, e vem em caixa alta e com erro de digitação. Diga o assunto",
+    '    com as suas palavras: "o inventário do avô do senhor", não',
+    '    "o caso do IVENTÁRIO AVÔ DO BRUNO".',
     "  - PEDIR O NÚMERO DO PROCESSO ao cliente. Você JÁ TEM os processos dele",
     "    acima. Pedir escancara que ninguém está acompanhando o caso.",
     "",
@@ -504,6 +523,10 @@ function blocoComoFalar(): string {
     '  habilitação nos autos → "quando alguém pede para entrar no processo"',
     '  gabinete → "a equipe do juiz"',
     '  vara → "o setor da Justiça onde o processo corre"',
+    '  mandado não cumprido → "o oficial de justiça não conseguiu entregar o',
+    '    aviso, normalmente porque não achou a pessoa no endereço"',
+    '  o que entender de direito → NÃO REPITA. Quer dizer "ou pedir outra coisa',
+    '    que ajude", e do jeito original não significa nada para o cliente.',
     "",
     "Dinheiro:",
     '  honorários → "o valor do trabalho do advogado"',

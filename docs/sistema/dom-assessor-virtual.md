@@ -430,3 +430,83 @@ Verificado em 05/09/2026 no grupo `120363312825541116` (Caso 217, sete
 processos): o prompt montado traz a linha
 `>>> ATENÇÃO: este cliente tem 7 processos/requerimentos com a casa`
 imediatamente antes do primeiro `PROCESSO`.
+
+### As quatro ordens que brigavam (05/09/2026)
+
+Com a regra dos três degraus escrita, o teste forçado no grupo Caso 217
+(sete processos) mostrou o agente listando **quatro**. A regra estava
+certa; o problema era que ela não era a única.
+
+O system prompt é montado em `dom-rascunho`, nesta ordem:
+
+```
+agente.prompt_instructions   (banco)
+domCtx.blocos                (dom-contexto)
+blocoDeGenero
+instrucaoDaIntencao(intencao)   ← último = posição mais forte
+```
+
+E cada pedaço dizia uma coisa:
+
+| onde | o que mandava |
+| --- | --- |
+| prompt do agente (banco) | "resumo atualizado de **TODOS** os processos, mesmo que ele cite só um" |
+| `dom-contexto` `blocoComoFalar` | "quatro ou mais → **NÃO liste**" |
+| `dom-contexto` `blocoProcessual` | ">>> ATENÇÃO: 7 processos, NÃO liste todos" |
+| `dom-rascunho` `instrucaoDaIntencao("A")` | "**resuma cada processo** em 2 ou 3 frases" |
+
+Duas mandavam listar, duas mandavam não listar, e a que mandava listar
+estava na última linha. O modelo rachou a diferença: quatro de sete.
+
+Correção, nos dois lugares:
+
+- `instrucaoDaIntencao("A")` não decide mais tamanho. Aponta para a regra,
+  repete os três degraus e fecha a brecha com "listar quatro em vez de
+  sete continua sendo listar".
+- O prompt do agente no banco (`wjia_command_shortcuts`, id
+  `d6ad8eee-…`) teve a linha trocada por "Siga a regra QUANDO O CLIENTE
+  TEM MAIS DE UM PROCESSO…". Rollback é o `replace` inverso.
+
+**A lição, que vale para a próxima:** uma regra de prompt só vale se for a
+única sobre aquele assunto. Regra repetida em quatro lugares não é reforço
+— é voto, e o modelo desempata sozinho. Antes de escrever regra nova,
+procure a antiga com `grep` nos três lugares: prompt do banco,
+`dom-contexto`, `instrucaoDaIntencao`.
+
+### Modo teste do `dom-rascunho`
+
+`POST { group_jid, teste: true, pergunta? }` ignora as travas que existem
+para o cron — equipe falou por último, já rascunhado, já decidido,
+silêncio — e em troca **não grava rascunho, não gera áudio e não agenda
+envio**. Devolve `{ casos, intencao, precisa_revisao, resposta }` e para.
+
+Existe porque sem ele não havia como testar um grupo escolhido a dedo, que
+é onde o defeito aparece: o grupo do Bruno estava travado em "equipe falou
+por último" e só voltaria a ser olhado quando a cliente escrevesse.
+
+O `verify_jwt` da função estava **false** — ela respondia 200 sem nenhum
+header de Authorization, gastando token de LLM e gravando linha a pedido
+de qualquer um. Agora exige JWT. O único chamador é o cron, que já manda
+Bearer.
+
+### Rótulo interno e redação de tribunal não vão crus
+
+Dois defeitos do mesmo teste:
+
+- *"o caso do IVENTÁRIO AVÔ DO BRUNO"* — o campo `titulo` é apelido de
+  pasta, digitado na correria: caixa alta, erro de digitação. Agora vai
+  para o prompt como `Como a equipe chama este caso na pasta (RÓTULO
+  INTERNO):` e o "o que nunca entra na mensagem" proíbe repeti-lo.
+- *"o que mais entender de direito"* e "fase de ajuizamento" solto — a
+  redação oficial do tribunal copiada. Agora o bloco de movimentações diz
+  que aquilo é redação oficial escrita para advogado e proíbe repetir,
+  "nem em parte, nem resumida"; a linha da FASE ATUAL lembra que o nome da
+  fase é termo técnico e passa pelo glossário. Entraram no glossário
+  "mandado não cumprido" e "o que entender de direito".
+
+Depois (mesma pergunta, mesmo grupo):
+
+> O processo está na **fase de ajuizamento, que é quando a gente entrou
+> com o processo na Justiça**. […] o juiz pediu para a gente se manifestar
+> sobre **um mandado que não foi cumprido, ou seja, o oficial de justiça
+> não conseguiu entregar um aviso**.
