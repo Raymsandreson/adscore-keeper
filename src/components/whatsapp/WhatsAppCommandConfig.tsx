@@ -1458,9 +1458,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
                   {form.reply_with_audio && (
                     <div className="space-y-1 pl-2 border-l-2 border-primary/20">
                       <Label className="text-xs flex items-center gap-1"><Volume2 className="h-3 w-3" />Voz do agente</Label>
+                      {/* A voz JÁ ESCOLHIDA entra na lista mesmo quando a busca não
+                          a devolve. `custom_voices` só deixa cada pessoa enxergar as
+                          vozes que ela mesma criou, então uma voz clonada por outro
+                          membro da equipe some do seletor — e, pior, some do valor:
+                          o Select sem opção correspondente ficava vazio e o próximo
+                          "Atualizar" gravava null, trocando a voz sem ninguém pedir. */}
                       <Select value={form.reply_voice_id || 'FGY2WhTYpPnrIDTdsKH5'} onValueChange={v => setForm(f => ({ ...f, reply_voice_id: v }))}>
                         <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione a voz" /></SelectTrigger>
                         <SelectContent>
+                          {form.reply_voice_id && !availableVoices.some(v => v.id === form.reply_voice_id) && (
+                            <SelectItem value={form.reply_voice_id}>
+                              🎤 Voz de outro membro da equipe (mantida)
+                            </SelectItem>
+                          )}
                           {availableVoices.map(v => (
                             <SelectItem key={v.id} value={v.id} className="text-xs">{v.name}</SelectItem>
                           ))}
