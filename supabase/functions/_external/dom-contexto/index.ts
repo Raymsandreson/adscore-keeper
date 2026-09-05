@@ -78,6 +78,40 @@ function diasDesde(v: unknown): number | null {
 // ---------------------------------------------------------------------------
 // Bloco 1 — o andamento real
 // ---------------------------------------------------------------------------
+/**
+ * O que a EQUIPE registrou por último sobre este caso.
+ *
+ * Faltava, e a falta aparecia: o agente respondia a partir do que o tribunal
+ * publicou, ignorando o que o assessor tinha acabado de anotar e de combinar
+ * com o cliente. Duas vozes contando histórias diferentes no mesmo grupo.
+ *
+ * A anotação é interna e escrita em telegrama ("jv 22/06: a reclamada
+ * protocolou novo ED"). Serve para o agente NÃO CONTRADIZER a equipe — não
+ * para ser repetida ao cliente.
+ */
+function blocoAtividade(atv: any): string {
+  if (!atv?.titulo && !atv?.como_esta) return "";
+
+  const linhas = ["=== O QUE A EQUIPE JÁ FEZ E COMBINOU (anotação interna) ==="];
+  if (atv.titulo) linhas.push(`Atividade: ${atv.titulo}`);
+  if (atv.assunto) linhas.push(`Assunto: ${atv.assunto}`);
+  if (atv.status) linhas.push(`Situação da atividade: ${atv.status}`);
+  if (atv.quando) linhas.push(`Anotado em: ${dataBR(atv.quando)}`);
+  if (atv.como_esta) {
+    linhas.push("Como o caso está, segundo a equipe:");
+    linhas.push(String(atv.como_esta).split("\n").map((l: string) => `  ${l}`).join("\n"));
+  }
+  if (atv.proximo_passo) {
+    linhas.push(`Próximo passo definido pela equipe: ${atv.proximo_passo}`);
+  }
+  linhas.push("");
+  linhas.push("COMO USAR: isto é recado interno, em telegrama e com abreviação. NUNCA");
+  linhas.push("copie. Serve para você não dizer o contrário do que a equipe já disse ao");
+  linhas.push("cliente, e para saber o que ela combinou de fazer em seguida.");
+  linhas.push("=== FIM ===");
+  return linhas.join("\n");
+}
+
 function blocoProcessual(ctx: any): string {
   const procs: any[] = ctx?.processos ?? [];
   const reqs: any[] = ctx?.requerimentos_inss ?? [];
@@ -142,6 +176,30 @@ function blocoProcessual(ctx: any): string {
   // --- Lado judicial ---
   for (const p of procs) {
     linhas.push(`PROCESSO ${p.numero} — ${p.esfera}`);
+
+    // A FASE vem PRIMEIRO porque é a resposta curta a "como está meu
+    // processo?". Sem ela o modelo pegava o andamento mais recente e o
+    // descrevia como se fosse o estado do caso — foi assim que uma
+    // "confirmação de intimação eletrônica (evento 195)", que o próprio
+    // resumo chamava de rotina do sistema, virou "seu processo está na fase de
+    // intimação eletrônica" na boca dele.
+    if (p.fase_atual?.fase) {
+      const d = diasDesde(p.fase_atual.desde);
+      linhas.push(
+        `  >>> FASE ATUAL: ${p.fase_atual.fase}` +
+          (p.fase_atual.desde ? ` — desde ${dataBR(p.fase_atual.desde)}` : "") +
+          (d !== null && d >= 0 ? ` (há ${d} dias nesta fase)` : ""),
+      );
+      linhas.push("      É ISTO que responde \"como está meu processo?\". Movimentação de");
+      linhas.push("      rotina não é fase.");
+    }
+
+    const marcos: any[] = p.marcos ?? [];
+    if (marcos.length > 1) {
+      linhas.push(`  Caminho até aqui: ${marcos.slice().reverse()
+        .map((m: any) => `${m.fase} (${dataBR(m.desde)})`).join(" → ")}`);
+    }
+
     if (p.titulo) linhas.push(`  Caso: ${p.titulo}`);
     if (p.status) linhas.push(`  Situação: ${p.status}`);
     if (p.tribunal) linhas.push(`  Tribunal: ${p.tribunal}${p.grau ? ` (${p.grau})` : ""}`);
@@ -197,9 +255,21 @@ function blocoProcessual(ctx: any): string {
       }
     }
 
+    // O QUE O JUIZ DECIDIU, antes do que o sistema registrou. `andamentos` diz
+    // que houve intimação; a peça lida diz o que a intimação MANDAVA. Quem
+    // pergunta do processo quer a carta, não o carteiro.
+    const documentos: any[] = p.documentos ?? [];
+    if (documentos.length) {
+      linhas.push("  O que as peças do processo dizem (já lidas):");
+      for (const d of documentos) {
+        const txt = String(d.resumo ?? "").replace(/\s+/g, " ").trim();
+        if (txt) linhas.push(`    - ${dataBR(d.data)} | ${d.peca ?? "peça"}: ${txt.slice(0, 400)}`);
+      }
+    }
+
     const andamentos: any[] = p.andamentos ?? [];
     if (andamentos.length) {
-      linhas.push("  Andamentos recentes:");
+      linhas.push("  Movimentações do sistema (rotina — NÃO são a fase do caso):");
       for (const a of andamentos) {
         const txt = String(a.resumo ?? a.titulo ?? "").replace(/\s+/g, " ").trim();
         if (txt) linhas.push(`    - ${dataBR(a.data)}: ${txt.slice(0, 300)}`);
@@ -425,6 +495,7 @@ Deno.serve(async (req) => {
       blocoIdentidadeERevisao(modo),
       blocoComoFalar(),
       blocoProcessual(ctx ?? {}),
+      blocoAtividade((ctx as any)?.ultima_atividade),
       blocoExemplos(exemplos),
     ]
       .filter(Boolean)
