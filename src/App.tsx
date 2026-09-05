@@ -192,6 +192,7 @@ const AcompanhamentoProcessualPage = lazyRetry(() => import("./pages/Acompanhame
 const RevisaoAcordosPage = lazyRetry(() => import("./pages/RevisaoAcordosPage"), "RevisaoAcordosPage");
 const CarteiraPorFasePage = lazyRetry(() => import("./pages/CarteiraPorFasePage"), "CarteiraPorFasePage");
 const JurimetriaTabelaPage = lazyRetry(() => import("./pages/JurimetriaTabelaPage"), "JurimetriaTabelaPage");
+const JurimetriaEmpresaPage = lazyRetry(() => import("./pages/JurimetriaEmpresaPage"), "JurimetriaEmpresaPage");
 const ResetPasswordPage = lazyRetry(() => import("./pages/ResetPasswordPage"), "ResetPasswordPage");
 const ContactsPage = lazyRetry(() => import("./pages/ContactsPage"), "ContactsPage");
 const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"), "InstagramPage");
@@ -420,6 +421,7 @@ function SidebarLayout() {
         <Route path="/processual/revisao-acordos" element={<ProtectedRoute><RevisaoAcordosPage /></ProtectedRoute>} />
         <Route path="/processual/carteira" element={<ProtectedRoute><CarteiraPorFasePage /></ProtectedRoute>} />
                 <Route path="/processual/jurimetria" element={<ProtectedRoute><JurimetriaTabelaPage /></ProtectedRoute>} />
+                <Route path="/processual/jurimetria-empresa" element={<ProtectedRoute><JurimetriaEmpresaPage /></ProtectedRoute>} />
                 <Route path="/archived" element={<ProtectedRoute><ArchivedItemsPage /></ProtectedRoute>} />
                 <Route path="/debug/hooks" element={<ProtectedRoute><HookDebugPage /></ProtectedRoute>} />
                 <Route path="/debug/group-audit" element={<ProtectedRoute><GroupAuditLogPage /></ProtectedRoute>} />
