@@ -136,7 +136,7 @@ async function classificar(pergunta: string, ultimasTrocas: string) {
   const sys = [
     "Você classifica a INTENÇÃO da última mensagem do cliente num grupo de WhatsApp",
     "de um escritório de advocacia. Responda APENAS um JSON, sem cercas de código:",
-    '{"intencao":"<código>","conversa_encerrada":<true|false>}',
+    '{"intencao":"<código>","conversa_encerrada":<true|false>,"quer_panorama":<true|false>}',
     "",
     "Códigos possíveis:",
     INTENCOES,
@@ -144,6 +144,21 @@ async function classificar(pergunta: string, ultimasTrocas: string) {
     "conversa_encerrada = true quando a última mensagem do cliente só reconhece o",
     "que já foi dito (obrigada, ok, tá bom, 👍) e não pede nada novo. Nesse caso a",
     "conversa acabou e ninguém precisa responder de volta.",
+    "",
+    "quer_panorama = true quando o cliente quer saber de TODOS os casos dele de",
+    "uma vez, não de um caso específico. É a diferença entre perguntar do",
+    "processo e perguntar da carteira. Julgue pelo SENTIDO do que ele escreveu,",
+    "não por palavras soltas — a mesma palavra muda de sentido no contexto.",
+    "",
+    "  true  → ele pede a visão geral, um apanhado, quer ser atualizado de tudo,",
+    "          pergunta pelos outros casos além do que já se falava, ou cobra um",
+    "          resumo do que está pendente com o escritório.",
+    "  false → ele fala de UM caso (mesmo sem nomear, se é o assunto das últimas",
+    "          mensagens), cumprimenta, agradece, manda documento, ou faz uma",
+    "          pergunta geral e vaga que não pede a carteira inteira.",
+    "",
+    "Na dúvida, false: perguntar de qual caso ele quer custa uma frase; despejar",
+    "dez processos em cima de quem queria um custa a conversa.",
   ].join("\n");
 
   const txt = await gemini(
@@ -154,21 +169,22 @@ async function classificar(pergunta: string, ultimasTrocas: string) {
     0,
   );
   const m = txt.match(/\{[\s\S]*\}/);
-  if (!m) return { intencao: "A1", conversa_encerrada: false };
+  if (!m) return { intencao: "A1", conversa_encerrada: false, quer_panorama: false };
   try {
     const o = JSON.parse(m[0]);
     return {
       intencao: String(o.intencao || "A1").toUpperCase().trim(),
       conversa_encerrada: o.conversa_encerrada === true,
+      quer_panorama: o.quer_panorama === true,
     };
   } catch {
-    return { intencao: "A1", conversa_encerrada: false };
+    return { intencao: "A1", conversa_encerrada: false, quer_panorama: false };
   }
 }
 
 // Cada grupo de intenção manda uma ordem diferente para o modelo. É isto que
 // impede o relatório de processo de aparecer em cima de um desabafo.
-function instrucaoDaIntencao(cod: string): string {
+function instrucaoDaIntencao(cod: string, panorama = false): string {
   const g = cod.charAt(0);
   if (g === "B") {
     return [
@@ -198,6 +214,24 @@ function instrucaoDaIntencao(cod: string): string {
       "=== FIM ===",
     ].join("\n");
   }
+  // Este bloco é o ÚLTIMO do system prompt, a posição mais forte. Ele NUNCA
+  // pode dizer um tamanho diferente do que o dom-contexto já disse: foi assim
+  // que o agente listou quatro de sete, rachando a diferença entre duas ordens
+  // opostas. Então ele só APONTA para a regra que está lá — e a regra que está
+  // lá depende de o cliente ter pedido o panorama ou não.
+  if (panorama) {
+    return [
+      "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
+      "O cliente pediu o PANORAMA: ele quer saber de todos os casos dele, não de",
+      "um. Siga a regra O CLIENTE PEDIU O PANORAMA, acima, à risca.",
+      "Um parágrafo curto para CADA processo, sem pular nenhum, com o nome do",
+      "caso, como está hoje e o que mudou por último — com a data.",
+      "Processo sem movimentação nova também entra: diga que não teve novidade.",
+      "Deixar um de fora é o erro aqui.",
+      "=== FIM ===",
+    ].join("\n");
+  }
+
   return [
     "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
     "O cliente perguntou algo. Responda o que ele perguntou — e só isso.",
@@ -496,7 +530,7 @@ Deno.serve(async (req) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
         },
-        body: JSON.stringify({ group_jid: g.group_jid, pergunta }),
+        body: JSON.stringify({ group_jid: g.group_jid, pergunta, panorama: cls.quer_panorama === true }),
       });
       const domCtx = await ctxResp.json().catch(() => null);
       if (!domCtx || domCtx.error) { pulados.push({ grupo: g.group_jid, motivo: "contexto indisponível" }); await registrar(supabase, g, "pulou", "contexto indisponível", { pergunta, intencao: cls.intencao }); continue; }
@@ -537,7 +571,7 @@ Deno.serve(async (req) => {
         agente.prompt_instructions || agente.base_prompt || "",
         domCtx.blocos || "",
         blocoDeGenero,
-        instrucaoDaIntencao(cls.intencao),
+        instrucaoDaIntencao(cls.intencao, cls.quer_panorama === true),
       ].filter(Boolean).join("\n\n");
 
       let resposta = "";
@@ -573,6 +607,7 @@ Deno.serve(async (req) => {
           pergunta,
           intencao: cls.intencao,
           conversa_encerrada: cls.conversa_encerrada ?? null,
+          panorama: cls.quer_panorama === true,
           precisa_revisao: motivo,
           resposta,
           gravou: false,
@@ -683,7 +718,7 @@ Deno.serve(async (req) => {
         { pergunta, intencao: cls.intencao, pendente_id: pendenteId },
       );
       rascunhos++;
-      console.log(`[dom-rascunho] grupo=${g.group_jid} intencao=${cls.intencao} humano=${!!atendenteId} agendado=${!!agendadoPara} (${resposta.length}ch)`);
+      console.log(`[dom-rascunho] grupo=${g.group_jid} intencao=${cls.intencao} panorama=${cls.quer_panorama === true} humano=${!!atendenteId} agendado=${!!agendadoPara} (${resposta.length}ch)`);
     }
 
     return json({ grupos: (grupos ?? []).length, rascunhos, pulados });

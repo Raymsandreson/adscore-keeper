@@ -653,3 +653,80 @@ Testado em transação com rollback: uma movimentação de hoje levou
 - **16 datas no futuro** continuam lá, todas vindas de digitação manual. O
   backfill não as toca porque só avança, e o feed não tem data futura. O
   detector do `blocoProcessual` já as marca com `[REVISAR]`.
+
+### Panorama: quando a regra se inverte
+
+Os três degraus resolvem "o cliente perguntou do caso dele". Não resolvem
+"o cliente quer saber de tudo" — aí omitir é que é a falha.
+
+Quem decide qual das duas regras vale é o **classificador**, não uma lista
+de palavras. Ele passou a devolver um terceiro campo:
+
+```json
+{"intencao":"A1","conversa_encerrada":false,"quer_panorama":true}
+```
+
+com a instrução de julgar pelo sentido ("Na dúvida, false: perguntar de
+qual caso ele quer custa uma frase; despejar dez processos em cima de quem
+queria um custa a conversa"). O `dom-rascunho` repassa `panorama` ao
+`dom-contexto`, que troca o bloco inteiro:
+
+| | regra |
+| --- | --- |
+| `panorama: false` | três degraus — 1 processo, 2-3, ou 4+ (não lista) |
+| `panorama: true` | um parágrafo por processo, **sem pular nenhum** |
+
+**A regra vive num lugar só.** As duas nunca aparecem no mesmo prompt, e a
+`instrucaoDaIntencao` (que é o último bloco, a posição mais forte) apenas
+aponta para a que estiver valendo. Foi a lição de listar quatro de sete.
+
+Verificado em 05/09/2026, grupo Caso 217 (7 processos):
+
+| pergunta | `panorama` | resposta |
+| --- | --- | --- |
+| "tem novidade do inventário do avô?" | false | só o inventário, 467 car. |
+| "me atualiza de tudo, como estão todos?" | **true** | os 7, um parágrafo cada, 1444 car. |
+| "boa tarde, tudo bem? alguma novidade?" | false | são sete, o mais recente em 24/07, quer ver outro? 377 car. |
+
+**O primeiro panorama saiu com dois defeitos**, e os dois vieram da mesma
+causa: quando se lista vários casos é obrigatório nomear cada um, e sem uma
+fonte de nome sancionada o modelo pega a única coisa única que enxerga.
+
+1. Nomeou os sete pelo **número do processo** — proibido em toda mensagem.
+   Corrigido apontando a fonte: `Assunto` + `Classe` do bloco de andamento,
+   mais de quem é o caso. A `Classe` nem estava sendo enviada ao prompt;
+   passou a ser.
+2. Pôs cada nome em `**negrito**`. O WhatsApp não entende `**` — o cliente
+   leria os asteriscos na tela. Proibido explicitamente.
+
+Depois: sem número, sem asterisco, os sete nomeados por assunto ("o
+trabalhista da indenização", "o do reconhecimento de união estável", "o
+inventário do avô do Bruno").
+
+Sobrou um: `O processo cível "Autor vs Réu"`. É o título literal do
+cadastro — o texto padrão do formulário, nunca preenchido — e o registro
+não tem Classe nem Assunto para o modelo usar. A mensagem escancara o
+cadastro ruim em vez de escondê-lo, e esse processo está na fila do
+Escavador, que vai trazer classe e assunto.
+
+### Os 539 sem feed foram para a fila
+
+Nenhum dos 539 processos sem movimentação estava em `jm_processos` nem
+tinha linha em `jm_esc_solicitacoes`: são fichas digitadas na mão que nunca
+entraram no monitoramento.
+
+Enfileirados em 05/09/2026: **403** (`status='A_ENVIAR'`, `modo='PUBLICOS'`,
+ids 599–1001). Ficaram de fora 91 com CNJ inválido (não tem 20 dígitos, não
+dá para consultar) e 43 que já tinham solicitação.
+
+**Custo, medido no histórico:** ~20 créditos por consulta PUBLICOS → **~8.060
+créditos**. Para comparar, foram 9.685 gastos entre 10/07 e 05/09. Taxa de
+acerto histórica: de 486 consultas com SUCESSO, 327 trouxeram movimentação e
+159 voltaram vazias (**33%**) — então espere ~2.600 créditos sem retorno.
+
+O cron `jm-esc-rotina` drena 15 a cada 20 minutos (45/h), ou seja ~11h com
+a fila que já existia. **Para parar no meio:**
+
+```sql
+delete from jm_esc_solicitacoes where status = 'A_ENVIAR';
+```

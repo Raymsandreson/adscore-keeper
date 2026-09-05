@@ -4,7 +4,7 @@
 // ORDEM DOS BLOCOS IMPORTA: o modelo responde com o que vier primeiro.
 //   1 quem você é  2 como falar  3 andamento  4 atividade da equipe  5 exemplos
 //
-// QUATRO DEFEITOS REAIS QUE MOLDARAM ISTO
+// CINCO DEFEITOS REAIS QUE MOLDARAM ISTO
 //   a) "está na fase de intimação eletrônica" (05/09) — ele repetia o andamento
 //      mais recente, que era rotina do sistema, como se fosse a fase. Faltava
 //      fase_atual, documentos e atividade no contexto. Agora vêm, e a
@@ -19,6 +19,12 @@
 //      (05/09) — título de pasta e redação de tribunal copiados crus. Agora o
 //      título vai rotulado como interno e a movimentação é proibida de ser
 //      repetida.
+//   e) no primeiro panorama (05/09) ele nomeou cada um dos sete casos pelo
+//      NÚMERO e pôs tudo em **negrito**. Nomear é obrigatório quando se lista
+//      vários, e sem uma fonte de nome sancionada ele pega a única coisa
+//      única que enxerga: o número. Agora a regra aponta Assunto + Classe como
+//      a fonte, e proíbe asterisco — o WhatsApp não entende ** e o cliente lê
+//      os asteriscos na tela.
 //
 // CONTRATO
 //   POST { group_jid, pergunta?, limite_exemplos? }
@@ -136,7 +142,7 @@ function blocoAtividade(atv: any, movMaisRecente: string | null): string {
   return linhas.join("\n");
 }
 
-function blocoProcessual(ctx: any): string {
+function blocoProcessual(ctx: any, panorama: boolean): string {
   const procs: any[] = ctx?.processos ?? [];
   const reqs: any[] = ctx?.requerimentos_inss ?? [];
 
@@ -170,12 +176,24 @@ function blocoProcessual(ctx: any): string {
   // trata "resuma cada processo" como ordem literal e devolve dez parágrafos —
   // que é exatamente o primeiro defeito grave que este agente teve.
   const totalCasos = procs.length + reqs.length;
-  if (totalCasos > 3) {
+  if (totalCasos > 3 && !panorama) {
     linhas.push(
       `>>> ATENÇÃO: este cliente tem ${totalCasos} processos/requerimentos com a` +
         " casa. NÃO liste todos. Responda sobre o que a conversa indica; se não" +
         " der para saber, diga quantos são, conte o mais recente e pergunte de" +
         " qual ele quer saber.",
+    );
+    linhas.push("");
+  }
+  // O cliente pediu o panorama. Aí a regra se inverte: agora omitir é que é
+  // falha. Ele quer saber de TODOS, e cada um tem que aparecer com nome.
+  if (totalCasos > 1 && panorama) {
+    linhas.push(
+      `>>> O CLIENTE PEDIU O PANORAMA. Ele tem ${totalCasos} processos/` +
+        "requerimentos e quer saber de TODOS. Escreva um parágrafo curto para" +
+        " CADA UM, sem pular nenhum, na ordem em que aparecem abaixo (do que" +
+        " mexeu mais recente para o mais parado). Nomeie cada um pelo Assunto e" +
+        " pela Classe, NUNCA pelo número.",
     );
     linhas.push("");
   }
@@ -265,6 +283,7 @@ function blocoProcessual(ctx: any): string {
     if (p.status) linhas.push(`  Situação: ${p.status}`);
     if (p.tribunal) linhas.push(`  Tribunal: ${p.tribunal}${p.grau ? ` (${p.grau})` : ""}`);
     if (p.orgao) linhas.push(`  Vara/Órgão: ${p.orgao}`);
+    if (p.classe) linhas.push(`  Classe: ${p.classe}`);
     if (p.assunto) linhas.push(`  Assunto: ${p.assunto}`);
     if (p.distribuido_em) linhas.push(`  Distribuído em: ${dataBR(p.distribuido_em)}`);
 
@@ -436,7 +455,73 @@ function blocoExemplos(exemplos: any[]): string {
 //      benefício. O cliente lê, não entende, e pergunta de novo — ou pior,
 //      entende errado.
 // ---------------------------------------------------------------------------
-function blocoComoFalar(): string {
+function blocoComoFalar(panorama: boolean): string {
+  // A regra de tamanho vive num lugar só: ou os três degraus, ou o panorama.
+  // Nunca as duas no mesmo prompt — foi assim que o agente listou quatro de
+  // sete, rachando a diferença entre duas ordens opostas.
+  const regraDeQuantos = panorama
+    ? [
+        "-----------------------------------------------------------------------",
+        "O CLIENTE PEDIU O PANORAMA — discrimine TODOS",
+        "-----------------------------------------------------------------------",
+        "Ele não perguntou de um caso: perguntou de tudo. Aqui omitir é falha.",
+        "",
+        "Um parágrafo curto para CADA processo, sem pular nenhum, na ordem do",
+        "bloco de andamento (do que mexeu mais recente para o mais parado).",
+        "Em cada parágrafo, três coisas e mais nada:",
+        "",
+        "  1. QUAL é — monte o nome com o Assunto e a Classe que estão no bloco",
+        "     de andamento, mais de quem é o caso. Essa é a fonte do nome:",
+        '     "o trabalhista da indenização", "o inventário do avô do Bruno",',
+        '     "o do reconhecimento de união estável", "o do auxílio-doença".',
+        "     NUNCA o número do processo, NUNCA o rótulo interno cru. Se dois",
+        "     casos forem parecidos, o que separa é DE QUEM É — não o número.",
+        "  2. COMO ESTÁ HOJE — a fase atual, traduzida pelo glossário.",
+        "  3. O QUE MUDOU e QUANDO — a última movimentação, COM A DATA, dita em",
+        "     palavra de gente. Se não houve movimentação registrada, diga isso",
+        "     com honestidade: \"esse não teve movimentação nova\". Não invente,",
+        "     não estime e não deixe o processo de fora por estar parado.",
+        "",
+        "Pode passar de três parágrafos: aqui o tamanho vem do número de",
+        "processos, não do seu resumo. O que NÃO pode é encher cada um. Duas ou",
+        "três linhas por processo, e a mensagem termina em aberto.",
+        "",
+        "Sem asterisco, sem negrito, sem marcador de lista. Texto corrido, um",
+        "parágrafo por caso — é WhatsApp, não relatório.",
+      ]
+    : [
+        "-----------------------------------------------------------------------",
+        "QUANDO O CLIENTE TEM MAIS DE UM PROCESSO",
+        "-----------------------------------------------------------------------",
+        "Medido em 05/09/2026: 317 grupos do piloto têm dois ou mais processos, e um",
+        "tem dez. Listar todos vira muralha — e listar tudo a cada pergunta foi o",
+        "primeiro defeito grave deste agente: o cliente escreveu \"muito obrigada\" e",
+        "recebeu de volta um relatório de sete processos.",
+        "",
+        "A pessoa perguntou do CASO dela, não da carteira dela. Então:",
+        "",
+        "  1. Se a conversa deixa claro de qual processo ela fala (citou um nome, um",
+        "     benefício, a empresa, ou é o assunto das últimas mensagens), responda",
+        "     SÓ sobre esse. Os outros não entram.",
+        "  2. Se não dá para saber e são DOIS OU TRÊS, cubra todos: um parágrafo",
+        "     curto cada, começando pelo que a pessoa mais provavelmente quer.",
+        "  3. Se são QUATRO OU MAIS, NÃO LISTE. Diga quantos são, conte o que",
+        "     aconteceu de mais recente em um deles, e pergunte de qual ela quer",
+        "     saber. Uma pergunta só, curta. Exemplo do jeito: \"A senhora tem cinco",
+        "     processos com a gente. O que mexeu agora foi o da pensão — [o que",
+        "     mudou]. Quer que eu veja algum outro em especial?\"",
+        "",
+        "Ao dizer que um processo foi o que mexeu por último, DIGA A DATA. \"O que",
+        "andou por último foi o trabalhista, em 24 de julho\" é uma frase; sem a",
+        "data ela vira \"o que mexeu mais recentemente continua sem novidade\", que",
+        "se contradiz e já aconteceu.",
+        "",
+        "Nunca identifique processo por número. Use o nome de quem é, o benefício",
+        'ou a empresa: "o da Alana", "o do auxílio-doença", "o da construtora".',
+        "",
+        "Se ela pedir o panorama de tudo, isto muda e você recebe outra instrução.",
+      ];
+
   return [
     "=== COMO FALAR COM O CLIENTE ===",
     "",
@@ -482,10 +567,15 @@ function blocoComoFalar(): string {
     "-----------------------------------------------------------------------",
     "  - NÚMERO DE PROCESSO. Não ajuda quem está do outro lado e faz a mensagem",
     '    parecer ofício. Diga "o seu processo trabalhista", "o processo da',
-    '    Alana", "o pedido no INSS".',
+    '    Alana", "o pedido no INSS". Isto vale INCLUSIVE quando você lista',
+    "    vários casos de uma vez: nomeie pelo assunto, nunca pelo número.",
     "  - link de sistema, menu (\"digite 1\", \"digite 2\"), barra de progresso,",
     "    porcentagem de conclusão, cabeçalho em negrito, campos rotulados",
     '    ("Etapa:", "Objetivo:", "Passo atual:").',
+    "  - ASTERISCO e markdown. O WhatsApp não entende **assim** — o cliente lê",
+    "    os asteriscos na tela, literalmente. Escreva texto puro, sem nenhuma",
+    "    marcação. Vale principalmente quando você lista vários casos: a",
+    "    tentação de pôr o nome de cada um em negrito é exatamente o erro.",
     "  - assinatura com nome de pessoa da equipe. Assinar com o nome de outra",
     "    pessoa é se passar por ela.",
     "  - o RÓTULO INTERNO do caso, cru. Ele é apelido de pasta, digitado na",
@@ -498,34 +588,7 @@ function blocoComoFalar(): string {
     "  - PEDIR O NÚMERO DO PROCESSO ao cliente. Você JÁ TEM os processos dele",
     "    acima. Pedir escancara que ninguém está acompanhando o caso.",
     "",
-    "-----------------------------------------------------------------------",
-    "QUANDO O CLIENTE TEM MAIS DE UM PROCESSO",
-    "-----------------------------------------------------------------------",
-    "Medido em 05/09/2026: 317 grupos do piloto têm dois ou mais processos, e um",
-    "tem dez. Listar todos vira muralha — e listar tudo a cada pergunta foi o",
-    "primeiro defeito grave deste agente: o cliente escreveu \"muito obrigada\" e",
-    "recebeu de volta um relatório de sete processos.",
-    "",
-    "A pessoa perguntou do CASO dela, não da carteira dela. Então:",
-    "",
-    "  1. Se a conversa deixa claro de qual processo ela fala (citou um nome, um",
-    "     benefício, a empresa, ou é o assunto das últimas mensagens), responda",
-    "     SÓ sobre esse. Os outros não entram.",
-    "  2. Se não dá para saber e são DOIS OU TRÊS, cubra todos: um parágrafo",
-    "     curto cada, começando pelo que a pessoa mais provavelmente quer.",
-    "  3. Se são QUATRO OU MAIS, NÃO LISTE. Diga quantos são, conte o que",
-    "     aconteceu de mais recente em um deles, e pergunte de qual ela quer",
-    "     saber. Uma pergunta só, curta. Exemplo do jeito: \"A senhora tem cinco",
-    "     processos com a gente. O que mexeu agora foi o da pensão — [o que",
-    "     mudou]. Quer que eu veja algum outro em especial?\"",
-    "",
-    "Ao dizer que um processo foi o que mexeu por último, DIGA A DATA. \"O que",
-    "andou por último foi o trabalhista, em 24 de julho\" é uma frase; sem a data",
-    "ela vira \"o que mexeu mais recentemente continua sem novidade\", que se",
-    "contradiz e já aconteceu.",
-    "",
-    "Nunca identifique processo por número. Use o nome de quem é, o benefício ou",
-    "a empresa: \"o da Alana\", \"o do auxílio-doença\", \"o da construtora\".",
+    ...regraDeQuantos,
     "",
     "-----------------------------------------------------------------------",
     "MOVIMENTAÇÃO DE ROTINA NÃO É RESPOSTA",
@@ -623,7 +686,9 @@ function blocoComoFalar(): string {
     "Do outro lado tem alguém esperando dinheiro ou saúde, muitas vezes há",
     "meses. Reconheça a espera antes de explicar. Frases curtas, como se você",
     "estivesse escrevendo no WhatsApp — porque está.",
-    "No máximo três parágrafos curtos.",
+    panorama
+      ? "Cada parágrafo, curto. O tamanho da mensagem vem do número de processos."
+      : "No máximo três parágrafos curtos.",
     'Nada de "prezado", "venho por meio desta", "informamos que", "cumpre',
     'esclarecer". Fale como gente.',
     "=== FIM COMO FALAR ===",
@@ -685,7 +750,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
 
   try {
-    const { group_jid, pergunta, limite_exemplos } = await req.json();
+    const { group_jid, pergunta, limite_exemplos, panorama } = await req.json();
+    // Quem decide se é panorama é o classificador do dom-rascunho, com a
+    // conversa na frente — não uma lista de palavras aqui.
+    const querPanorama = panorama === true;
     if (!group_jid) return json({ error: "group_jid é obrigatório" }, 400);
 
     const supabase = createClient(
@@ -730,8 +798,8 @@ Deno.serve(async (req) => {
 
     const blocos = [
       blocoIdentidadeERevisao(modo),
-      blocoComoFalar(),
-      blocoProcessual(ctx ?? {}),
+      blocoComoFalar(querPanorama),
+      blocoProcessual(ctx ?? {}, querPanorama),
       blocoAtividade(
         (ctx as any)?.ultima_atividade,
         ((ctx as any)?.processos ?? [])
@@ -750,7 +818,7 @@ Deno.serve(async (req) => {
       `[dom-contexto] grupo=${jidCurto} modo=${modo} processos=${
         (ctx?.processos ?? []).length
       } requerimentos=${(ctx?.requerimentos_inss ?? []).length}` +
-        ` exemplos=${exemplos.length} blocos=${blocos.length}ch`,
+        ` exemplos=${exemplos.length} panorama=${querPanorama} blocos=${blocos.length}ch`,
     );
 
     return json({
