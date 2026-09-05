@@ -31,7 +31,12 @@
 //
 // CONTRATO
 //   POST {}                → varre todos os grupos ativos do piloto
-//   POST { group_jid }     → só aquele grupo (teste)
+//   POST { group_jid }     → só aquele grupo
+//   POST { group_jid, teste: true, pergunta? }
+//                          → gera e DEVOLVE o texto sem gravar, sem
+//                            áudio e sem agendar. Ignora as travas do
+//                            cron (equipe falou por último, já
+//                            rascunhado, já decidido, silêncio).
 //   POST { limite }        → teto de grupos por rodada (padrão 8)
 //   →     { grupos, rascunhos, pulados: [{ grupo, motivo }] }
 //
@@ -196,8 +201,22 @@ function instrucaoDaIntencao(cod: string): string {
   return [
     "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
     "O cliente perguntou algo. Responda o que ele perguntou — e só isso.",
-    "Se a pergunta for de andamento, resuma cada processo em 2 ou 3 frases a partir",
-    "das últimas movimentações. Se for outra coisa, NÃO puxe o andamento.",
+    "Se NÃO for pergunta de andamento, não puxe o andamento.",
+    "",
+    // Aqui morava "resuma cada processo em 2 ou 3 frases". Este bloco é o
+    // ÚLTIMO do system prompt, a posição mais forte — e a ordem contradizia a
+    // regra dos três degraus do dom-contexto. Testado em 05/09/2026 no grupo
+    // Caso 217 (sete processos): o modelo, com as duas ordens na frente,
+    // rachou a diferença e listou quatro. Quem manda no tamanho é a regra, e
+    // ela é dita uma vez só.
+    "Se FOR de andamento, quem manda é a regra QUANDO O CLIENTE TEM MAIS DE UM",
+    "PROCESSO, acima. Ela não é sugestão e não tem exceção aqui:",
+    "  · um processo        → resuma esse;",
+    "  · dois ou três       → um parágrafo curto para cada;",
+    "  · QUATRO OU MAIS     → é PROIBIDO listar. Diga quantos são, conte o que",
+    "                         mexeu de mais recente em UM deles, e pergunte de",
+    "                         qual ele quer saber.",
+    "Listar quatro em vez de sete continua sendo listar.",
     "=== FIM ===",
   ].join("\n");
 }
@@ -316,6 +335,18 @@ Deno.serve(async (req) => {
     const soEsteGrupo = corpo?.group_jid ? String(corpo.group_jid).split("@")[0] : null;
     const limite = Math.min(Math.max(Number(corpo?.limite) || 8, 1), 20);
 
+    // MODO TESTE — só com group_jid explícito.
+    // As travas deste arquivo existem para o CRON: não falar por cima da
+    // equipe, não rascunhar duas vezes a mesma pergunta, não reclassificar o
+    // que já foi decidido. Nenhuma delas diz respeito à QUALIDADE do texto, e
+    // todas juntas tornam impossível ver o efeito de uma mudança de prompt num
+    // grupo escolhido a dedo — que é justamente onde o defeito aparece.
+    // Então `teste: true` ignora as travas e, em troca, não grava rascunho,
+    // não gera áudio e não agenda envio: devolve o texto que sairia e para.
+    // O cliente não vê nada.
+    const teste = corpo?.teste === true && !!soEsteGrupo;
+    const perguntaTeste = teste && corpo?.pergunta ? String(corpo.pergunta).trim() : null;
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -391,14 +422,14 @@ Deno.serve(async (req) => {
       if (lista.length === 0) { pulados.push({ grupo: g.group_jid, motivo: "sem mensagens" }); await registrar(supabase, g, "pulou", "sem mensagens"); continue; }
 
       const ultima = lista[lista.length - 1];
-      if (ultima.daEquipe) { pulados.push({ grupo: g.group_jid, motivo: "equipe falou por último" }); await registrar(supabase, g, "pulou", "equipe falou por último"); continue; }
+      if (ultima.daEquipe && !teste) { pulados.push({ grupo: g.group_jid, motivo: "equipe falou por último" }); await registrar(supabase, g, "pulou", "equipe falou por último"); continue; }
 
       // Texto curto NÃO é motivo para pular. "Ok" tem dois caracteres e é uma
       // conversa se encerrando — quem tem que dizer isso é o classificador, que
       // devolve D13 e grava SILÊNCIO. O corte antigo (`length < 3`) gravava
       // `pulou`, que não bloqueia: o mesmo "Ok" era reclassificado a cada cinco
       // minutos, para sempre. Um grupo sozinho gerou 36 linhas em 3 horas.
-      const pergunta = ultima.texto || descricaoDeMidia(ultima.tipo);
+      const pergunta = perguntaTeste || ultima.texto || descricaoDeMidia(ultima.tipo);
       if (!pergunta) {
         // Aqui sim não há o que ler. Registra SILÊNCIO (decisão final, que
         // bloqueia) em vez de `pulou`, para não repetir a conta eternamente.
@@ -414,7 +445,7 @@ Deno.serve(async (req) => {
       const { data: jaTem } = await supabase
         .from("dom_respostas_pendentes").select("id")
         .eq("group_jid", g.group_jid).eq("pergunta", pergunta).limit(1).maybeSingle();
-      if (jaTem) { pulados.push({ grupo: g.group_jid, motivo: "já rascunhado" }); continue; }
+      if (jaTem && !teste) { pulados.push({ grupo: g.group_jid, motivo: "já rascunhado" }); continue; }
 
       // Rascunho gerado deixa rastro na fila; SILÊNCIO não deixa. Sem esta
       // segunda checagem, um grupo parado num "obrigada" seria reclassificado a
@@ -430,7 +461,7 @@ Deno.serve(async (req) => {
         .eq("group_jid", g.group_jid).eq("pergunta", pergunta)
         .in("decisao", ["silencio", "respondeu", "humano"])
         .limit(1).maybeSingle();
-      if (jaDecidiu) {
+      if (jaDecidiu && !teste) {
         pulados.push({ grupo: g.group_jid, motivo: `já decidido antes (${(jaDecidiu as any).decisao})` });
         continue;
       }
@@ -450,7 +481,7 @@ Deno.serve(async (req) => {
       // 4. Conversa terminada, ou nada que peça resposta: silêncio. O Dom é
       //    convidado na conversa, não dono dela — não insiste em ter a última
       //    palavra.
-      if (cls.conversa_encerrada || grupoIntencao === "D") {
+      if ((cls.conversa_encerrada || grupoIntencao === "D") && !teste) {
         const motivoSilencio = cls.conversa_encerrada
           ? "conversa encerrada: o cliente só reconheceu, não pediu nada novo"
           : "a intenção não pede resposta";
@@ -478,6 +509,12 @@ Deno.serve(async (req) => {
           return { role: m.daEquipe ? "model" : "user", parts: [{ text: t }] };
         })
         .filter(Boolean);
+
+      // Sem isto o modelo receberia a conversa terminando na fala da EQUIPE e
+      // não teria pergunta nenhuma para responder.
+      if (teste && perguntaTeste) {
+        historico.push({ role: "user", parts: [{ text: perguntaTeste }] } as any);
+      }
 
       // O gênero morava no banco e não chegava ao modelo. Em texto ninguém
       // nota; falado por uma voz de mulher, "obrigado" soa errado na hora — e o
@@ -525,6 +562,22 @@ Deno.serve(async (req) => {
           return "";
         })
         .replace(/\n{3,}/g, "\n\n").trim();
+
+      // Fim do modo teste: nada entra na fila, nada é agendado, nada é falado.
+      if (teste) {
+        const c: any = domCtx.contexto ?? {};
+        return json({
+          teste: true,
+          grupo: g.group_name ?? g.group_jid,
+          casos: (c.processos ?? []).length + (c.requerimentos_inss ?? []).length,
+          pergunta,
+          intencao: cls.intencao,
+          conversa_encerrada: cls.conversa_encerrada ?? null,
+          precisa_revisao: motivo,
+          resposta,
+          gravou: false,
+        });
+      }
 
       // 5. Intenção do grupo E é de pessoa, não do Dom: sorteia o atendente do
       //    rodízio. O envio do aviso é do dom-avisar-atendente.
