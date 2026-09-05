@@ -1,57 +1,81 @@
-# Processos de uma empresa por ano e por matéria (Escavador)
+# Radar de empresa — processos por ano e por matéria (Escavador)
 
 Responde: *"quantos processos por ano essa empresa tem, e quantos são de
-acidente de trabalho ou doença ocupacional?"*
+acidente de trabalho ou doença ocupacional?"* — para um CNPJ ou para a **raiz
+inteira** (matriz + filiais).
 
-## Como rodar
+## Onde fica
+
+**Processual → Jurimetria → Radar de empresa** (`/processual/jurimetria-empresa`).
+
+Também dá para rodar em lote pela linha de comando:
 
 ```bash
-# direto na API v2 (precisa do token do Escavador na mão)
-ESCAVADOR_API_TOKEN=xxx node scripts/escavador-processos-por-cnpj.mjs 01588098000102 --out /tmp/atlantica
+# um CNPJ, com o token do Escavador na mão
+ESCAVADOR_API_TOKEN=xxx npm run radar:empresa -- 01588098000102 --out /tmp/atlantica
 
-# sem token local, passando pela edge search-escavador (usa VITE_SUPABASE_* do .env)
-node scripts/escavador-processos-por-cnpj.mjs 01588098000102 --via-edge
+# a raiz inteira, até a filial 80, passando pela edge (sem token local)
+npm run radar:empresa -- 01.588.098/0001-02 --raiz --ate-ordem 80 --via-edge
 ```
 
-Flags: `--max-paginas N` (trava de custo, default 20) e `--out DIR`
-(grava `processos.json` + `por-ano.csv`).
+Flags: `--raiz`, `--ate-ordem N` (default 20), `--max-paginas N` (default 20),
+`--via-edge`, `--out DIR` (grava `processos.json`, `processos.csv`, `por-ano.csv`).
 
-## O que ele faz
+## Peças
 
-1. `GET /api/v2/processos/cnpj/{cnpj}` e segue `links.next` até acabar ou bater
-   a trava de páginas. Seguir a URL inteira do `next` evita o mesmo tropeço da
-   rota de OAB, cujo `next` carrega parâmetro de cobrança além do cursor.
-2. Lê a **capa** de cada processo (`fontes[0].capa`) — classe, área,
-   `assuntos_normalizados`, `data_distribuicao` — com o mesmo mapeamento de
-   `supabase/functions/_shared/escavadorCapa.ts`.
-3. Classifica a matéria por termo do assunto/classe:
-   - `ACIDENTE` — acidente de trabalho/do trabalho, trajeto, *in itinere*, acidentária
-   - `DOENCA` — doença ocupacional/profissional/do trabalho, moléstia profissional, LER/DORT, PAIR
-   - `AMBOS`, `OUTRO`
-   - `INDETERMINADO` — a capa veio **sem** assunto e sem classe
-4. Agrega por ano de distribuição (`data_distribuicao` → `data_inicio` →
-   `ano_inicio`; sem nenhum deles, ano `sem_data`).
+| Arquivo | Papel |
+|---|---|
+| `src/lib/processosDaEmpresa.ts` | Regra pura: dígito verificador/raiz, classificação da matéria, agregação por ano, CSV, leitura da paginação. **Fonte única** — tela e CLI usam a mesma. |
+| `src/hooks/useRadarEmpresa.ts` | Varredura serial pela edge `search-escavador`, com progresso, avisos por CNPJ e botão de parar. |
+| `src/pages/JurimetriaEmpresaPage.tsx` | A tela. Detalhe do processo abre em `Sheet`, sem sair da lista. |
+| `scripts/escavador-processos-por-cnpj.mjs` | CLI. Importa a lib TS via `node --experimental-strip-types`. |
+| `src/lib/__tests__/processosDaEmpresa.test.ts` | 19 casos: DV contra CNPJs reais, classificação, agregação, percentual, CSV, paginação. |
 
-## O que ele NÃO faz (de propósito)
+## Como classifica
 
-- **Não chuta.** Processo cuja capa não trouxe matéria vira `INDETERMINADO` e é
-  reportado à parte. Somar esses como "não é acidente" produziria um percentual
-  bonito e errado. Para resolver um `INDETERMINADO` é preciso abrir o processo
+Lê a **capa** de cada processo (`fontes[0].capa`: classe, área,
+`assuntos_normalizados`, `data_distribuicao`) e casa por termo:
+
+- **ACIDENTE** — acidente de trabalho/do trabalho, de trajeto, *in itinere*, acidentária
+- **DOENÇA** — doença ocupacional/profissional/do trabalho, moléstia profissional, LER/DORT, PAIR
+- **AMBOS**, **OUTRO**
+- **INDETERMINADO** — a capa veio sem assunto **e** sem classe
+
+Ano = `data_distribuicao` → `data_inicio` → `ano_inicio`; sem nenhum, `sem_data`
+(e `sem_data` não entra na média por ano).
+
+## O que ele NÃO faz — de propósito
+
+- **Não chuta matéria.** `INDETERMINADO` é contado à parte e o percentual sai
+  sobre o que deu para classificar (`total − indeterminado`). Dividir pelo total
+  trataria "não sei" como "não é" e empurraria o percentual para baixo. Para
+  resolver um indeterminado é preciso abrir a capa completa
   (`GET /processos/numero_cnj/{cnj}`), que é consulta paga por processo.
-- **Não separa polo.** A busca por CNPJ traz processo em que a empresa aparece,
-  ré ou autora. Quem quer só o polo passivo filtra por `titulo_polo_passivo` no
-  `processos.json`.
-- **Não cobre o que o Escavador não indexou** — processo em segredo de justiça
-  ou tribunal fora da cobertura não aparece, e nenhum total daqui é "o total de
-  processos da empresa", e sim "o que o Escavador tem".
+- **Não inventa a lista de filiais.** O modo raiz **gera** os CNPJs pelo dígito
+  verificador (`raiz + ordem + DV`) e varre de 0001 até o limite que você
+  informar. Isso é varredura, não cadastro: ordem que nunca foi aberta apenas
+  não devolve processo. Quem já tem a lista real da Receita deve consultar CNPJ
+  a CNPJ em vez de varrer.
+- **Não afirma o polo sem prova.** "Papel da empresa" só sai como réu/autor
+  quando o envolvido com **aquele** CNPJ vem na resposta; comparar por razão
+  social erraria dentro de grupo econômico. Sem isso, fica "não informado".
+- **Não esconde buraco.** CNPJ que falhou, ou que parou na trava de páginas,
+  vira aviso na tela e no CSV — o total sai marcado como incompleto em vez de
+  parecer completo.
+- **Não é "todos os processos da empresa"** — é o que o Escavador indexou.
+  Segredo de justiça e tribunal fora da cobertura não aparecem.
 
 ## Custo
 
-Cada página é consulta paga. Uma empresa com 73 filiais e milhares de processos
-pode render dezenas de páginas — por isso a trava default de 20 páginas, que
-avisa quando parou em vez de truncar em silêncio.
+Cada página de cada CNPJ é consulta paga. A tela mostra quantos CNPJs serão
+consultados **antes** de começar, exibe o progresso CNPJ a CNPJ e pode ser
+interrompida no meio. Uma raiz com 73 filiais é da ordem de 73 consultas-base
+(mais páginas extras nas filiais com muito processo).
 
-## Testes
+## Dependência de deploy
 
-`src/lib/__tests__/escavadorProcessosPorCnpj.test.ts` trava a classificação e a
-agregação (inclusive "capa vazia nunca vira OUTRO").
+O modo com mais de uma página depende da correção de paginação em
+`supabase/functions/search-escavador` (a action `buscar_por_cpf_cnpj` passou a
+repassar `cursor`). Enquanto essa edge não for deployada no Externo
+(`kmedldlepwiityjsdahz`, que é para onde o `functionRouter` manda
+`search-escavador`), a tela traz só a primeira página de cada CNPJ — e avisa.
