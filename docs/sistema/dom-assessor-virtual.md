@@ -297,3 +297,89 @@ a equipe vai chamar em conversa privada para tratar disso.
 ### Aberta — de qual número o Dom responde
 
 Ver defeito 3 da primeira rodada, acima.
+
+---
+
+## O contexto que o agente recebe (05/09/2026)
+
+Ordem no prompt, e o porquê de cada camada. A ordem importa: o modelo
+responde com o que vier primeiro.
+
+| # | Bloco | O que traz | Por que existe |
+|---|---|---|---|
+| 1 | Quem você é | assessor virtual, 1ª pessoa do plural, nunca assina com nome de pessoa | um rascunho assinou "Com carinho, Abderaman Rafael 💚" |
+| 2 | Como falar | forma de 4 partes, continuidade, glossário, proibições | ver abaixo |
+| 3 | Andamento | **fase atual** → marcos → decisões → **peças lidas** → movimentações | ver abaixo |
+| 4 | Atividade | o que a equipe anotou, o "como está" e o próximo passo | o agente contradizia o assessor |
+| 5 | Exemplos | atendimentos anteriores **do mesmo grupo**, só para tom | ver abaixo |
+
+### A forma padrão de toda resposta
+
+Quatro partes, sem título e sem numeração, um parágrafo puxando o outro:
+
+1. **Reconhecer** — o que a pessoa disse ou sente; a espera, se houver.
+2. **Onde está** — a FASE ATUAL, em palavra de gente.
+3. **O que mudou** — o que a última peça decidiu, desde a última conversa.
+4. **O que vem** — próximo passo e de quem é, terminando em aberto.
+
+**Continuidade é regra, não estilo.** O grupo existe há meses; o agente
+sempre RETOMA, nunca se apresenta. Proibido "olá, tudo bem? como posso
+ajudar?", boas-vindas, pedir para a pessoa repetir o que já contou, ou
+dar a conversa por encerrada. Fecha sempre em aberto ("qualquer novidade
+a gente avisa aqui no grupo").
+
+### Por que "fase" vem antes de "movimentação"
+
+Caso 150 - Pinhão/PR, 05/09/2026. O cliente perguntou do andamento e o
+rascunho respondeu que o processo estava "na fase de intimação
+eletrônica". Não existe essa fase. Ele repetiu o andamento mais recente
+que recebeu, cujo próprio resumo dizia:
+
+> "confirmação de intimação eletrônica (evento 195) no eproc. Trata-se de
+> **atualização de rotina do sistema**, sem indicação de providência."
+
+Ele narrou o carteiro em vez da carta — porque o carteiro era tudo o que
+chegava até ele. `dom_contexto_processual` devolvia 17 campos por
+processo e nenhum era fase, documento ou atividade.
+
+O mesmo processo tinha, o tempo todo: marco "Execução iniciada"
+(11/08/2026, `process_pop_marcos`) e um despacho lido de 28/07 dizendo
+que o INSS não regularizou a pensão em três cotas e o juiz fixou multa
+diária de R$ 50 (`jm_documentos` + `jm_documento_leitura`).
+
+Hoje o bloco de andamento traz `fase_atual`, `marcos` e `documentos`, e
+as movimentações vêm por último, rotuladas "rotina — NÃO são a fase do
+caso".
+
+### Por que os exemplos dizem "não copie a FORMA"
+
+Família 412, 04/09/2026, primeira resposta 100% automática. O cliente
+escreveu duas palavras ("Verbas Rescisórias") e o agente devolveu o
+template de atualização de atividade do WhatsJUD inteiro: número do
+processo, barra de progresso, "Etapa: Pré-Processual", jargão pesado
+(gabinete, despacho, habilitação nos autos), link do sistema, menu
+"digite 1", e assinatura com o nome de um advogado real que não escreveu
+nada daquilo.
+
+Causa: `dom_respostas_parecidas` alimenta o modelo com mensagens reais da
+equipe para calibrar tom. Quanto mais fraca a pergunta, mais ele se apoia
+no exemplo — e copiou um inteiro. O bloco de exemplos agora diz
+explicitamente que dali sai só o jeito de falar, e o "como falar" proíbe
+número de processo, link, menu e assinatura com nome de pessoa.
+
+### Glossário
+
+Cinco famílias, no `blocoComoFalar`: onde o processo está, recursos,
+documentos e atos, dinheiro, INSS e benefício. Termo solto é proibido —
+ou traduz, ou escreve e explica entre parênteses em seguida.
+
+Entradas que nasceram de caso real: embargos de declaração, acórdão,
+agravo, ato ordinatório, habilitação nos autos, gabinete, execução /
+cumprimento de sentença, cota, RPV / precatório, cessação, implantação.
+
+### `dom_texto_limpo()`
+
+A anotação da atividade é escrita em editor rico e saía do banco como
+HTML cru (`<p class="lexical-paragraph">`) direto para o prompt. Modelo
+imita o que recebe. A limpeza é na origem, preservando as quebras de
+parágrafo.
