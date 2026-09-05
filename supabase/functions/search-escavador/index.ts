@@ -36,13 +36,22 @@ serve(async (req) => {
         url = `${ESCAVADOR_BASE}/processos/buscar?nome=${encodeURIComponent(nome)}`;
         break;
       case 'buscar_por_cpf_cnpj':
+        // Paginação: quem busca por CNPJ de empresa grande recebe MUITAS
+        // páginas, e sem repassar o cursor esta ação devolvia sempre a
+        // primeira — um total truncado que parece completo. Como na rota de
+        // OAB, o `cursor` aceita o links.next INTEIRO (validado contra a base
+        // da API para não virar SSRF), porque o next carrega mais parâmetros
+        // que só o cursor.
+        if (cursor && String(cursor).startsWith(ESCAVADOR_BASE + '/processos/')) {
+          url = String(cursor);
+          break;
+        }
         if (!cpf_cnpj) throw new Error('cpf_cnpj é obrigatório');
         const clean = cpf_cnpj.replace(/[.\-\/]/g, '');
-        if (clean.length === 11) {
-          url = `${ESCAVADOR_BASE}/processos/cpf/${clean}`;
-        } else {
-          url = `${ESCAVADOR_BASE}/processos/cnpj/${clean}`;
-        }
+        url = clean.length === 11
+          ? `${ESCAVADOR_BASE}/processos/cpf/${clean}`
+          : `${ESCAVADOR_BASE}/processos/cnpj/${clean}`;
+        if (cursor) url += `?cursor=${encodeURIComponent(cursor)}`;
         break;
       case 'buscar_por_oab':
         // Endpoint v2 correto é /advogado/processos (o antigo /processos/oab/UF/N
