@@ -591,3 +591,65 @@ ao prompt.
 Reconstituídas em `20260905120000_dom_contexto_estado_de_producao.sql`,
 todas como `create or replace` / `add column if not exists` — reaplicar é
 seguro e não muda nada.
+
+### Onde mora o histórico, e por que o ponteiro atrasava
+
+O histórico **sempre esteve certo**. Duas tabelas, uma linha por evento, nada
+sobrescrito:
+
+| tabela | o que guarda | chave | volume |
+| --- | --- | --- | --- |
+| `process_updates` | cada movimentação | `process_id` (NOT NULL) + `numero_cnj` | 5741 linhas |
+| `jm_decisoes` | cada decisão | `processo_cnj` | — |
+
+Colunas de `process_updates`: `data_movimentacao` (`date`), `categoria`,
+`titulo`, `descricao`, `resumo_ia`, `origem` (`escavador` \| `email_push`),
+`eventos` (jsonb), `data_presumida`, `conteudo_hash` (dedupe).
+Chave única: `(process_id, conteudo_hash)` — reprocessar não duplica.
+
+O feed é saudável: **1691 movimentações ingeridas nos últimos 7 dias**,
+2875 do Escavador e 2866 de e-mail push.
+
+O que faltava era o **ponteiro**: `lead_processes.data_ultima_movimentacao`,
+o campo que diz "a mais recente é esta". Ele é escrito **só quando alguém
+cadastra ou edita o processo na mão** (`AddProcessDialog`,
+`ProcessDetailSheet`) — uma foto tirada uma vez. Nada o atualizava quando
+chegava movimentação nova.
+
+Consequência que passou anos invisível: `StaleProcessesReport.tsx` filtra
+`.not('data_ultima_movimentacao', 'is', null)`. A tela feita para achar
+processo esquecido **não enxergava 1136 dos 1731 processos** — dois em cada
+três.
+
+**Corrigido em 05/09/2026** (`20260905214000`):
+
+1. `lead_processes_sem_duplicata` passou a checar só quando o UPDATE mexe em
+   `process_number` ou `lead_id`. Duplicata só nasce de CNJ ou de cliente;
+   editar o título não cria duplicata nenhuma. Antes ele refazia a checagem
+   inteira em toda edição — e como **100 fichas já eram duplicatas antes do
+   gatilho existir**, elas estavam congeladas: qualquer salvamento levantava
+   "Processo já cadastrado", que parece explicação e não é.
+2. Backfill de **926 processos** (597 vazios + 329 atrasados), com o valor
+   antigo guardado em `lead_processes_ult_mov_backup_20260905`. Rollback é um
+   `update ... from backup`.
+3. Gatilho `AFTER INSERT` em `process_updates` e `jm_decisoes`: cada
+   movimentação nova empurra a data. **Só para frente** — reprocessamento com
+   movimentação antiga não faz a data andar para trás. **Data presumida não
+   conta**: `data_presumida = true` é chute do parser quando o e-mail não
+   trazia data, e deixar chute definir "última movimentação" trocaria coluna
+   vazia por coluna mentirosa. O histórico não é tocado.
+
+Testado em transação com rollback: uma movimentação de hoje levou
+`5002486-69.2021.8.13.0042` de 17/06 para hoje; a de data presumida em
+`current_date + 5` foi ignorada. Zero linhas de teste ficaram na base.
+
+**Sobra, e está dito:**
+
+- **539 processos** continuam sem data porque não têm movimentação nenhuma no
+  feed. Não é dado errado, é dado ausente — são fichas digitadas na mão que
+  nunca entraram na fila de monitoramento (nenhuma está em `jm_processos`,
+  nenhuma tem linha em `jm_esc_solicitacoes`). A solução é colocá-las na fila,
+  não inventar data.
+- **16 datas no futuro** continuam lá, todas vindas de digitação manual. O
+  backfill não as toca porque só avança, e o feed não tem data futura. O
+  detector do `blocoProcessual` já as marca com `[REVISAR]`.
