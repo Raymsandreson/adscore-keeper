@@ -730,3 +730,77 @@ a fila que já existia. **Para parar no meio:**
 ```sql
 delete from jm_esc_solicitacoes where status = 'A_ENVIAR';
 ```
+
+### A fila do Escavador corria atrás do próprio rabo
+
+Enfileirei 403 processos em 05/09 e afirmei que drenariam em ~11h. **Estava
+errado: não drenou nenhum.** Seis horas depois a fila estava exatamente onde
+eu a deixei.
+
+`jm_esc_rotina` roda a cada 20 min, nesta ordem:
+
+```
+destravar(2) → confirmar() → colher_docs() → disparar(15)
+```
+
+E o `destravar` decidia pelo carimbo errado:
+
+```sql
+where status = 'ENVIANDO'
+  and criado_em < now() - make_interval(hours => 2)   -- ← criação, não envio
+```
+
+`criado_em` é quando a **linha** foi criada, não quando a consulta foi
+**enviada**. Uma linha criada em 17/08 é sempre "mais velha que 2 horas".
+Então, a cada rodada:
+
+1. `destravar` (que roda **primeiro**) arrancava a linha de `ENVIANDO` e a
+   devolvia para `A_ENVIAR` — mesmo tendo sido disparada 20 minutos antes;
+2. `confirmar` não achava mais nada em `ENVIANDO` e fechava zero;
+3. `disparar` pegava as 15 de menor id — exatamente essas — e mandava de novo.
+
+Quem devia destravar o que travou estava desarmando o que acabou de sair,
+antes de alguém conferir se chegou.
+
+**Medido em 05/09/2026, 23h50:** `jm_esc_rotina(0)` devolvia
+`destravadas=15 confirmadas=0 disparadas=0`. As 15 estavam em `ENVIANDO`
+desde 17/08, com `escavador_id` nulo.
+
+E como o `disparar` ordena por id e essas 15 tinham os menores, elas
+consumiam a fila inteira: **as 403 (ids 599–1001) nunca seriam alcançadas.**
+Cabeça de fila entupida trava todo mundo atrás.
+
+**Custo do loop: zero.** As 15 voltam `422 NUMERO_CNJ_INVALIDO` com
+`creditos: null` — o Escavador não cobra por CNJ que ele nem aceita. Foi
+desperdício de rodada, não de dinheiro.
+
+**Conserto (`20260906001500`), duas partes:**
+
+1. **`enviado_em`** — o carimbo certo. O `disparar` grava a hora do envio; o
+   `destravar` compara com `coalesce(enviado_em, criado_em)`. O `confirmar`
+   ganha a chance de fechar: as respostas ficam 30 min em
+   `net._http_response`, e agora a janela cabe.
+2. **`tentativas`** com teto 3. Uma linha que falha sempre voltava para a
+   cabeça da fila e bloqueava todo mundo, para sempre. Ao bater o teto ela
+   vira `ERRO` e sai da frente. Tentar eternamente não é resiliência: é fila
+   parada com cara de fila andando.
+
+**Verificado em produção, ciclo completo:**
+
+| passo | antes | depois |
+| --- | --- | --- |
+| `jm_esc_rotina(2)` | — | `destravadas=15 confirmadas=0 disparadas=2` |
+| `jm_esc_rotina(0)` | `destravadas=15 confirmadas=0` | **`destravadas=0 confirmadas=2`** |
+
+As duas (ids 137, 138) foram para `ERRO` — que é o que deveria ter
+acontecido em 17/08 — e o menor id em `A_ENVIAR` saiu de 137 para 282: a
+cabeça da fila andou.
+
+Restam 13 travadas da mesma safra; elas seguem o mesmo caminho nas próximas
+rodadas. Depois disso a fila anda a 15 por 20 min (45/h), e as 403 entram
+atrás das 84 antigas — aí sim ~11h.
+
+**Achado à parte, não consertado:** a URL dentro do `jm_esc_disparar` carrega
+a chave `?k=…` em texto puro, e ela já está hardcoded em 4 migrations e no
+`esc-autos/index.ts` (`const GUARD`). É exposição pré-existente, não nova —
+mas está no repositório e merece rotação.
