@@ -804,3 +804,55 @@ atrás das 84 antigas — aí sim ~11h.
 a chave `?k=…` em texto puro, e ela já está hardcoded em 4 migrations e no
 `esc-autos/index.ts` (`const GUARD`). É exposição pré-existente, não nova —
 mas está no repositório e merece rotação.
+
+### A corrente do documento está partida em dois lugares (06/09/2026)
+
+O conserto do `destravar` funcionou: em 8h a fila saiu de 500 para 196, com
+`max_tentativas = 1` em quase tudo (nada ciclando), 0 erros de transporte e
+**5.585 créditos** gastos.
+
+Mas o resultado dos meus 403 conta outra história:
+
+| dos 191 que deram SUCESSO | |
+| --- | --- |
+| trouxeram **documento** (metadado) | **182** |
+| trouxeram **movimentação** | **0** |
+| entraram em `jm_processos` | 5 |
+
+O modo `PUBLICOS` do Escavador enche `jm_documentos`, **não**
+`process_updates`. E o caminho de um documento até a resposta do cliente tem
+quatro degraus:
+
+```
+1. consulta Escavador  → linha em jm_documentos (só metadado)   ✅ funcionando
+2. download do arquivo → storage_path preenchido                ❌ PARADO
+3. leitura pela IA     → jm_documento_leitura.resumo            ❌ PARADO
+4. entra no prompt     → blocoProcessual só usa doc COM resumo  ⛔ inalcançável
+```
+
+**Degrau 2 está morto há 12 dias.** Último `stored_at`: **25/08 22:07**.
+Hoje há **3.246 documentos só com metadado**, sem arquivo nenhum.
+
+**Degrau 3 está morto há 3 dias.** Última leitura: **03/09 21:16**. E é
+consequência do degrau 2 — `jm_ler_documentos_tick` exige
+`storage_path is not null`, então ele roda a cada 2 minutos, "succeeded", e
+seleciona zero linhas. Dos 3.270 documentos sem leitura, só 24 têm arquivo,
+e esses 24 já foram disparados sem produzir resultado (`jm_ler_documento`
+falhando neles).
+
+**O que isso significa em dinheiro:** os créditos compram metadado que fica
+parado no degrau 1. Nada se perde — o metadado é durável e os arquivos podem
+ser baixados quando o degrau 2 voltar — mas **nada disso chega ao cliente
+hoje**, e nenhum dos 403 vai preencher `data_ultima_movimentacao`, que era o
+motivo de eu tê-los enfileirado.
+
+Três pipelines quebrados em sequência (fila do Escavador, download, leitura)
+não é coincidência: é um encadeamento longo onde cada elo falha calado e o
+cron reporta "succeeded" em todos eles. O padrão comum é o mesmo dos outros
+defeitos desta sessão — **a etapa devolve sucesso por ter rodado, não por ter
+feito**.
+
+Ainda em aberto, decisão do usuário:
+- consertar o degrau 2 (download) antes de gastar mais crédito;
+- se `data_documento` conta como movimentação (gatilho em `jm_documentos`);
+- parar ou deixar a fila terminar: `delete from jm_esc_solicitacoes where status = 'A_ENVIAR';`
