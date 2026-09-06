@@ -895,4 +895,25 @@ linhas — verde, e sem fazer nada.
 **Custo: zero crédito do Escavador.** O `arquivar` só baixa o que a consulta
 já pagou. O gasto é storage e banda.
 
+**Verificado em produção, corrente inteira, 06/09 11h50:**
+
+| degrau | antes | depois |
+| --- | --- | --- |
+| 2 · download | último em 25/08 22:07 | **390 peças em 30 min** |
+| 3 · leitura | última em 03/09 21:16 | **10 lidas, 10 com resumo** |
+| 4 · prompt | 0 documentos | **12 peças** no contexto do grupo Caso 118 |
+
+O grupo `Caso 118- Flávio (MT-MA)` (3 processos) passou de zero para **12
+peças lidas** dentro do bloco "O que as peças do processo dizem". Uma delas:
+*"A decisão recebe os recursos ordinários interpostos pelas partes, intima
+para contrarrazões e remete os autos ao Tribunal Regional."* — exatamente o
+tipo de fato que o assessor precisava para responder e não tinha.
+
+**Ritmo e o que falta:** o download faz ~780/h e a leitura ~300/h. Com 4.400
+ainda na fila de download, o download termina em ~6h e a leitura fica atrás,
+levando ~16h no total. A leitura consome tokens de LLM por documento —
+`jm_documento_leitura.custo_estimado` está **nulo em toda a base**, então
+não consigo dizer o custo pelo banco. É a única parte desta corrente cujo
+gasto eu não sei medir.
+
 Rollback: `select cron.unschedule('jm-esc-arquivar');`
