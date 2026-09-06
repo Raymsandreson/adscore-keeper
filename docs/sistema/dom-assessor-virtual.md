@@ -988,3 +988,64 @@ tem linha sem dígito. Conferido nas tabelas de backup, zero em cada.
 **Ainda aberto:** 958 fichas têm `process_number` que não é CNJ — a grande
 maioria nula, três com texto. O campo aceita qualquer coisa. Não é vazamento
 mais, mas é cadastro que ninguém valida na entrada.
+
+### `process_number` validado na entrada
+
+O campo aceitava qualquer coisa, e isso custou caro duas vezes: as três fichas
+com texto no lugar do número (que abriram o vazamento entre clientes) e os
+CNJs inventados que ficaram três semanas girando na fila do Escavador.
+
+**O campo não guarda só CNJ.** Medido em 06/09/2026, 2.689 fichas vivas:
+
+| | fichas | |
+| --- | --- | --- |
+| número nulo | 955 | legítimo |
+| CNJ com 20 dígitos | 1.326 | **todos passam no verificador** |
+| menos de 20 dígitos | 403 | NB do INSS (197), protocolo/BO (141), processo administrativo federal (14), internos |
+| mais de 20 dígitos | 2 | um do Ministério Público, um CNJ com dígito a mais |
+| texto sem número | 3 | `.`, `Não protocolado`, `reprotocolar-cliente…` |
+
+Por isso a regra **não** é "tem que ser CNJ" — isso rejeitaria 403 cadastros
+legítimos e quebraria o trabalho de quem usa o campo para requerimento.
+
+**A regra, estreita e mirando só o que já deu errado:**
+
+| entrada | o que acontece |
+| --- | --- |
+| nulo, vazio ou só espaço | aceita, vira nulo. "Sem número" é resposta honesta |
+| sem dígito nenhum | **recusa** — anotação não é número |
+| exatamente 20 dígitos | tem que passar no verificador; grava canônico `NNNNNNN-DD.AAAA.J.TR.OOOO` |
+| qualquer outro | aceita, só aparando espaço |
+
+`cnj_valido()` **só conferia o comprimento** — nunca o verificador. Foi assim
+que `0000240-19.2025.5.11.0152` entrou. Agora confere de verdade (Res. 65/2008:
+remontado sem o DD e com ele no fim, o número deixa resto 1 na divisão por 97).
+
+Conferido contra dado real **antes** de virar trava: 1326 de 1326 CNJs da base
+passam, os 3 recusados pelo Escavador reprovam, e um dígito trocado de
+propósito reprova.
+
+**Só confere quando o número muda.** Editar o título de uma ficha antiga com
+número torto continua funcionando — foi exatamente o erro do gatilho
+anti-duplicata, que refazia a checagem em toda edição e deixou 100 fichas
+impossíveis de salvar sem ninguém perceber.
+
+Testado em transação com rollback:
+
+| caso | resultado |
+| --- | --- |
+| `00108807620255030160` (colado) | vira `0010880-76.2025.5.03.0160` |
+| `0000240-19.2025.5.11.0152` | **recusa**: "o correto seria 16, e não 19" |
+| `Não protocolado` | **recusa**: "não tem um dígito sequer" |
+| NB `1004690362`, protocolo, B.O. | passam |
+| `'   '` e `null` | viram nulo |
+| editar título de ficha antiga torta | funciona |
+
+**Sobrou uma decisão sua.** A limpeza dos espaços abortou no gatilho
+anti-duplicata: aparar o espaço de `0056732-43.2026.4.05.8300 ` revela que
+**existem duas fichas do mesmo processo, no mesmo cliente** — o espaço era o
+disfarce. Aparei os outros três e deixei esse. Qual das duas fichas fica é
+decisão do dono do caso.
+
+O erro da migration foi a informação: sem ele, ninguém saberia que as duas
+eram a mesma.
