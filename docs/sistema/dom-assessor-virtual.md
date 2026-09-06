@@ -856,3 +856,43 @@ Ainda em aberto, decisão do usuário:
 - consertar o degrau 2 (download) antes de gastar mais crédito;
 - se `data_documento` conta como movimentação (gatilho em `jm_documentos`);
 - parar ou deixar a fila terminar: `delete from jm_esc_solicitacoes where status = 'A_ENVIAR';`
+
+### Degrau 2 consertado: o download nunca teve cron
+
+A ação que baixa a peça do Escavador para o bucket é `acao: "arquivar"` do
+edge `esc-autos`. Ela existe, funciona, e **nunca teve cron**. Alguém rodava
+na mão. A última vez foi **25/08/2026 às 22:07**.
+
+Não era um bug no código do download — era um degrau que dependia de alguém
+lembrar. Doze dias sem ninguém lembrar, e a cascata:
+
+| | |
+| --- | --- |
+| documentos com link e sem arquivo | **4.761** |
+| leituras nas últimas 24h | **0** |
+| documentos chegando ao prompt | **0** |
+
+O degrau 3 (`jm_ler_documentos_tick`) exige `storage_path is not null`. Sem
+o degrau 2, ele roda a cada 2 minutos, reporta `succeeded`, e seleciona zero
+linhas — verde, e sem fazer nada.
+
+**Conserto (`20260906074500`), duas partes:**
+
+1. `jm_esc_arquivar_tick()` + cron `jm-esc-arquivar` de 5 em 5 minutos. A
+   ação `arquivar` já é auto-limitada (orçamento 110s, lotes de 60,
+   concorrência 8) e repete até esvaziar a fila ou estourar o tempo. Como
+   5 min > 110s, rodadas não se sobrepõem.
+
+2. **Erro passageiro deixa de ser sentença.** A seleção do `arquivar` é
+   `storage_path is null and storage_error is null` — ou seja, qualquer falha
+   exclui a linha **para sempre**. Dos 139 excluídos, 138 eram `HTTP_404`
+   (a peça não existe mais no Escavador: permanente, exclusão correta) e
+   **1 era falha do nosso próprio storage** — passageira, e mesmo assim
+   condenada. O tick agora limpa o erro das famílias passageiras depois de
+   6h. `HTTP_4xx` e `NAO_PDF` seguem permanentes: documento que não existe
+   não passa a existir por insistência.
+
+**Custo: zero crédito do Escavador.** O `arquivar` só baixa o que a consulta
+já pagou. O gasto é storage e banda.
+
+Rollback: `select cron.unschedule('jm-esc-arquivar');`
