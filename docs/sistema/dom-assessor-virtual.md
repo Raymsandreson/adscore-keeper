@@ -917,3 +917,74 @@ não consigo dizer o custo pelo banco. É a única parte desta corrente cujo
 gasto eu não sei medir.
 
 Rollback: `select cron.unschedule('jm-esc-arquivar');`
+
+### A peça conta como movimentação — e um vazamento que apareceu no caminho
+
+Decisão do usuário em 06/09: `data_documento` conta como movimentação.
+
+**A validação que veio antes de mexer.** `jm_documentos`: 9.523 linhas, zero
+sem data, zero no futuro, zero antes de 2000, faixa de 10/12/2013 a ontem.
+E o teste que decidiu — nos 359 processos que têm peça **e** movimentação:
+
+| | processos |
+| --- | --- |
+| datas idênticas | 22 |
+| dentro de ±7 dias | 113 |
+| peça **mais velha** que a movimentação | **240** (média −55 dias) |
+| peça mais nova por mais de 7 dias | 3 (máx +54) |
+
+Se `data_documento` fosse a data de captura, todas estariam amontoadas em
+"baixado agora". Estão espalhadas no passado, quase sempre atrás da
+movimentação: **é a data do ato**. E o efeito colateral é bom — como a peça
+costuma ser mais velha, o `greatest()` raramente sobrepõe data boa, ele
+preenche buraco.
+
+**Resultado:** 503 processos corrigidos — **399 ganharam data do zero**, 104
+tiveram a data avançada. Os sem data caíram de 539 para 139.
+
+**A definição mudou nos dois lugares**, de propósito: o gatilho (que escreve
+a coluna) e `dom_contexto_processual` (que monta o prompt) usam a mesma lista
+de origens. Deixar só um saber de documentos recriaria a doença desta sessão
+— duas regras discordando sobre o mesmo fato, e o modelo desempatando
+sozinho.
+
+Gatilho testado em transação com rollback: peça de hoje empurrou a data;
+peça **oculta** e peça com data **no futuro** foram ignoradas.
+
+#### O vazamento entre clientes
+
+Conferindo se as duas verdades batiam, duas linhas discordaram. Não era
+inconsistência — era um `process_number` com o texto
+`"reprotocolar-cliente nao foi p perícia"`.
+
+`dom_so_digitos` devolve **string vazia** para qualquer texto sem número:
+
+```sql
+select dom_so_digitos('Não protocolado');   -- ''
+```
+
+Há três fichas assim (`"."`, `"Não protocolado"`, `"reprotocolar-cliente…"`).
+Do outro lado, `process_updates` tem **12 linhas com `numero_cnj` nulo**, que
+viram `''` pela mesma função. O join `'' = ''` casava as duas pontas: essas
+fichas puxavam as 12 movimentações órfãs e ganhavam a data 17/06/2026.
+**O assessor contaria a um cliente a movimentação de um processo que não é
+dele.**
+
+| a ficha `"reprotocolar-cliente…"` | antes | depois |
+| --- | --- | --- |
+| `ultima_movimentacao` | 2026-06-17 | **nulo** |
+| andamentos | **12** | **0** |
+| documentos | 0 | 0 |
+
+O conserto é `nullif(dom_so_digitos(...), '')`, aplicado em **todas** as
+junções por CNJ (andamentos, documentos, decisões, audiências). NULL não casa
+com NULL num join — que é a resposta certa para "não sei de qual processo
+isto é".
+
+Os dois backfills desta sessão **não** foram contaminados: o de 05/09
+filtrava `numero_cnj is not null`, o de 06/09 vem de `jm_documentos`, que não
+tem linha sem dígito. Conferido nas tabelas de backup, zero em cada.
+
+**Ainda aberto:** 958 fichas têm `process_number` que não é CNJ — a grande
+maioria nula, três com texto. O campo aceita qualquer coisa. Não é vazamento
+mais, mas é cadastro que ninguém valida na entrada.
