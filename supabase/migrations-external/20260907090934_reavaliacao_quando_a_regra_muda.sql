@@ -2,7 +2,7 @@
 -- Mexer em `escopo_prefixos` passa a reclassificar os grupos de verdade.
 --
 -- O BURACO
--- `dom_reavaliar_escopo` (migration 20260907120000) só reavalia grupo cujo NOME
+-- `dom_reavaliar_escopo` (migration 20260907090811) só reavalia grupo cujo NOME
 -- mudou:
 --
 --     and (g.escopo_avaliado_em is null or g.nome_avaliado is distinct from g.group_name)
@@ -125,7 +125,7 @@ select public.dom_reavaliar_escopo(null, true);
 -- drop function if exists public.dom_escopo_prefixos_mudou();
 -- drop function if exists public.dom_reavaliar_escopo(text, boolean);
 --
--- -- volta a versão de 20260907120000 (sem p_forcar)
+-- -- volta a versão de 20260907090811 (sem p_forcar)
 -- create or replace function public.dom_reavaliar_escopo(p_group_jid text default null)
 -- returns integer language plpgsql security definer set search_path to 'public'
 -- as $f$

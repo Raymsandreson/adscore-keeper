@@ -2,7 +2,7 @@
 -- `busca_chave_caso` para de comer o número quando ele vem sem prefixo.
 --
 -- O ERRO
--- A migration anterior (20260907140000) reusou `dom_normalizar_nome_grupo` para
+-- A migration anterior (20260907093136) reusou `dom_normalizar_nome_grupo` para
 -- limpar o texto antes de extrair o código do caso. Reuso errado: aquela função
 -- foi escrita para nome de GRUPO, onde tudo que vem antes da primeira letra é
 -- lixo (✅ 🟢 🟧 e espaço), e por isso o regex dela é `^[^A-Z]+`. Dígito no
@@ -82,8 +82,8 @@ comment on function public.busca_chave_caso(text, boolean) is
   'Texto -> (familia, numero, sufixo) do codigo do caso. Normalizacao propria (mantem digito inicial). Recusa CNJ e bloco de 6+ digitos em vez de adivinhar.';
 
 -- =============================================================================
--- ROLLBACK: recolar a versão de 20260907140000 (a que usa
+-- ROLLBACK: recolar a versão de 20260907093136 (a que usa
 -- dom_normalizar_nome_grupo). Só que ela está errada — reverter esta migration
 -- reintroduz o bug. O rollback de verdade aqui é `drop function`, junto com o
--- rollback da 20260907140000.
+-- rollback da 20260907093136.
 -- =============================================================================

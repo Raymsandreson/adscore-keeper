@@ -2,7 +2,7 @@
 -- "O cliente já tem esse processo?" passa a olhar TODOS os clientes do grupo.
 --
 -- O ERRO
--- A 20260907180000 montava a lista de processos já cadastrados a partir de
+-- A 20260907112738 montava a lista de processos já cadastrados a partir de
 -- `(array_agg(distinct lg.lead_id))[1]` — o PRIMEIRO cliente do grupo, escolhido
 -- por ordem arbitrária do agregador. Para os 568 grupos com um cliente só, dá no
 -- mesmo. Para os 276 com dois ou mais, olhava um e ignorava os outros.

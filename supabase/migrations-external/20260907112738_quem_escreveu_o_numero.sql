@@ -1,7 +1,7 @@
 -- =============================================================================
 -- A varredura passa a separar quem ESCREVEU o número: cliente ou a própria casa.
 --
--- O ERRO DA MIGRATION ANTERIOR (20260907170000)
+-- O ERRO DA MIGRATION ANTERIOR (20260907112131)
 -- Ela filtrava `direction = 'inbound'` acreditando que isso significasse "o
 -- cliente escreveu". Não significa. Em GRUPO, a mensagem que a instância A
 -- envia é RECEBIDA pelas instâncias B, C e D da casa que também estão no grupo,
@@ -268,6 +268,6 @@ truncate table public.grupo_processo_detectado;
 update public.dom_grupos_piloto set processos_varridos_em = null;
 
 -- =============================================================================
--- ROLLBACK: junto com o da 20260907170000 — as duas tabelas e a coluna somem.
+-- ROLLBACK: junto com o da 20260907112131 — as duas tabelas e a coluna somem.
 -- Nenhuma ficha de cliente, processo ou mensagem foi tocada em nenhuma das duas.
 -- =============================================================================
