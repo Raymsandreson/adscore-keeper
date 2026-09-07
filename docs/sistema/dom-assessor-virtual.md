@@ -1914,3 +1914,97 @@ mexer em produção:** `whatsapp-ai-agent-reply` (~5,9 mil chamadas/dia),
 `_shared/whatsapp-utils.ts`, `whatsapp-command-processor`, `elevenlabs-tts` e
 `elevenlabs-voice-clone`. Enquanto isso, a velocidade da voz vale **só no
 atendente virtual** — nos outros caminhos a mesma voz continua saindo a 1,1×.
+
+### Data falada por extenso, e a data do próximo contato
+
+Duas mudanças no que o cliente lê e ouve, em 07/09/2026.
+
+**1. No áudio, data por extenso.** "28/08/2026" no papel é compacto e claro. Na
+boca de uma voz vira *"vinte e oito barra zero oito barra dois mil e vinte e
+seis"* — que ninguém fala e ninguém entende de primeira, ainda menos quem está
+ansioso pelo processo. A conversão acontece **só na geração do áudio**, junto da
+limpeza de asterisco e link, então a mensagem escrita continua com a data em
+números e cada meio fica consistente consigo mesmo.
+
+Testado em 8 casos, incluindo os que **não** podem ser tocados:
+
+| entra | fala |
+| --- | --- |
+| `28/08/2026` | 28 de agosto de 2026 |
+| `03/08/2026` | **3** de agosto de 2026 (sem o zero à esquerda, que é como se fala) |
+| `31/08` | 31 de agosto |
+| `1/2` (fração) | `1/2`, intacto |
+| `10/13/2026` (mês 13) | intacto — melhor uma barra falada que uma data inventada |
+| `0056732-43.2026.4.05.8300` | intacto |
+| `07:30` | intacto |
+
+**2. A data do próximo contato, e só quando ela vale.** O Dom terminava toda
+resposta com "qualquer novidade a gente avisa", que é verdade e devolve ao
+cliente a mesma incerteza com que ele chegou. Quando a equipe já programou a
+volta, dizer a data transforma espera em previsão.
+
+Mas o dado não sustenta dizer **sempre**. Medido em 07/09/2026, sobre a
+atividade mais recente de cada ficha nos últimos 180 dias:
+
+| | fichas | |
+| --- | ---: | ---: |
+| prazo no **futuro** (serve) | 869 | **10,6%** |
+| prazo **já vencido** | 6.511 | **79,6%** |
+| sem prazo | 799 | 9,8% |
+| **total** | 8.179 | |
+
+Dizer sempre significaria, em 8 de cada 10 conversas, prometer uma data que já
+passou — pior que não prometer nada, porque o cliente confere. É o médico
+dizendo "te vejo semana que vem" olhando a agenda do mês passado. Por isso a
+RPC só entrega `prazo_contato` quando `deadline >= current_date`, e sem ele o
+fecho volta ao genérico, com proibição explícita de inventar data.
+
+**Detector, não filtro:** os 6.511 prazos vencidos continuam inteiros em
+`lead_activities` e continuam sendo problema da esteira de atividades. O que
+mudou é o atendente não repetir esse problema na boca dele.
+
+**De quebra, um defeito real:** a subquery de `ultima_atividade` não filtrava
+`deleted_at`. Atividade **apagada** podia ser a mais recente e virar o contexto
+da resposta — o Dom falando com o cliente a partir de uma anotação que a equipe
+removeu. Corrigido na mesma migration.
+
+**Uma previsão minha que estava errada.** Decidi não instruir o formato da data,
+com o raciocínio de que o áudio converteria tudo e instruir o modelo
+desencontraria o texto. O teste mostrou o contrário: o modelo converte sozinho o
+que **lê** ("28/08/2026" → "28 de agosto"), e copia ao pé da letra o que recebe
+como **ordem direta**. Saiu "28 de agosto" no meio e "17/09/2026" no fim. A
+fonte do desencontro era o formato que o código passava. Agora a data da ordem
+já nasce por extenso.
+
+**Verificado no ar** (`dom-contexto` v10, `dom-rascunho` v15), Caso 341:
+
+> "...A última movimentação foi em **28 de agosto**... A próxima audiência está
+> marcada para **22 de setembro**. Qualquer novidade a gente avisa aqui no grupo.
+> **A gente volta a falar com o senhor até 17 de setembro.**"
+
+Essa data de 17/09 já existia em `lead_activities` desde 02/09 e nunca chegava
+ao modelo.
+
+### O deploy das edge functions do Externo continua na mão
+
+O workflow `.github/workflows/deploy-edge-externo.yml` foi criado em 07/09/2026
+para subir as funções sozinho a cada merge em `main`. Ele **nunca funcionou**:
+falta o secret `SUPABASE_PAT` no repositório, e as 4 execuções falharam com
+
+```
+##[error]Falta o secret SUPABASE_PAT no repositório.
+```
+
+Enquanto isso não for configurado, **toda função em `supabase/functions/_external/`
+precisa ser deployada à mão** — merge em `main` publica o código no git e não
+muda nada em produção, que é o pior tipo de divergência: o repo diz que está
+consertado e o comportamento antigo continua no ar.
+
+Para ligar: gerar um token em `supabase.com/dashboard/account/tokens` (tela da
+**conta**, não do projeto) e cadastrá-lo em GitHub → Settings → Secrets and
+variables → Actions → New repository secret, com o nome exato `SUPABASE_PAT`.
+
+Cuidado que já quase aconteceu: **não** cadastrar esse token nos *Edge Function
+Secrets* do Supabase. São coisas diferentes — lá é onde as funções leem
+variáveis em runtime, e um token de administração da conta guardado ali ficaria
+ao alcance de qualquer edge function do projeto.
