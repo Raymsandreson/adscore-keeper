@@ -1562,3 +1562,48 @@ Autorizada e disparada. As 11 peças vêm de 6 processos, reabertos com
 
 Zerei `download_tentativas` das peças desses 6 antes de reabrir, para que os
 links novos tenham as três chances cheias.
+
+### O intervalo de 6h entre retentativas de download nunca existiu
+
+Estava escrito assim no `jm_esc_arquivar_tick`:
+
+```sql
+and coalesce(stored_at, '-infinity'::timestamptz) < now() - interval '6 hours'
+```
+
+A intenção é clara: só devolver à fila quem já esperou 6 horas. Mas `stored_at`
+**só é preenchido quando o download dá certo**. Para a peça que nunca baixou —
+exatamente a população que a cláusula existe para tratar — `stored_at` é nulo, o
+`coalesce` vira `-infinity`, e a condição é sempre verdadeira.
+
+**Retentativa a cada 5 minutos, não a cada 6 horas. 288 por dia, não 4.** O
+relógio media o tempo de um sucesso que nunca houve.
+
+**Como apareceu.** Zerei `download_tentativas` das 11 peças às 12:05 e reabri a
+consulta para elas ganharem link novo. A consulta terminou às 12:40 e renovou
+os links — medido na resposta da colheita: `processados` 10, 22, 35, 54, 65,
+100. Só que entre 12:05 e 12:40 o tick já tinha gasto as **três** tentativas do
+teto batendo nos links **velhos**. Quando o link bom chegou, a peça já estava
+parqueada.
+
+O teto que pus ontem estava certo; o relógio ao lado dele é que estava quebrado
+desde sempre. E sem o teto, este defeito seria um laço de 5 em 5 minutos — bem
+pior do que os "4× por dia" que estimei ao propor o teto.
+
+Conserto: `download_ultima_tentativa`, que marca **quando se tentou**, não
+quando deu certo. As 11 ganharam o teto de volta uma vez, agora com link bom.
+
+### Re-consulta dos 6 processos: o que custou e o que trouxe
+
+| | |
+| --- | --- |
+| solicitações | 6, todas `SUCESSO` |
+| **custo real** | **120 créditos** (20 por consulta) — estimei 119 |
+| enviadas | 12:20 · concluídas 12:40 |
+| documentos processados | 10, 22, 35, 54, 65 e 100 — **links renovados** |
+
+**Um erro meu de leitura, corrigido:** cheguei a concluir que a consulta não
+tinha ingerido nada porque `captured_at` continuava antigo nas 11 peças. Errado
+— `captured_at` só é gravado no INSERT; a re-ingestão atualiza `link_api` e não
+mexe nele. A resposta da colheita é que prova o que aconteceu, e ela diz que os
+links vieram.
