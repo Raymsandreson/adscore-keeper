@@ -1169,3 +1169,92 @@ mudança no pipeline do push e pede seu próprio ciclo de leitura e teste.
 **Também ainda aberto:** os 37 grupos de duplicata de verdade (89 fichas). Cada
 um pede a mesma leitura caso a caso feita aqui — qual ficha tem o dado e qual
 tem o cuidado nem sempre é a mesma.
+
+### A leitura de peça passa a dizer por que falhou
+
+Em 07/09/2026, **73 peças baixadas nunca viraram leitura** — a mais antiga
+parada desde 12/07 — e nenhuma delas deixou rastro. Três camadas de silêncio
+empilhadas:
+
+1. `jm-ler-peca` devolve **HTTP 200 em toda falha**, com `{success:false}` no
+   corpo. Do ponto de vista do banco, deu certo.
+2. `jm_ler_documento` chama com `perform net.http_post(...)` — **descarta a
+   resposta**. Ninguém lê o corpo.
+3. `jm_documentos` não tinha onde guardar erro de leitura. Só
+   `leitura_disparada_em`, que diz que saiu, nunca que chegou.
+
+O tick redispara a cada 24h. Resultado: peça falhando desde julho, pagando uma
+chamada de Gemini por tentativa, sem uma linha dizendo por quê. É o interfone
+que toca e ninguém atende — quem aperta o botão conclui que atenderam.
+
+**O motivo real**, capturado do `net._http_response` antes de expirar (TTL ~6h):
+
+```
+{"success":false,"documento_id":30,"error":"leitura: Expected ',' or '}' after
+ property value in JSON at position 6796"}
+{"success":false,"documento_id":110,"error":"leitura: Unterminated string in
+ JSON at position 818"}
+```
+
+O JSON que o Gemini devolve chega cortado e o `JSON.parse` estoura.
+
+**Não é teto de token.** Já está em `maxOutputTokens: 8192`, e corte na posição
+818 são ~200 tokens. Há peça de **uma página** entre as travadas. As duas
+coisas que diriam qual é a causa — `finishReason` e o número de `parts` — eram
+justamente as que o código descartava.
+
+**O que passou a existir:**
+
+| | |
+| --- | --- |
+| `jm_documentos.leitura_erro` | motivo da última falha, com o diagnóstico da resposta |
+| `jm_documentos.leitura_erro_em` | quando |
+| `jm_documentos.leitura_tentativas` | quantas vezes já custou uma chamada |
+| `vw_jm_leitura_travada` | a lista, com motivo e próxima tentativa |
+
+A `jm-ler-peca` agora escreve nessas colunas em **toda** falha do modo
+documento, e limpa quando a peça é lida — erro que fica depois de resolvido
+vira alarme falso, e alarme falso ninguém olha. O diagnóstico gravado tem a
+forma `finishReason=… partes=N chars=N fim="…"`.
+
+**Uma mudança além do combinado, declarada:** o código lia só `parts[0].text`.
+Passou a juntar todas as partes — ler a resposta inteira é o certo qualquer que
+seja a causa, e estava nas mesmas linhas.
+
+**E o registro desmentiu a hipótese na primeira rodada.** Disparadas três das
+travadas, o motivo gravado foi:
+
+| peça | páginas | diagnóstico |
+| --- | --- | --- |
+| 30 | — | `finishReason=MAX_TOKENS partes=1 chars=6796` |
+| 110 | 12 | `finishReason=MAX_TOKENS partes=1 chars=2579` |
+| 1604 | — | `finishReason=MAX_TOKENS partes=1 chars=3069` |
+
+**`partes=1` nas três** — não era resposta partida. Era teto de token mesmo, e
+o `fim=` gravado mostra onde: as três cortam dentro do `cronograma`, no meio de
+uma parcela (a peça 30 na parcela **39**). Pensão mensal e acordo longo geram
+uma lista enorme.
+
+E o número que fecha o caso: **`MAX_TOKENS` com 2.579 a 6.796 caracteres** —
+algo entre 600 e 1.700 tokens visíveis, contra um teto de 8.192. O resto do
+orçamento não foi para a resposta. `gemini-2.5-flash` é modelo com raciocínio,
+e os tokens de pensamento contam contra o mesmo `maxOutputTokens`.
+
+Ou seja: o comentário antigo no código estava certo no sintoma ("sem teto alto
+o Gemini corta no meio") e errado na conta — 8.192 nunca foram 8.192 de saída.
+
+**O que NÃO foi feito, de propósito:** não há teto de tentativas. Capar antes
+de saber a causa parqueia para sempre peça que voltaria a ler depois do
+conserto. O teto se decide depois, com o motivo na mão.
+
+**O modo anexo tem o mesmo `parts[0]`** (`processual_email_anexos`), e ali o
+efeito é pior: texto parcial não estoura, entra em silêncio como se fosse a
+transcrição inteira. Não mexi — é outro pipeline. Fica anotado.
+
+**Erro meu no caminho, registrado:** o primeiro deploy foi sem passar
+`verify_jwt`, cujo default do tool é `true`. A função é chamada pelo banco por
+pg_net **sem JWT** — ela tem autenticação própria por `x-jm-key`. A janela com
+`verify_jwt=true` durou 150 segundos e nenhuma peça chegou a ser disparada
+nela (conferido: zero linhas com `leitura_disparada_em` no período). Redeploy
+com `verify_jwt: false` restaurou a v21. **Todo deploy desta função tem que
+passar `verify_jwt: false` explicitamente.**

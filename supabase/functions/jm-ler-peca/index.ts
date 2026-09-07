@@ -270,12 +270,35 @@ Deno.serve(async (req: Request) => {
 
     if (erroDoc) return json({ success: false, error: `documento: ${erroDoc.message}` });
     if (!doc) return json({ success: false, error: 'documento não encontrado' });
-    if (!doc.storage_path) return json({ success: false, error: 'peça sem arquivo baixado' });
+
+    /**
+     * Toda falha daqui para baixo deixa RASTRO na própria peça.
+     *
+     * Até 07/09/2026 não deixava nenhum: a função devolvia HTTP 200 com
+     * {success:false} no corpo, e quem chama (`jm_ler_documento`, por
+     * `perform net.http_post`) descarta a resposta. Setenta e três peças
+     * ficaram assim — disparadas, falhando, redisparadas a cada 24h desde
+     * julho, pagando uma chamada de Gemini por tentativa, sem uma linha
+     * dizendo por quê.
+     *
+     * Continua devolvendo 200 de propósito: quem chama é sempre o banco por
+     * pg_net e não olha status. O que importa é o registro durável, que
+     * sobrevive ao TTL de ~6h do net._http_response.
+     */
+    const falhaDaPeca = async (motivo: string) => {
+      await sb.from('jm_documentos').update({
+        leitura_erro: motivo.slice(0, 1000),
+        leitura_erro_em: new Date().toISOString(),
+      }).eq('id', documento_id);
+      return json({ success: false, documento_id, error: motivo });
+    };
+
+    if (!doc.storage_path) return await falhaDaPeca('peça sem arquivo baixado');
 
     // Bucket privado: baixa com service role em vez de assinar URL.
     const { data: arquivo, error: erroArquivo } = await sb.storage.from(BUCKET).download(doc.storage_path);
     if (erroArquivo || !arquivo) {
-      return json({ success: false, error: `storage: ${erroArquivo?.message || 'sem arquivo'}` });
+      return await falhaDaPeca(`storage: ${erroArquivo?.message || 'sem arquivo'}`);
     }
 
     const base64 = paraBase64(new Uint8Array(await arquivo.arrayBuffer()));
@@ -284,9 +307,14 @@ Deno.serve(async (req: Request) => {
     // como inline_data e `responseMimeType: application/json` obriga o modelo a
     // devolver JSON puro — sem cerca de markdown para limpar depois.
     const chave = Deno.env.get('GOOGLE_AI_API_KEY');
-    if (!chave) return json({ success: false, error: 'GOOGLE_AI_API_KEY não configurada' });
+    if (!chave) return await falhaDaPeca('GOOGLE_AI_API_KEY não configurada');
 
     let lido: Record<string, unknown>;
+    // Preenchido antes do JSON.parse para o catch ter o que contar. Sem isso,
+    // "JSON cortado na posição 818" não diz se foi teto de token, corte por
+    // segurança ou resposta partida em vários pedaços — e sem saber qual,
+    // qualquer conserto é chute.
+    let diagnostico = 'resposta do Gemini não chegou a ser lida';
     try {
       const r = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(chave)}`,
@@ -323,13 +351,30 @@ Deno.serve(async (req: Request) => {
       );
       if (!r.ok) {
         const detalhe = (await r.text()).replace(/\s+/g, ' ').slice(0, 300);
-        return json({ success: false, documento_id, error: `gemini ${r.status}: ${detalhe}` });
+        return await falhaDaPeca(`gemini ${r.status}: ${detalhe}`);
       }
       const resposta = await r.json();
-      const bruto = resposta?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      const candidato = resposta?.candidates?.[0];
+      const partes = (candidato?.content?.parts ?? []) as Array<{ text?: string }>;
+
+      // JUNTA TODAS AS PARTES. Antes lia só `parts[0].text`: quando o modelo
+      // divide a saída em mais de um pedaço, o primeiro é um fragmento e o
+      // JSON.parse estoura no meio — exatamente o sintoma das 73 travadas.
+      // Ler todas as partes é o jeito certo de ler a resposta, qualquer que
+      // seja a causa; se o corte for de teto de token, o diagnóstico abaixo
+      // vai dizer isso em finishReason e a peça continua falhando — de olhos
+      // abertos, agora.
+      const bruto = partes.map((p) => p?.text ?? '').join('');
+      const fim = String(bruto).slice(-120).replace(/\s+/g, ' ');
+      diagnostico =
+        `finishReason=${candidato?.finishReason ?? '(sem)'}` +
+        ` partes=${partes.length} chars=${bruto.length} fim="${fim}"`;
+
       lido = achatar(JSON.parse(String(bruto)));
     } catch (e) {
-      return json({ success: false, documento_id, error: `leitura: ${String((e as Error)?.message).slice(0, 300)}` });
+      return await falhaDaPeca(
+        `leitura: ${String((e as Error)?.message).slice(0, 300)} | ${diagnostico}`,
+      );
     }
 
     const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number(v));
@@ -364,7 +409,13 @@ Deno.serve(async (req: Request) => {
     const { error: erroGrava } = await sb
       .from('jm_documento_leitura')
       .upsert(registro, { onConflict: 'documento_id' });
-    if (erroGrava) return json({ success: false, documento_id, error: `gravar: ${erroGrava.message}` });
+    if (erroGrava) return await falhaDaPeca(`gravar: ${erroGrava.message}`);
+
+    // Leu: o erro antigo sai de cena. Erro que fica depois de resolvido vira
+    // alarme falso, e alarme falso ninguém olha.
+    await sb.from('jm_documentos')
+      .update({ leitura_erro: null, leitura_erro_em: null })
+      .eq('id', documento_id);
 
     return json({
       success: true, documento_id, especie: registro.especie,
