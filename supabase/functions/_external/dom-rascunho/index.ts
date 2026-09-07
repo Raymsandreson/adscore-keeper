@@ -407,10 +407,35 @@ Deno.serve(async (req) => {
     // decisão, o mais recente primeiro. Grupo parado não custa nada.
     let grupos: any[] = [];
     if (soEsteGrupo) {
+      // `escopo_status` também aqui, e não só na RPC: este caminho é a porta de
+      // serviço. Em 06/09/2026 o grupo PESSOAL "Familia gold1p.x" tinha três
+      // rascunhos prontos porque tinha entrado no piloto por uma carga em lote
+      // que casou a palavra FAMILIA em qualquer posição do nome. Fechar só o
+      // cron e deixar esta aberta seria trancar a porta da frente e esquecer a
+      // dos fundos — inclusive no modo `teste`, que não grava nada mas LÊ a
+      // conversa inteira e a manda para o modelo. Grupo fora do escopo não é
+      // lido, ponto.
       const { data } = await supabase.from("dom_grupos_piloto")
         .select("group_jid, group_name, lead_id, modo")
-        .eq("ativo", true).eq("group_jid", soEsteGrupo).limit(1);
+        .eq("ativo", true).eq("escopo_status", "operacional")
+        .eq("group_jid", soEsteGrupo).limit(1);
       grupos = data ?? [];
+      if (grupos.length === 0) {
+        // Diz POR QUE recusou. "0 grupos" mandaria quem está depurando procurar
+        // defeito no prompt quando o problema é o grupo estar em quarentena.
+        const { data: fora } = await supabase.from("dom_grupos_piloto")
+          .select("group_name, escopo_status, ativo")
+          .eq("group_jid", soEsteGrupo).maybeSingle();
+        if (fora) {
+          return json({
+            error: "grupo fora do escopo operacional",
+            group_jid: soEsteGrupo,
+            group_name: fora.group_name,
+            escopo_status: fora.escopo_status,
+            ativo: fora.ativo,
+          }, 200);
+        }
+      }
     } else {
       const { data, error } = await supabase.rpc("dom_grupos_para_olhar", { p_limite: limite });
       if (error) return json({ error: `fila de grupos: ${error.message}` }, 500);
