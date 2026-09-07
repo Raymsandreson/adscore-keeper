@@ -1751,3 +1751,9 @@ ao contexto — o pipeline está inteiro; o que faltava era mostrar.
 
 Rascunho anterior a 07/09/2026 não tem `contexto_usado` gravado, e o painel diz
 isso em vez de fingir que não havia fonte.
+
+**A conversa do grupo não é copiada para o painel, por decisão do Raym
+(07/09/2026):** ela já existe inteira e ao vivo no botão "Abrir a conversa do
+grupo", logo abaixo. Guardar uma segunda cópia criaria duas versões da mesma
+conversa para divergirem com o tempo. O painel diz isso em uma linha, para quem
+revisa não ficar procurando a conversa dentro do bloco de fontes.

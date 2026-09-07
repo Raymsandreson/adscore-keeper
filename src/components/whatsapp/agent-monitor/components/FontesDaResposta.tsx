@@ -22,7 +22,7 @@
  */
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { FileText, Mail, Search, ClipboardList, Landmark, AlertTriangle } from 'lucide-react';
+import { FileText, Mail, Search, ClipboardList, Landmark, AlertTriangle, MessagesSquare } from 'lucide-react';
 
 /** O que a dom_contexto_processual devolve e a dom-rascunho grava em contexto_usado. */
 export interface ContextoUsado {
@@ -127,6 +127,15 @@ export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null 
       <p className="text-[11px] text-muted-foreground">
         O que entrou no prompt. A ligação entre cada fato e a frase da resposta é sua —
         aqui não há palpite da máquina sobre si mesma.
+      </p>
+      {/* A conversa do grupo TAMBÉM entra no prompt, e de propósito não é copiada
+          para cá: ela já existe inteira, ao vivo, no botão logo abaixo. Guardar
+          uma segunda cópia só criaria duas versões da mesma conversa para
+          divergirem com o tempo. */}
+      <p className="text-[10px] text-muted-foreground flex items-start gap-1">
+        <MessagesSquare className="h-3 w-3 mt-0.5 shrink-0" />
+        As mensagens do grupo também entraram no prompt. Elas não são copiadas para cá —
+        abra a conversa no botão abaixo para ver o que foi dito, sempre atualizado.
       </p>
 
       {/* ── Movimentações ─────────────────────────────────────────────── */}
