@@ -1813,5 +1813,24 @@ tabela do agente. O valor foi escolhido para estar certo nos dois mundos:
 | código **depois do deploy** | `min(max(3000,100), 5000)` | **3.000** — conserto inteiro |
 
 Um valor só, sem armadilha para o eu do futuro: não precisa lembrar de mexer de
-novo depois de deployar. O corte no fim da frase e o aviso na tela só entram com
-o deploy da `dom-rascunho`.
+novo depois de deployar.
+
+**Deployado em 07/09/2026 — `dom-rascunho` v13**, `verify_jwt: true` (mesmo valor
+da v12; a ferramenta de deploy assume `true` por padrão e isso já derrubou a
+`jm-ler-peca` uma vez — sempre passar o valor explícito). O teto em vigor agora
+é **3.000**, e o conserto está inteiro: corte no fim da frase, aviso em
+`audio_erro`, aviso na tela.
+
+Verificado depois do deploy, nesta ordem:
+
+1. **Roda**: chamada em MODO TESTE (`teste: true`) num grupo do piloto devolveu
+   **200**, intenção `A1`, resposta de 406 caracteres coerente com o caso, e
+   `gravou: false` — nada entrou na fila, nenhum cliente viu nada.
+2. **É o arquivo certo**: o fonte lido de volta do servidor bate com o arquivo do
+   repo nos três pontos alterados (`avisoCorte`, o piso de metade do teto, o
+   clamp `min(max(max_tts_chars || 3000, 100), 5000)`).
+3. **O corte funciona**: a lógica que está no ar, rodada isolada com o teto real
+   de 3.000 — Caso 341 (1.205 ch) passa **inteiro, sem aviso**, que era o defeito;
+   4.007 ch corta em 2.969 no fim de uma frase, com aviso; e os dois patológicos
+   (pontuação só no começo, e sem espaço nenhum) cortam secos em 3.000, sem
+   partir palavra.
