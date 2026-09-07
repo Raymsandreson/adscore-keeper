@@ -1697,3 +1697,57 @@ Cliente com 4 processos pergunta "tem novidade?". A resposta deve:
 Minha leitura é que (b) é mais seguro — resposta incompleta que parece completa
 é pior que resposta longa. Mas isso é escolha de como a casa fala com o cliente,
 não conserto de defeito. **Não mexi.**
+
+### Painel de conferência: as fontes ao lado da resposta
+
+O painel mostrava a pergunta do cliente e a resposta sugerida, e mais nada. Quem
+revisava tinha que **confiar** — não tinha como conferir.
+
+**O caso que expôs isso** é real, e é o PREV 1050. O cliente perguntou "É 3 ou
+4". A resposta disse *"o INSS informou que o benefício foi concedido, mas ainda
+não detalhou o número de parcelas"*. E o `ultima_atividade.como_esta` que estava
+no contexto trazia:
+
+> Data de pagamento prevista: **22/09/2026** · Valor: **R$ 595,00** · Banco
+> BRASIL, Agência 3148
+
+Sobre parcelas a resposta pode estar certa. Mas ela **omitiu data e valor que já
+estavam na mão**. Com a fonte ao lado, o revisor pega isso em dois segundos.
+
+**O que passou a aparecer**, lendo o `contexto_usado` que já era gravado:
+
+| bloco | o que mostra |
+| --- | --- |
+| Movimentação | data, título, resumo, categoria — **com selo de origem** |
+| Documento lido | peça, data e resumo, quando houver |
+| Requerimento no INSS | serviço, status, resultado, despacho |
+| Atividade anterior | título, "como está", próximo passo, e há quantos dias |
+
+**O selo de origem é o ponto que faltava.** "Movimentação" não é uma fonte só:
+
+- no **judicial**, o e-mail do tribunal é o **gatilho** — avisa que mexeu, e a
+  partir dele se busca a peça no Escavador;
+- no **administrativo (INSS)**, o e-mail é a **única** fonte. Não há peça. Quem
+  não sabe disso procura um documento que nunca existiu.
+
+Quando todas as movimentações vêm do e-mail, o painel diz isso em uma linha, em
+vez de deixar o revisor concluir sozinho.
+
+**Sem juízo automático, de propósito.** Não há "a IA usou esta fonte para dizer
+X". Pedir ao modelo que justifique a si mesmo cria uma segunda coisa para não
+confiar. Aqui ficam os fatos que entraram no prompt; quem liga fato e frase é a
+pessoa.
+
+**As fontes vêm DEPOIS da resposta na tela**, também de propósito: o revisor lê
+a resposta primeiro e depois confere contra o que a máquina tinha na mão. Ao
+contrário, a leitura já chegaria enviesada.
+
+**Quando falta fonte, o painel diz o que isso proíbe** — "nenhuma peça foi lida,
+a resposta não pode citar conteúdo de documento; se citar, é invenção".
+
+**Conferido no dado real**, amostra de 25 grupos do piloto: **45 movimentações
+de e-mail** (8 grupos) e **32 do Escavador** (3 grupos). As duas origens chegam
+ao contexto — o pipeline está inteiro; o que faltava era mostrar.
+
+Rascunho anterior a 07/09/2026 não tem `contexto_usado` gravado, e o painel diz
+isso em vez de fingir que não havia fonte.
