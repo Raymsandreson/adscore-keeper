@@ -1607,3 +1607,42 @@ tinha ingerido nada porque `captured_at` continuava antigo nas 11 peças. Errado
 — `captured_at` só é gravado no INSERT; a re-ingestão atualiza `link_api` e não
 mexe nele. A resposta da colheita é que prova o que aconteceu, e ela diz que os
 links vieram.
+
+### O veredito das 11 peças: nenhuma recuperada
+
+Os 120 créditos compraram links novos. Os links novos servem **os mesmos
+arquivos truncados**.
+
+| | antes | depois da re-consulta |
+| --- | --- | --- |
+| peças recuperadas | — | **0 de 11** |
+| peças lidas | 0 | **0** |
+| `PDF_SEM_FIM` | 7 | **10** |
+| `HTTP_410` | 4 | 1 |
+
+Os bytes voltaram **idênticos** nas dez: 30.360, 24.044, 26.892, 475.136,
+1.081.344, 32.768, 311.296, 442.368, 688.128, 851.968. Mesmo número, link novo,
+consulta nova. **Isso encerra a dúvida**: o arquivo está truncado na origem, no
+acervo do Escavador. Não há nada a fazer do nosso lado.
+
+**O que a consulta efetivamente fez** — e não é nada: três peças que davam
+`HTTP_410` (link morto) passaram a **responder com conteúdo**. O link foi
+ressuscitado. O conteúdo é que veio cortado. Ou seja, a re-consulta conserta
+link morto; não conserta arquivo quebrado.
+
+**O relógio novo funciona.** Uma tentativa às 12:55, e 16 minutos depois ainda
+`download_tentativas = 1`. Na lógica antiga já estaria em 3 ou 4.
+
+### O que isso diz sobre os outros 358 arquivos ruins
+
+Sobram **358 peças ruins em ~55 processos**: 223 `HTTP_410`, 139 `HTTP_404` e as
+truncadas. Re-consultar todos custaria da ordem de **1.100 créditos**.
+
+A amostra de hoje é ambígua e vale dizer isso: dos 4 links mortos, **3
+ressuscitaram** — o que é exatamente o defeito da população de 362. Mas os
+arquivos por trás vieram truncados, e os 3 eram do mesmo processo, então não dá
+para saber se o problema é "aquele processo" ou "o acervo".
+
+**Recomendação: testar 2 ou 3 processos antes de gastar os 1.100.** ~60 créditos
+para descobrir se a população de link morto se recupera, em vez de pagar tudo
+para descobrir que não.
