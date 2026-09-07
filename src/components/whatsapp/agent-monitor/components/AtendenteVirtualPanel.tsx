@@ -29,7 +29,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2 } from 'lucide-react';
+import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2, Search } from 'lucide-react';
 import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 import { ContagemAteEnvio } from '@/components/whatsapp/ContagemAteEnvio';
 
@@ -103,6 +103,19 @@ function abrirConversa(groupJid: string, _instanceName: string | null, groupName
   });
 }
 
+/** Uma mensagem achada dentro da conversa de um grupo que está na fila. */
+interface NaConversa {
+  group_jid: string;
+  group_name: string | null;
+  quem_falou: string | null;
+  direcao: string;
+  quando: string;
+  trecho: string;
+  message_id: string;
+  pendencia_id: string;
+  intencao: string | null;
+}
+
 /** Linha comum das três listas que saem de dom_respostas_pendentes. */
 function LinhaPendente({ p, onClick, rodape, marcada, onMarcar }: {
   p: Pendente; onClick?: () => void; rodape?: React.ReactNode;
@@ -157,6 +170,9 @@ export function AtendenteVirtualPanel() {
   const [saiEm, setSaiEm] = useState<Record<string, string>>({});
   const [busca, setBusca] = useState('');
   const [achados, setAchados] = useState<GrupoPiloto[]>([]);
+  const [buscaConversa, setBuscaConversa] = useState('');
+  const [nasConversas, setNasConversas] = useState<NaConversa[]>([]);
+  const [buscandoConversas, setBuscandoConversas] = useState(false);
   const [totalGrupos, setTotalGrupos] = useState(0);
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState<Pendente | null>(null);
@@ -377,6 +393,38 @@ export function AtendenteVirtualPanel() {
   };
 
   /** Procurar um grupo entre os mais de mil, para ligar ou desligar. */
+  /**
+   * Busca dentro das CONVERSAS dos grupos que têm rascunho esperando revisão.
+   *
+   * É outra pergunta da busca por nome de grupo logo acima: aquela procura um
+   * grupo para LIGAR o atendente; esta procura o que foi DITO nos grupos que já
+   * estão na fila, para quem precisa saber do que se falou antes de aprovar a
+   * resposta.
+   *
+   * O recorte pelos grupos da fila é o que deixa isso barato: whatsapp_messages
+   * tem 1,7 milhão de linhas e 7,1 GB, e a RPC olha só os ~77 grupos com
+   * rascunho pendente (200 ms, sem índice novo). A deduplicação por messageid
+   * mora no banco — a mesma mensagem de grupo é gravada uma vez por instância
+   * da casa que está lá dentro, e sem isso a mesma frase voltaria 4 vezes.
+   */
+  const procurarNasConversas = async (termo: string) => {
+    setBuscaConversa(termo);
+    const t = termo.trim();
+    if (t.length < 3) { setNasConversas([]); return; }
+    setBuscandoConversas(true);
+    try {
+      const { data, error } = await (dbAny as any)
+        .rpc('buscar_nas_conversas_da_fila', { p_termo: t, p_limite: 50 });
+      if (error) throw error;
+      setNasConversas((data as NaConversa[]) || []);
+    } catch (e: any) {
+      toast.error('Falha ao buscar nas conversas: ' + (e?.message || ''));
+      setNasConversas([]);
+    } finally {
+      setBuscandoConversas(false);
+    }
+  };
+
   const procurar = async (termo: string) => {
     setBusca(termo);
     if (termo.trim().length < 3) { setAchados([]); return; }
@@ -492,7 +540,7 @@ export function AtendenteVirtualPanel() {
       </div>
 
       <Tabs defaultValue="fila">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="fila" className="text-xs gap-1">
             <Inbox className="h-3.5 w-3.5" />Na fila
             {filaF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filaF.length}</Badge>}
@@ -508,6 +556,9 @@ export function AtendenteVirtualPanel() {
           <TabsTrigger value="silencio" className="text-xs gap-1">
             <VolumeX className="h-3.5 w-3.5" />Silenciadas
             {silenciadasF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{silenciadasF.length}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="conversas" className="text-xs gap-1">
+            <Search className="h-3.5 w-3.5" />Nas conversas
           </TabsTrigger>
         </TabsList>
 
@@ -559,6 +610,62 @@ export function AtendenteVirtualPanel() {
                   <p className="text-[10px] text-amber-700 truncate">{p.motivo_revisao}</p>
                 ) : null
               } />
+          ))}
+        </TabsContent>
+
+        <TabsContent value="conversas" className="space-y-2 pt-3">
+          <Input
+            value={buscaConversa}
+            onChange={(e) => procurarNasConversas(e.target.value)}
+            placeholder="Procurar no que foi dito nos grupos que estão esperando revisão…"
+            className="h-8 text-xs"
+          />
+          <p className="text-[10px] text-muted-foreground">
+            Procura só dentro dos grupos com rascunho na fila — é o recorte que deixa a busca
+            rápida. Cada resultado abre a conversa por cima, no ponto em que a frase apareceu.
+          </p>
+
+          {buscandoConversas && (
+            <p className="text-[10px] text-muted-foreground flex items-center gap-1 py-2">
+              <Loader2 className="h-3 w-3 animate-spin" />procurando…
+            </p>
+          )}
+          {!buscandoConversas && buscaConversa.trim().length > 0 && buscaConversa.trim().length < 3 && (
+            <p className="text-[10px] text-muted-foreground py-2">Digite ao menos 3 letras.</p>
+          )}
+          {!buscandoConversas && buscaConversa.trim().length >= 3 && nasConversas.length === 0 && (
+            <p className="text-[10px] text-muted-foreground py-2">
+              Ninguém falou isso nos grupos que estão na fila.
+            </p>
+          )}
+
+          {nasConversas.map(r => (
+            <button
+              key={r.message_id}
+              onClick={() => openWhatsAppChatSheet({
+                phone: r.group_jid,
+                contactName: r.group_name,
+                direction: 'bottom',
+                forceSheet: true,
+              })}
+              className="w-full text-left rounded-md border p-2 hover:bg-muted/50 transition-colors space-y-1"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium truncate flex-1">
+                  {r.group_name || r.group_jid}
+                </span>
+                {r.intencao && (
+                  <Badge variant="outline" className="h-4 px-1 text-[9px] shrink-0">{r.intencao}</Badge>
+                )}
+                <span className="text-[10px] text-muted-foreground shrink-0">
+                  {new Date(r.quando).toLocaleDateString('pt-BR')}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">{r.trecho}</p>
+              <p className="text-[10px] text-muted-foreground/80">
+                {r.direcao === 'outbound' ? 'nós' : (r.quem_falou || 'alguém do grupo')}
+              </p>
+            </button>
           ))}
         </TabsContent>
 
