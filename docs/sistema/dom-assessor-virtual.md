@@ -1803,3 +1803,15 @@ nenhuma (corta em 2.999 no espaço) e o patológico acima (corta em 3.000).
 **Custo:** a ElevenLabs cobra por caractere, então resposta longa passa a custar
 mais. A média das respostas com áudio é de **333 caracteres** — a maioria não
 muda de preço. Das seis com áudio até hoje, **uma** passava de 500.
+
+**Meio conserto que já valeu, sem deploy:** `max_tts_chars` foi para **3.000** na
+tabela do agente. O valor foi escolhido para estar certo nos dois mundos:
+
+| | clamp | resultado |
+| --- | --- | --- |
+| código **em produção hoje** | `min(max(3000,100), 1000)` | **1.000** — dobra o que era |
+| código **depois do deploy** | `min(max(3000,100), 5000)` | **3.000** — conserto inteiro |
+
+Um valor só, sem armadilha para o eu do futuro: não precisa lembrar de mexer de
+novo depois de deployar. O corte no fim da frase e o aviso na tela só entram com
+o deploy da `dom-rascunho`.
