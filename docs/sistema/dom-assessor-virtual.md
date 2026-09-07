@@ -1258,3 +1258,77 @@ pg_net **sem JWT** — ela tem autenticação própria por `x-jm-key`. A janela 
 nela (conferido: zero linhas com `leitura_disparada_em` no período). Redeploy
 com `verify_jwt: false` restaurou a v21. **Todo deploy desta função tem que
 passar `verify_jwt: false` explicitamente.**
+
+### O teto de token que sufocava a resposta
+
+Com o motivo gravado (seção anterior), o conserto deixou de ser chute.
+`maxOutputTokens` subiu de **8.192 para 32.768**.
+
+**A conta que estava errada.** O comentário antigo no código dizia, corretamente,
+que sem teto alto o Gemini corta no meio. Só que 8.192 nunca foram 8.192 de
+resposta: `gemini-2.5-flash` raciocina antes de responder e **os tokens de
+pensamento contam contra o mesmo `maxOutputTokens`** ([Gemini API — Thinking](https://ai.google.dev/gemini-api/docs/thinking)).
+Medido nas travadas: `MAX_TOKENS` com **2.579 a 6.796 caracteres** de JSON
+visível — entre 600 e 1.700 tokens de saída dentro de um teto de 8.192. O resto
+foi pensamento.
+
+É contratar oito horas de serviço e o profissional gastar seis planejando: sobram
+duas de trabalho entregue. Não adiantava reclamar do trabalho — faltava hora.
+
+**Por que só subir o teto e NÃO desligar o raciocínio.** Dá para silenciar o
+pensamento com `thinkingConfig.thinkingBudget = 0`, e sairia mais barato. Mas
+isso muda como o modelo lê a peça, e as **9.091 leituras que já existem foram
+feitas com raciocínio** — misturar os dois regimes na mesma tabela é criar uma
+inconsistência que ninguém vai lembrar de explicar daqui a seis meses. Subir o
+teto corrige a causa medida sem mexer na qualidade. E teto alto não custa:
+paga-se pelo token gerado, não pelo limite.
+
+Há também relatos de que o `thinkingBudget` é ignorado em alguns casos
+([issue googleapis/python-genai#782](https://github.com/googleapis/python-genai/issues/782)),
+o que faria do "desligar" um conserto que não se pode confiar que pegou.
+
+**O que passou a ser gravado junto:** `pensamento=` (`thoughtsTokenCount`),
+`saida=` (`candidatesTokenCount`) e `entrada=` (`promptTokenCount`). Se ainda
+estourar, o erro diz quanto foi pensamento e quanto foi resposta — que é a
+diferença entre subir o limite de novo e capar o modelo.
+
+**E uma trava contra dado pela metade:** se `finishReason` vier `MAX_TOKENS`, a
+peça falha explicitamente mesmo que o JSON tenha feito parse. JSON cortado quase
+nunca parseia, mas quando parsear seria leitura incompleta gravada como se fosse
+inteira — no lugar exato onde alguém vai olhar valor de condenação.
+
+**Verificado em dado real**, nas três peças que falhavam:
+
+| peça | antes | depois |
+| --- | --- | --- |
+| 30 | cortava na parcela 39 | **leu** — SENTENÇA, **241 parcelas**, 3 partes, R$ 662.000 |
+| 1604 | cortava na parcela 6 | **leu** — ACORDO, **45 parcelas**, 3 partes, R$ 900.000 |
+| 110 | cortava na parcela ~6 | ainda falha, agora **na parcela 464** |
+
+E a peça 110 é o número que fecha o diagnóstico:
+
+```
+finishReason=MAX_TOKENS chars=59511 pensamento=7217 saida=25537 entrada=5447
+```
+
+**7.217 tokens de pensamento contra o teto antigo de 8.192** deixavam ~975 para
+a resposta — que é exatamente o que se via (2.579 caracteres). Não era o modelo
+falando demais; era o orçamento indo quase todo para o raciocínio antes de a
+resposta começar.
+
+### O que a peça 110 revelou, e que teto nenhum conserta
+
+Ela é uma pensão mensal com **mais de 464 parcelas** — décadas de pagamento
+mês a mês. O prompt manda gerar uma entrada por parcela ("GERE as N entradas
+com as datas calculadas"), então o modelo enumera as 464. São ~28 mil tokens só
+de `cronograma`, e a peça estoura qualquer teto razoável.
+
+O erro aqui não é de limite, é de desenho: **um cronograma definido por regra
+(valor, periodicidade, início, quantidade) está sendo materializado linha a
+linha pelo LLM**, que é o lugar mais caro e mais frágil possível para expandir
+uma progressão aritmética. Guardar a regra e expandir no banco resolveria a
+peça 110 e baratearia todas as outras.
+
+Não foi feito: muda o contrato do JSON, mexe em `jm_documento_leitura.cronograma`
+e em quem consome — é decisão de desenho, não conserto de bug. Fica medido e
+anotado.

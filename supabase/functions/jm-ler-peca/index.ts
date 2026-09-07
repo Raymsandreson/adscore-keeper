@@ -337,14 +337,29 @@ Deno.serve(async (req: Request) => {
               ],
             }],
             // temperatura 0: extração de dado de peça não é lugar de criatividade
-            // maxOutputTokens explícito: o JSON do prompt v2 traz partes, verbas e
-            // cronograma e ficou bem maior que o do v1. Sem teto alto o Gemini
-            // corta no meio e o JSON.parse estoura — falha que aparece como
-            // "leitura:" genérico e custa a chamada do mesmo jeito.
+            //
+            // maxOutputTokens 32768 (era 8192, 07/09/2026). O teto de 8192 estava
+            // certo na intenção e errado na conta: `gemini-2.5-flash` raciocina
+            // antes de responder, e os tokens de pensamento contam contra o MESMO
+            // maxOutputTokens. Medido nas peças travadas: finishReason=MAX_TOKENS
+            // com 2.579 a 6.796 CARACTERES de JSON visível — algo entre 600 e
+            // 1.700 tokens de saída dentro de um teto de 8.192. O resto foi
+            // pensamento. As três cortavam dentro do "cronograma", no meio de uma
+            // parcela (uma delas na parcela 39): pensão mensal e acordo longo
+            // geram lista grande, e não sobrava orçamento para ela.
+            //
+            // Por que só subir o teto e NÃO desligar o raciocínio: dá para
+            // silenciar o pensamento com thinkingConfig.thinkingBudget = 0, mas
+            // isso muda como o modelo lê a peça — e as 9.091 leituras que já
+            // existem foram feitas COM raciocínio. Subir o teto corrige a causa
+            // medida sem mexer na qualidade. Teto alto não custa: paga-se pelo
+            // token gerado, não pelo limite. Se ainda assim estourar, o
+            // usageMetadata gravado no erro dirá quanto foi pensamento, e aí sim
+            // se decide capar — com número na mão.
             generationConfig: {
               responseMimeType: 'application/json',
               temperature: 0,
-              maxOutputTokens: 8192,
+              maxOutputTokens: 32768,
             },
           }),
         },
@@ -366,9 +381,23 @@ Deno.serve(async (req: Request) => {
       // abertos, agora.
       const bruto = partes.map((p) => p?.text ?? '').join('');
       const fim = String(bruto).slice(-120).replace(/\s+/g, ' ');
+      const uso = resposta?.usageMetadata ?? {};
       diagnostico =
         `finishReason=${candidato?.finishReason ?? '(sem)'}` +
-        ` partes=${partes.length} chars=${bruto.length} fim="${fim}"`;
+        ` partes=${partes.length} chars=${bruto.length}` +
+        // Quanto do orçamento foi pensamento e quanto foi resposta. Sem esses
+        // dois números, "MAX_TOKENS" não diz se falta teto ou se sobra
+        // raciocínio — e é a diferença entre subir o limite e capar o modelo.
+        ` pensamento=${uso.thoughtsTokenCount ?? '?'} saida=${uso.candidatesTokenCount ?? '?'}` +
+        ` entrada=${uso.promptTokenCount ?? '?'} fim="${fim}"`;
+
+      // JSON cortado quase nunca faz parse — mas quando fizer, seria leitura
+      // PELA METADE gravada como se fosse inteira. Peça truncada é peça não
+      // lida: falha explícita, com o motivo, em vez de dado silenciosamente
+      // incompleto no lugar onde alguém vai olhar valor de condenação.
+      if (candidato?.finishReason === 'MAX_TOKENS') {
+        return await falhaDaPeca(`resposta truncada pelo teto de tokens | ${diagnostico}`);
+      }
 
       lido = achatar(JSON.parse(String(bruto)));
     } catch (e) {
