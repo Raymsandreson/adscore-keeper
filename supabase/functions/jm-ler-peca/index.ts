@@ -19,6 +19,10 @@
 //
 // NADA daqui vira valor_pago sozinho: peça é alegação, não fato conciliado.
 // `jm_documento_leitura.revisado_por` é o que promove leitura a número oficial.
+//
+// ATENÇÃO AO DEPLOY: esta função roda com verify_jwt = false e autenticação
+// própria (x-jm-key). Todo deploy tem que passar verify_jwt: false
+// explicitamente — o default do tool é true e, com true, o banco leva 401.
 // =============================================================================
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -374,11 +378,8 @@ Deno.serve(async (req: Request) => {
 
       // JUNTA TODAS AS PARTES. Antes lia só `parts[0].text`: quando o modelo
       // divide a saída em mais de um pedaço, o primeiro é um fragmento e o
-      // JSON.parse estoura no meio — exatamente o sintoma das 73 travadas.
-      // Ler todas as partes é o jeito certo de ler a resposta, qualquer que
-      // seja a causa; se o corte for de teto de token, o diagnóstico abaixo
-      // vai dizer isso em finishReason e a peça continua falhando — de olhos
-      // abertos, agora.
+      // JSON.parse estoura no meio. Ler todas as partes é o jeito certo de ler
+      // a resposta, qualquer que seja a causa do corte.
       const bruto = partes.map((p) => p?.text ?? '').join('');
       const fim = String(bruto).slice(-120).replace(/\s+/g, ' ');
       const uso = resposta?.usageMetadata ?? {};
