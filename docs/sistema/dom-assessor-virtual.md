@@ -1417,3 +1417,80 @@ expandir a partir dela. Não fiz: é escolha de negócio, não conserto de bug.
 
 **Resultado da família inteira: 5 → 0.** Das 22 travadas restantes, nenhuma é
 mais por teto de token.
+
+### PDF truncado: conferindo o fim do arquivo, não só o começo
+
+Onze peças chegavam ao leitor e voltavam com
+`gemini 400: "The document has no pages."` — mas o arquivo estava lá, com
+mimetype `application/pdf`, e o Escavador dizia quantas páginas tinha: 9, 18,
+23, 24, 54, 57. Documento com página, arquivo guardado, e mesmo assim "sem
+páginas".
+
+**Os tamanhos denunciaram.** Sete dos onze eram múltiplo EXATO de 16.384 bytes:
+
+| bytes | ÷ 16.384 |
+| --- | --- |
+| 32.768 | 2 |
+| 311.296 | 19 |
+| 442.368 | 27 |
+| 475.136 | 29 |
+| 688.128 | 42 |
+| 851.968 | 52 |
+| 1.081.344 | 66 |
+
+PDF real não tem tamanho redondo assim. E o corte cai onde dói: o índice de
+páginas de um PDF mora no **fim** do arquivo (xref, trailer, `%%EOF`).
+Truncado, ele abre, começa com `%PDF` e não tem página nenhuma.
+
+**A causa no código** (`esc-autos`, ação `arquivar`):
+
+```ts
+const magic = new TextDecoder().decode(buf.slice(0, 5));
+if (!magic.startsWith("%PDF")) throw ...
+```
+
+Conferia os cinco primeiros bytes e concluía que o arquivo estava inteiro. É a
+mesma família de defeito que esta sessão já encontrou três vezes: a etapa se dá
+por bem-sucedida porque **rodou**, não porque **fez** — aqui, porque o arquivo
+COMEÇA como PDF, não porque É um PDF completo. E o preço do silêncio: o defeito
+nasceu no download, em agosto, e só apareceu semanas depois, do outro lado do
+sistema, disfarçado de erro do Gemini. Quem olhasse o erro procuraria no lugar
+errado.
+
+**O conserto** (`esc-autos` v33): o que chegou tem que bater com o
+`Content-Length` declarado, **e** o arquivo tem que terminar com `%%EOF`
+(procurado nos últimos 2 KB, porque há PDF com lixo depois do marcador).
+Falhando qualquer uma, não grava: fica com `storage_error` e volta para a fila.
+Arquivo pela metade guardado como bom é pior que ausente — some do radar e
+reaparece como defeito de outro degrau.
+
+#### A hipótese que o teste derrubou
+
+Eu escrevi que a conexão tinha morrido no meio da transferência. **Errado.** No
+re-download, as sete voltaram com **exatamente o mesmo número de bytes** e sem
+`%%EOF`. Repetição idêntica não é conexão instável: **o arquivo já está
+truncado na origem**. Nosso download é fiel; quem está quebrado é o Escavador.
+
+E a segunda metade da trava foi a que não serviu: `declarado=?` em todas — a
+API **não manda `Content-Length`**. Quem pegou o defeito foi o `%%EOF`.
+
+#### O que o re-download revelou, e o que ainda não está consertado
+
+| família | peças | o que é |
+| --- | --- | --- |
+| `PDF_SEM_FIM` | 7 | truncadas **na origem**, idênticas a cada tentativa |
+| `HTTP_410` | 4 | o link do documento morreu |
+
+**Nenhuma das 11 é legível hoje.** O que mudou é que agora elas dizem a
+verdade: em vez de um arquivo mentindo que é PDF e um erro do Gemini apontando
+para o lugar errado, há `storage_error` nomeando o defeito no degrau onde ele
+nasce.
+
+**O conserto real custa dinheiro e é decisão do dono.** As 11 vêm de **6
+processos**; recuperá-las exige nova consulta ao Escavador para regerar
+arquivo e link. Medido em 997 consultas: **19,87 créditos em média por
+consulta** — cerca de **119 créditos** para os 6 processos.
+
+E elas não estão sozinhas. A base inteira tem **369 arquivos ruins em 61
+processos**: 223 com `HTTP_410`, 139 com `HTTP_404` e as 7 truncadas. Re-consultar
+todos seria da ordem de **1.200 créditos**.

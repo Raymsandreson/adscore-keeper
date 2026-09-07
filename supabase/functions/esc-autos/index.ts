@@ -21,6 +21,10 @@
 // TODA resposta ecoa `cnj`: jm_esc_confirmar casa a solicitação por esse campo.
 // Antes casava por resposta.numero_cnj, que só existe no corpo de sucesso — e a
 // solicitação que dava erro ficava ENVIANDO para sempre (9 linhas assim).
+//
+// ATENÇÃO AO DEPLOY: roda com verify_jwt = false e guarda própria (?k=). Todo
+// deploy tem que passar verify_jwt: false explicitamente — o default do tool é
+// true e, com true, o cron leva 401.
 // =============================================================================
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -87,9 +91,41 @@ Deno.serve(async (req)=>{
         });
         const ct = r.headers.get("Content-Type") ?? "";
         if (!r.ok) throw new Error(`HTTP_${r.status} ct=${ct}`);
+        const declarado = Number(r.headers.get("Content-Length") ?? "") || null;
         const buf = new Uint8Array(await r.arrayBuffer());
         const magic = new TextDecoder().decode(buf.slice(0, 5));
         if (!magic.startsWith("%PDF")) throw new Error(`NAO_PDF ct=${ct} magic=${JSON.stringify(magic)} bytes=${buf.length}`);
+
+        // CONFERE O FIM, NÃO SÓ O COMEÇO (07/09/2026).
+        //
+        // Até aqui bastava começar com "%PDF" para o arquivo ser dado como bom.
+        // Onze peças foram guardadas assim e só apareceram semanas depois, do
+        // outro lado do sistema, como `gemini 400: "The document has no pages"`.
+        // Sete delas tinham tamanho MÚLTIPLO EXATO de 16.384 bytes — 32.768,
+        // 311.296, 442.368, 475.136, 688.128, 851.968, 1.081.344 — que é a cara
+        // de download cortado num limite de bloco. PDF real não tem tamanho
+        // redondo assim.
+        //
+        // E o corte é justamente onde dói: o índice de páginas de um PDF mora no
+        // FIM do arquivo (xref + trailer + %%EOF). Truncado, ele abre, começa
+        // com %PDF e não tem página nenhuma. Verificar o começo e concluir que
+        // está inteiro é como conferir só a capa de um processo.
+        //
+        // Duas conferências, ambas baratas:
+        //   1. o que chegou bate com o Content-Length que o servidor declarou;
+        //   2. o arquivo termina com %%EOF (procurado nos últimos 2 KB, porque
+        //      há PDF com lixo depois do marcador).
+        // Falhando qualquer uma, NÃO grava. Fica com storage_error e volta para
+        // a fila — arquivo pela metade guardado como bom é pior que ausente,
+        // porque some do radar e reaparece como defeito de outro degrau.
+        if (declarado !== null && buf.length !== declarado) {
+          throw new Error(`TRUNCADO recebi=${buf.length} declarado=${declarado} ct=${ct}`);
+        }
+        const cauda = new TextDecoder().decode(buf.slice(Math.max(0, buf.length - 2048)));
+        if (!cauda.includes("%%EOF")) {
+          throw new Error(`PDF_SEM_FIM bytes=${buf.length} declarado=${declarado ?? "?"} ct=${ct} (sem %%EOF nos ultimos 2KB)`);
+        }
+
         const spath = `${d.processo_cnj}/${d.id}.pdf`;
         const { error: upErr } = await sb.storage.from(BUCKET).upload(spath, buf, {
           contentType: "application/pdf",
