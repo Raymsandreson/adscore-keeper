@@ -347,7 +347,8 @@ async function gerarAudioDoRascunho(
     if (!chave) return { url: null, voz: null, erro: "ELEVENLABS_API_KEY não configurada", velocidade };
 
     // O que se fala é diferente do que se escreve: asterisco de negrito virava
-    // "asterisco" na boca da voz, e link lido em voz alta é ruído puro.
+    // "asterisco" na boca da voz, link lido em voz alta é ruído puro, e data em
+    // número vira uma sequência de "barra" que ninguém entende falada.
     const limpo = datasPorExtenso(
       texto
         .replace(/\*([^*]+)\*/g, "$1")

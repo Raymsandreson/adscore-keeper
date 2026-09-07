@@ -62,6 +62,29 @@ function dataBR(v: unknown): string {
   return s.slice(0, 40);
 }
 
+// A DATA QUE VAI DENTRO DE UMA ORDEM DIRETA PRECISA JÁ ESTAR ESCRITA CERTO
+//
+// Medido em 07/09/2026, no Caso 341: o modelo converteu SOZINHO as datas do
+// bloco de andamento ("28/08/2026" virou "28 de agosto" na mensagem dele), mas
+// copiou literalmente a única data que veio dentro de uma ORDEM DIRETA — e o
+// texto saiu misturado: "28 de agosto" no meio e "17/09/2026" no fim.
+//
+// Ordem direta ele obedece ao pé da letra, e é assim que tem que ser. Então a
+// data que entra numa ordem já vai escrita como se fala. A fonte do
+// desencontro era o formato que EU passava, não o modelo.
+const MESES_EXTENSO = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
+function dataPorExtenso(v: unknown): string {
+  const s = dataBR(v);
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return s;
+  const mes = MESES_EXTENSO[Number(m[2]) - 1];
+  return mes ? `${Number(m[1])} de ${mes} de ${m[3]}` : s;
+}
+
 // O `despacho` do INSS chega com entidades HTML cruas — medido em 21/08/2026:
 // "Certid&atilde;o de nascimento", "&oacute;bito". Sem decodificar, o Dom
 // repete isso literalmente para o cliente.
@@ -133,14 +156,15 @@ function blocoAtividade(atv: any, movMaisRecente: string | null): string {
   // quebrada antes de ser feita, e o cliente confere — por isso, sem data
   // válida, o fecho volta a ser o genérico.
   //
-  // O formato falado (mês por extenso) NÃO é decidido aqui: quem converte é a
-  // geração do áudio, para toda data de uma vez. Instruir o modelo a escrever
-  // uma data por extenso e as outras em números deixaria o texto desencontrado
-  // consigo mesmo.
+  // A data vai POR EXTENSO já aqui. A primeira versão passava "17/09/2026" e o
+  // resultado foi uma mensagem com "28 de agosto" no meio e "17/09/2026" no
+  // fim — porque o modelo converte sozinho o que LÊ, e copia ao pé da letra o
+  // que RECEBE COMO ORDEM. Quem converte as outras datas do áudio continua
+  // sendo o dom-rascunho; esta é a única que precisa nascer pronta.
   if (atv.prazo_contato) {
     linhas.push("");
     linhas.push(
-      `FECHE A RESPOSTA ASSIM: diga que a equipe volta a falar com ele até ${dataBR(atv.prazo_contato)},` +
+      `FECHE A RESPOSTA ASSIM: diga que a equipe volta a falar com ele até ${dataPorExtenso(atv.prazo_contato)},` +
         " e que qualquer novidade antes disso você avisa aqui no grupo." +
         " ESSA DATA É DO NOSSO PRÓXIMO CONTATO, NÃO DA DECISÃO: é proibido dizer ou sugerir" +
         " que o caso será resolvido, julgado ou pago até ela.",
