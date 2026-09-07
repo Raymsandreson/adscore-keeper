@@ -1834,3 +1834,83 @@ Verificado depois do deploy, nesta ordem:
    4.007 ch corta em 2.969 no fim de uma frase, com aviso; e os dois patológicos
    (pontuação só no começo, e sem espaço nenhum) cortam secos em 3.000, sem
    partir palavra.
+
+### A velocidade da fala é da voz, não do sistema
+
+`speed: 1.1` estava escrito à mão dentro da função, igual para toda voz. É
+errado na raiz, e a metáfora é a de um metrônomo único numa banda: cada voz
+clonada carrega o ritmo da pessoa que a gravou. A Keilane a 1,1× soa apressada;
+outra voz na mesma 1,1× pode soar natural; e uma terceira, gravada pausada, vai
+soar arrastada a 0,90×. **Velocidade é propriedade da voz.**
+
+Desde 07/09/2026 ela mora em `custom_voices.velocidade_fala`:
+
+| valor | significa |
+| --- | --- |
+| `1.00` | ritmo natural da voz |
+| abaixo de 1 | desacelera |
+| acima de 1 | acelera |
+| **nulo** | usa o padrão do sistema (1,1) — o comportamento antigo |
+
+Nulo por padrão é deliberado: nenhuma voz muda de ritmo por causa desta
+mudança. Só a Keilane, que é a voz do Dom, foi para **1,00×** — 10% mais devagar
+que os áudios de antes.
+
+A faixa aceita é **0,5 a 1,5**, no CHECK do banco e no código (os dois têm que
+mudar juntos). A API REST da ElevenLabs aceita 0,25 a 4,0 — fonte: o
+repositório de skills da própria ElevenLabs,
+`text-to-speech/references/voice-settings.md`, que também registra que a
+plataforma de Agents restringe a 0,7–1,2; nós usamos a REST. A faixa apertada é
+de propósito: fora dela não é ajuste de naturalidade, é voz de desenho animado
+ou de câmera lenta.
+
+### Refazer o áudio pela tela
+
+Ritmo de voz não se escolhe no papel, se escolhe ouvindo — e até aqui a única
+forma de ouvir uma velocidade diferente era **esperar o próximo cliente mandar
+um áudio**. Ajuste que depende de acaso não é ajuste.
+
+A `dom-rascunho` ganhou a ação `regerar_audio`:
+
+```
+POST { regerar_audio: "<id do rascunho>", velocidade?: 0.5..1.5 }
+→ { regerado, audio_url, audio_voz, audio_erro, velocidade, caracteres }
+```
+
+No painel, dentro do bloco "Como ficaria falado": os botões **0,85× a 1,10×**
+refazem o áudio naquela velocidade e **guardam ela na voz** — é isso que faz
+disso configuração e não um ajuste que se perde no áudio seguinte. Ao lado, um
+botão que só refaz, útil quando alguém editou e salvou a resposta.
+
+Três decisões que não são óbvias:
+
+- **Fala o texto editado** (`resposta_final`) quando ele existe. Se alguém
+  corrigiu a resposta, o áudio antigo já era mentira; refazer com o texto velho
+  seria repetir a mentira com voz nova.
+- **`dom_respostas_pendentes.audio_velocidade` guarda em que ritmo CADA áudio
+  saiu.** Sem isso, mudar a velocidade da voz reescreveria o passado: os áudios
+  antigos continuariam soando como soavam e a tela diria o número novo — o que
+  inutiliza a comparação "antes e depois", que é justamente como se escolhe o
+  ritmo. Nulo = gerado antes disto, na constante de 1,1.
+- **A gravação passa pela edge function**, não pelo cliente: a RLS de
+  `custom_voices` só deixa o dono da voz escrever (`user_id = auth.uid()`) e a
+  sessão do painel no banco externo é anônima. Quem tem permissão é a função,
+  com a chave de serviço.
+
+Erro da ElevenLabs agora carrega o corpo da resposta e a velocidade usada.
+Antes, um parâmetro recusado virava um `HTTP 422` mudo na tela.
+
+**Verificado no ar em 07/09/2026 (dom-rascunho v14)**, contra dados reais:
+
+| teste | resultado |
+| --- | --- |
+| regerar sem velocidade | 200 · voz Keilane · 1.205 ch · **velocidade 1,00 lida da voz** · sem aviso de corte |
+| clicar 0,90× | 200 · `custom_voices` da Keilane virou `0.90` · a linha gravou `0.90` |
+| o passado não muda | o áudio do Caso 341 continuou marcado `1.00` enquanto a voz estava em `0.90` |
+| velocidade 9 | **400** · "velocidade precisa ser um número entre 0.5 e 1.5" |
+
+**Ainda hardcoded em 1.1, de propósito, porque não foi pedido e mexer ali é
+mexer em produção:** `whatsapp-ai-agent-reply` (~5,9 mil chamadas/dia),
+`_shared/whatsapp-utils.ts`, `whatsapp-command-processor`, `elevenlabs-tts` e
+`elevenlabs-voice-clone`. Enquanto isso, a velocidade da voz vale **só no
+atendente virtual** — nos outros caminhos a mesma voz continua saindo a 1,1×.
