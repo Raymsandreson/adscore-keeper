@@ -1,0 +1,52 @@
+# Edge function do Supabase Externo não sobe sozinha.
+#
+# O Railway auto-deploya `railway-server/` a cada merge em `main`, e por causa
+# disso é fácil supor que TUDO sobe sozinho. Não sobe: as funções em
+# `supabase/functions/_external/` iam para produção pela Management API, na mão,
+# por scripts `_deploy_*.mjs` avulsos na raiz do repo. Quem esquecesse do passo
+# manual ficava com o código no git e o comportamento antigo em produção — o
+# pior tipo de divergência, porque o repo diz que está consertado.
+#
+# Este workflow fecha isso: merge em `main` que toque `_external/` deploya só as
+# funções que o diff mudou.
+name: Deploy edge functions do Externo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/_external/**'
+  workflow_dispatch:
+    inputs:
+      slugs:
+        description: 'Funções a deployar (separadas por espaço). Vazio = as que mudaram no último commit.'
+        required: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Precisa do commit anterior para saber o que o push mudou.
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Deploy
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: |
+          if [ -z "$SUPABASE_PAT" ]; then
+            echo "::error::Falta o secret SUPABASE_PAT no repositório."
+            echo "Crie em https://supabase.com/dashboard/account/tokens e adicione em"
+            echo "Settings > Secrets and variables > Actions > New repository secret."
+            exit 1
+          fi
+          if [ -n "${{ inputs.slugs }}" ]; then
+            node scripts/deploy-edge-externo.mjs ${{ inputs.slugs }}
+          else
+            node scripts/deploy-edge-externo.mjs --mudadas-desde HEAD~1
+          fi
