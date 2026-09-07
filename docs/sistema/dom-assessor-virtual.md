@@ -2008,3 +2008,95 @@ Cuidado que já quase aconteceu: **não** cadastrar esse token nos *Edge Functio
 Secrets* do Supabase. São coisas diferentes — lá é onde as funções leem
 variáveis em runtime, e um token de administração da conta guardado ali ficaria
 ao alcance de qualquer edge function do projeto.
+
+### Falar como gente: sem termo técnico, com os dias parados
+
+Confirmado funcionando em 07/09/2026, no Caso 341.
+
+**O antes e o depois, mesma pergunta, mesmo grupo:**
+
+| antes | agora |
+| --- | --- |
+| "está na fase de **ajuizamento**" | "a gente já entrou com o pedido na Justiça e ele está aguardando o juiz analisar" |
+| "foi anexada uma petição **aos autos**" | "a gente anexou um documento" |
+| "fase de **admissibilidade do Recurso de Revista**" | "o tribunal está decidindo se aceita analisar o nosso recurso" |
+| "os **autos** foram para a mesa do juiz" | "o processo foi para a mesa do juiz" |
+| "**audiência de instrução** marcada para 22/09/2026" | "a audiência, que é o dia em que o juiz ouve você, as testemunhas e o outro lado" |
+| "a última movimentação foi em 28/08/2026" | "a última movimentação foi no dia 28 de agosto, **faz 10 dias**" |
+
+#### A causa não era o modelo desobedecendo
+
+O glossário **autorizava**, nesta frase:
+
+> "Se precisar mesmo citar o nome técnico, escreva-o e explique em seguida,
+> entre parênteses, no lugar de deixar solto."
+
+Era uma porta aberta, e a mensagem saiu por ela: o modelo citou e explicou,
+exatamente como mandado. Para quem tem estudo funciona; para quem não tem, a
+explicação chega **depois** de a pessoa já ter travado na palavra.
+
+A porta está fechada — o termo não entra nem explicado — com quatro pares
+errado/certo tirados da própria mensagem. Entraram no glossário
+`admissibilidade`, `recurso de revista`, `autos`, `audiência de instrução`,
+`ata da audiência` e `agravo de instrumento`.
+
+#### Os dias, e qual dos dois números
+
+`parado_dias` (qualquer movimento) e `parado_dias_efetivo` (ignorando
+`categoria = 'despacho'`). Despacho é ordem de andamento e sozinho não move o
+caso: o processo andou no papel e continua onde estava. No Caso 341 a diferença
+já aparece — **15 dias** contando tudo, **17** ignorando o despacho.
+
+Fonte: `process_updates`, que recebe o e-mail do tribunal e por isso está mais
+atual que o retrato do Escavador (pelo jsonb `movimentacoes` a maior parada do
+piloto seria 173 dias; pela fonte certa, 83).
+
+#### Acima de 90 dias: fala primeiro, mas não promete
+
+O Dom diz quantos dias faz, diz que **está acionando a equipe**, e emite
+`[REVISAR: processo parado há N dias — avaliar reclamação na ouvidoria]`.
+
+**É proibido ele anunciar a ouvidoria ao cliente.** Reclamação é ato que alguém
+precisa protocolar; atendente virtual anunciando ato jurídico cria dívida que
+ele não pode pagar — se ninguém entrar, o cliente cobra a promessa depois e o
+escritório fica pior do que se tivesse ficado calado.
+
+**A regra nasce dormente:** medido em 07/09/2026, nenhum dos 30 processos do
+piloto passa de 90 dias (a maior parada é 83). O que é frequente é outra coisa
+— **16 dos 30 não têm uma movimentação registrada**, e nesses o Dom diz que vai
+confirmar com a equipe em vez de deixar o vazio para o modelo preencher.
+
+#### Pendência vira atividade com dono e prazo
+
+Mostrar no painel não é encaminhar: quem não abrisse aquela tela não ficava
+sabendo. Agora nasce linha em `lead_activities` — rodízio do Dom, prazo de 3
+dias, tipo `acompanhamento`, `created_by_ai = true` para dar para filtrar.
+
+Três travas, cada uma por um jeito de dar errado: só com pendência de verdade
+(o `[REVISAR]` do modelo, não toda resposta); não repete a mesma em 7 dias
+(senão o cron abriria uma a cada 5 minutos, para sempre); e falhar ali não
+derruba o rascunho.
+
+#### Dois erros meus, que só apareceram testando a resposta de verdade
+
+1. **Português quebrado:** saiu *"está na fase de quando a gente entrou com o
+   processo na Justiça"*. Culpa do glossário: as traduções são frases inteiras,
+   e o modelo encaixou uma depois de "está na fase de". Agora essa construção é
+   proibida.
+2. **O número errado:** ele escreveu *"faz 46 dias"* para um caso parado há 10.
+   Não inventou — havia **dois** números de dias no contexto (os da fase e os do
+   parado) e ele pegou o que vinha primeiro e em destaque. O da fase agora vai
+   rotulado `NÚMERO INTERNO, NÃO DIGA`.
+
+A lição vale além destes dois: **quando o contexto oferece dois números
+parecidos, o modelo escolhe pela posição, não pelo sentido.** Ou só um entra, ou
+o outro precisa dizer, nele mesmo, que não é para sair.
+
+#### Dívida conhecida: repo e produção podem divergir em comentários
+
+Para caber no deploy manual, alguns comentários foram encurtados nos arquivos
+enviados à `dom-contexto`. O comportamento é o que foi testado, mas trechos de
+comentário podem diferir do arquivo do repositório. Reconciliar quando o
+`SUPABASE_PAT` existir — a raiz é a mesma: **quatro transcrições manuais da
+mesma função num único dia**, cada uma com risco de erro, que o deploy
+automático elimina.
