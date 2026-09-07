@@ -22,7 +22,7 @@
  */
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { FileText, Mail, Search, ClipboardList, Landmark, AlertTriangle, MessagesSquare } from 'lucide-react';
+import { FileText, Mail, Search, ClipboardList, Landmark, AlertTriangle, MessagesSquare, UserX } from 'lucide-react';
 
 /** O que a dom_contexto_processual devolve e a dom-rascunho grava em contexto_usado. */
 export interface ContextoUsado {
@@ -39,7 +39,11 @@ export interface ContextoUsado {
       categoria?: string | null; origem?: string | null; esfera?: string | null;
       do_email?: boolean | null; email_em?: string | null;
     }> | null;
-    documentos?: Array<{ titulo?: string | null; data?: string | null; resumo?: string | null }> | null;
+    // `peca` é a chave que a RPC emite. `titulo` ficou aqui porque a interface
+    // antiga dizia isso e o painel lia isso — e por isso toda peça aparecia
+    // como "sem título" na tela, com o nome dela guardado o tempo todo em
+    // `peca`. Leem-se as duas: os rascunhos já gravados não mudam.
+    documentos?: Array<{ peca?: string | null; titulo?: string | null; data?: string | null; resumo?: string | null }> | null;
   }> | null;
   requerimentos_inss?: Array<{
     numero?: string | null; servico?: string | null; status?: string | null;
@@ -50,6 +54,20 @@ export interface ContextoUsado {
     proximo_passo?: string | null; quando?: string | null; status?: string | null;
   } | null;
   tem_vinculo?: boolean | null;
+  /**
+   * COMO a RPC achou a ficha do cliente — ou por que nao achou.
+   *
+   * Existe porque "(0)" respondia duas perguntas opostas com o mesmo número:
+   * "o processo não andou" e "não sei de quem é este grupo". Quem revisa lê as
+   * duas como a primeira, e foi assim que o Caso 09 gerou resposta sem uma
+   * linha do processo — 3 movimentações, 18 peças lidas e 36 atividades
+   * existiam no banco naquele momento.
+   */
+  vinculo?: {
+    fonte?: 'ponte' | 'cadastro_do_lead' | null;
+    fichas_no_grupo?: number | null;
+    ambiguo?: boolean | null;
+  } | null;
 }
 
 const dataBR = (v?: string | null) => {
@@ -100,6 +118,40 @@ function Vazio({ children }: { children: React.ReactNode }) {
   return <p className="text-[11px] text-muted-foreground italic">{children}</p>;
 }
 
+/**
+ * A FICHA NÃO FOI ENCONTRADA — e isso não é a mesma coisa que "nada aconteceu".
+ *
+ * Sem este aviso o painel mostrava "(0)" nos dois casos, e quem revisa lia o
+ * "(0)" como processo parado. Foi o que houve no Caso 09 em 07/09/2026: o
+ * grupo tinha a ficha no cadastro (`leads.whatsapp_group_id`) mas não na ponte
+ * (`lead_whatsapp_groups`), a RPC só olhava a ponte, e a resposta saiu sem as
+ * 3 movimentações, as 18 peças lidas e as 36 atividades que estavam no banco.
+ *
+ * O aviso diz o que FAZER, não só que deu errado: cada caso tem um conserto
+ * diferente, e nenhum deles é a máquina escolher uma ficha no chute.
+ */
+function FichaNaoEncontrada({ fichas, ambiguo }: { fichas?: number | null; ambiguo?: boolean | null }) {
+  const n = typeof fichas === 'number' ? fichas : null;
+  return (
+    <div className="rounded border border-amber-300 bg-amber-50 p-2 space-y-1">
+      <p className="text-[11px] font-medium text-amber-900 flex items-start gap-1.5">
+        <UserX className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+        Não achei a ficha do cliente deste grupo. Nada do processo entrou no prompt.
+      </p>
+      <p className="text-[10px] text-amber-800">
+        {ambiguo && n
+          ? `${n} fichas de cliente apontam para este grupo. O sistema não escolhe uma — seria sortear de quem é o processo. Abra o grupo e ligue-o à ficha certa.`
+          : n === 0
+            ? 'Nenhuma ficha aponta para este grupo. Cadastre o cliente ou ligue o grupo à ficha que já existe.'
+            : 'O vínculo entre este grupo e a ficha do cliente não foi resolvido. Ligue o grupo à ficha para o assessor enxergar o caso.'}
+      </p>
+      <p className="text-[10px] text-amber-800">
+        Os "(0)" abaixo são consequência disso — não são prova de que o processo está parado.
+      </p>
+    </div>
+  );
+}
+
 export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null | undefined }) {
   if (!contexto) {
     return (
@@ -122,12 +174,24 @@ export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null 
 
   const soDoEmail = andamentos.length > 0 && andamentos.every(a => a.origem === 'email_push');
 
+  // `tem_vinculo === false` é afirmação da RPC, não ausência de dado: rascunho
+  // antigo, gravado antes desta chave existir, traz `undefined` e não dispara o
+  // aviso — não dá para acusar falta de ficha em contexto que nunca a mediu.
+  const semFicha = contexto.tem_vinculo === false;
+
   return (
     <div className="space-y-3 rounded border p-2.5 bg-muted/30">
       <p className="text-[11px] text-muted-foreground">
         O que entrou no prompt. A ligação entre cada fato e a frase da resposta é sua —
         aqui não há palpite da máquina sobre si mesma.
       </p>
+
+      {semFicha && (
+        <FichaNaoEncontrada
+          fichas={contexto.vinculo?.fichas_no_grupo}
+          ambiguo={contexto.vinculo?.ambiguo}
+        />
+      )}
       {/* A conversa do grupo TAMBÉM entra no prompt, e de propósito não é copiada
           para cá: ela já existe inteira, ao vivo, no botão logo abaixo. Guardar
           uma segunda cópia só criaria duas versões da mesma conversa para
@@ -142,7 +206,9 @@ export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null 
       <Secao icone={<ClipboardList className="h-3.5 w-3.5" />}
              titulo={`Movimentação (${andamentos.length})`}>
         {andamentos.length === 0 ? (
-          <Vazio>Nenhuma movimentação entrou. A resposta não pode afirmar que algo andou.</Vazio>
+          <Vazio>{semFicha
+            ? 'Não entrou porque a ficha do cliente não foi encontrada — e não porque o processo esteja parado.'
+            : 'Nenhuma movimentação entrou. A resposta não pode afirmar que algo andou.'}</Vazio>
         ) : (
           <>
             {soDoEmail && (
@@ -176,14 +242,23 @@ export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null 
              titulo={`Documento lido (${documentos.length})`}>
         {documentos.length === 0 ? (
           <Vazio>
-            Nenhuma peça foi lida. A resposta não pode citar conteúdo de documento —
-            {soDoEmail ? ' e em processo administrativo não há peça mesmo.' : ' se citar, é invenção.'}
+            {semFicha ? (
+              'Nenhuma peça entrou porque a ficha do cliente não foi encontrada. Pode haver peça lida no processo — o assessor é que não chegou até ela.'
+            ) : (
+              <>
+                Nenhuma peça foi lida. A resposta não pode citar conteúdo de documento —
+                {soDoEmail ? ' e em processo administrativo não há peça mesmo.' : ' se citar, é invenção.'}
+              </>
+            )}
           </Vazio>
         ) : (
           <ul className="space-y-1.5">
             {documentos.map((d, i) => (
               <li key={i} className="text-[11px] border-l-2 border-muted-foreground/30 pl-2">
-                <p className="font-medium">{dataBR(d.data) || 'sem data'} · {d.titulo || 'sem título'}</p>
+                {/* `peca` primeiro: é a chave que a RPC emite. Lendo só `titulo`,
+                    como era antes, toda peça saía como "sem título" com o nome
+                    guardado ao lado. `titulo` fica de reserva e não custa nada. */}
+                <p className="font-medium">{dataBR(d.data) || 'sem data'} · {d.peca || d.titulo || 'sem título'}</p>
                 {d.resumo && <p className="text-muted-foreground">{d.resumo}</p>}
               </li>
             ))}
@@ -214,7 +289,9 @@ export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null 
       {/* ── Atividade anterior ────────────────────────────────────────── */}
       <Secao icone={<ClipboardList className="h-3.5 w-3.5" />} titulo="Atividade anterior da equipe">
         {!atv ? (
-          <Vazio>Nenhuma atividade anterior. A resposta não sabe o que a equipe já combinou.</Vazio>
+          <Vazio>{semFicha
+            ? 'A atividade não entrou porque a ficha do cliente não foi encontrada — pode existir e não ter sido lida.'
+            : 'Nenhuma atividade anterior. A resposta não sabe o que a equipe já combinou.'}</Vazio>
         ) : (
           <div className="text-[11px] border-l-2 border-muted-foreground/30 pl-2 space-y-0.5">
             <p className="font-medium">{atv.titulo || 'sem título'}</p>
