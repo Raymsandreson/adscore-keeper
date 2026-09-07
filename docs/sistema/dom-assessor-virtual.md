@@ -1332,3 +1332,88 @@ peça 110 e baratearia todas as outras.
 Não foi feito: muda o contrato do JSON, mexe em `jm_documento_leitura.cronograma`
 e em quem consome — é decisão de desenho, não conserto de bug. Fica medido e
 anotado.
+
+### O cronograma passa a vir como REGRA, e o banco expande
+
+Subir o teto de 8.192 para 32.768 destravou a maioria, mas cinco peças
+continuaram estourando — e o diagnóstico gravado mostrou por que **teto nenhum
+resolveria**:
+
+```
+finishReason=MAX_TOKENS  pensamento=22917  saida=9835  entrada=9576
+```
+
+**22.917 tokens só de raciocínio.** O pensamento cresce junto com a
+complexidade da peça e disputa o mesmo orçamento da resposta. É corrida
+perdida: cada teto novo é comido pelo raciocínio da peça seguinte.
+
+**O erro não era de limite, era de desenho.** Um cronograma definido por regra —
+"464 parcelas mensais de R$ 1.736,57 a partir de 05/06/2025" — estava sendo
+materializado linha a linha por um LLM. É pedir que alguém escreva "1, 2, 3…
+464" à mão em vez de dizer "de 1 a 464". Caro, lento, e sujeito a erro de conta.
+
+**O desenho novo:** o modelo devolve a regra em `cronograma_regra`, e o gatilho
+`jm_leitura_expande_cronograma` a expande em `cronograma` — a mesma lista, no
+mesmo formato de sempre.
+
+| | |
+| --- | --- |
+| `jm_documento_leitura.cronograma_regra` | `{n_parcelas, valor_parcela, primeira_data, periodicidade, beneficiario}` |
+| `jm_expandir_cronograma_regra(jsonb)` | a expansão, pura |
+| gatilho `jm_leitura_expande_cronograma` | preenche `cronograma` **só quando está vazio** |
+
+**Por que no banco e não na edge function:** assim **nada que hoje lê
+`cronograma` precisa mudar**. `cronogramaParcelas.ts`, a tela de mudanças da
+peça, o financeiro e as 179 leituras que já têm cronograma seguem idênticos.
+Muda só quem escreve a coluna.
+
+**Parcela irregular continua enumerada.** A regra serve para a série regular,
+que é justamente a que fica grande. Se vierem os dois, o enumerado vence — a
+peça manda mais que a regra.
+
+**Teto de 1.200 parcelas** (100 anos de pensão mensal). Acima disso a regra é
+recusada em vez de gerar lista absurda: número improvável é detector, não
+licença para materializar.
+
+**Periodicidade desconhecida gera parcelas SEM data**, nunca data chutada. Data
+errada em parcela é pior que data ausente — uma some do radar, a outra cobra no
+dia errado.
+
+Testado em transação com rollback, oito casos:
+
+| caso | resultado |
+| --- | --- |
+| 464× mensal a partir de 05/06/2025 | 464 parcelas, última em 05/01/2064 |
+| começa em 31/01 | 31/01 → 28/02 → **31/03** (não fica preso no 28) |
+| 11× quinzenal | 10/03 → 25/03 |
+| periodicidade desconhecida | parcelas com valor, **sem data** |
+| sem data na regra | parcelas sem data |
+| 5.000 parcelas | recusado, lista vazia |
+| `n_parcelas: "varias"` | recusado |
+| nulo / não-objeto | recusado |
+
+**Verificado nas cinco peças que estouravam**, todas leram:
+
+| peça | resultado |
+| --- | --- |
+| 1646 | ACÓRDÃO — **367 parcelas** mensais, por regra |
+| 8974 | DECISÃO — **612 parcelas** mensais, por regra |
+| 11770 | SENTENÇA DE LIQUIDAÇÃO — **522 parcelas** mensais, por regra |
+| 25652 | **360 parcelas** mensais, por regra |
+| 110 | SENTENÇA DE LIQUIDAÇÃO — leu por outro caminho, ver abaixo |
+
+**A peça 110 leu melhor, e não pelo cronograma.** Ela agora devolve
+`SENTENCA_LIQUIDACAO`, R$ 1.051.696,54 de condenação, **6 partes**, **18
+verbas** e `meses_pensionamento: 504` — o resumo diz "pensão mensal de
+R$ 1.736,57 dividida entre os sucessores do falecido até que completasse 73
+anos". O modelo classificou a pensão como VERBA com duração, não como
+cronograma de acordo — que é defensável e provavelmente mais correto. Antes ela
+enfiava a pensão em `cronograma` (464 linhas) e explodia.
+
+**Fica em aberto, e é decisão de quem revisa:** pensão de 504 meses é ou não é
+para virar parcela na carteira? Se for, `meses_pensionamento` + valor da verba
+PENSAO_MENSAL já são uma regra — a mesma regra em outra roupa — e daria para
+expandir a partir dela. Não fiz: é escolha de negócio, não conserto de bug.
+
+**Resultado da família inteira: 5 → 0.** Das 22 travadas restantes, nenhuma é
+mais por teto de token.

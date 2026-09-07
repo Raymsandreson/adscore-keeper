@@ -34,7 +34,7 @@ const corsHeaders = {
 const MODEL = 'gemini-2.5-flash';
 const BUCKET = 'jm-autos';
 
-const PROMPT_VERSAO = "v3-json-plano-2026-08-20";
+const PROMPT_VERSAO = "v4-cronograma-por-regra-2026-09-07";
 
 const SYSTEM_PROMPT = `Você lê UMA peça de processo trabalhista/cível brasileiro e devolve DUAS coisas:
 (A) o que ela diz sobre DINHEIRO QUE ANDOU e sobre o ESTADO da execução;
@@ -105,15 +105,30 @@ O objeto começa assim: {"especie": ..., "valor": ..., "partes": [...], ...}
   * "vitima_idade": número ou null.
 
 ═══ D — cronograma, quando a peça o estabelecer ═══
-- "cronograma": lista de parcelas que a peça FIXA (acordo parcelado, pensão, plano de pagamento).
-  Vazia se a peça não estabelece cronograma. Cada item:
+São DOIS campos, e você usa UM deles. Escolha pela forma do plano de pagamento.
+
+- "cronograma_regra": use quando as parcelas são TODAS IGUAIS e em intervalo REGULAR
+  ("120 parcelas mensais de R$ 1.736,57 a partir de 05/06/2025"). Objeto:
+  * "n_parcelas": número total de parcelas.
+  * "valor_parcela": valor de CADA parcela.
+  * "primeira_data": "AAAA-MM-DD" do primeiro vencimento, ou null se a peça não diz.
+  * "periodicidade", TAXATIVO: SEMANAL | QUINZENAL | MENSAL | BIMESTRAL | TRIMESTRAL | SEMESTRAL | ANUAL
+  * "beneficiario": nome da parte, ou null se for global.
+  NESTE CASO deixe "cronograma" como lista VAZIA. NÃO escreva as parcelas uma a uma —
+  o sistema as gera a partir da regra, sem erro de conta. Uma pensão de 40 anos são
+  480 parcelas: escrevê-las é desperdício e trunca a resposta.
+
+- "cronograma": use quando as parcelas NÃO seguem uma regra única — valores diferentes
+  entre si, datas salteadas, entrada maior seguida do resto, ou uma parcela por parte
+  com valores distintos. Lista, cada item:
   * "n_parcela": número.
   * "data_prevista": "AAAA-MM-DD" ou null.
   * "valor": número ou null.
   * "beneficiario": nome da parte, ou null se for global.
-  * Se a peça diz "N parcelas de R$ X, vencendo todo dia D a partir de <mês>", GERE as N
-    entradas com as datas calculadas. Se diz o total e o número de parcelas sem as datas,
-    gere as N entradas com data_prevista null.
+
+- Sem cronograma nenhum: "cronograma": [] e "cronograma_regra": null.
+- Na dúvida entre os dois, use "cronograma_regra" se der para descrever o plano com
+  uma frase do tipo "N parcelas de X, a cada <período>, a partir de <data>".
 
 ═══ REGRAS DURAS ═══
 1. NÃO INVENTE. Se a peça não traz o dado, use null / lista vazia. Preferir null a chutar é o comportamento CORRETO e esperado.
@@ -360,6 +375,13 @@ Deno.serve(async (req: Request) => {
             // token gerado, não pelo limite. Se ainda assim estourar, o
             // usageMetadata gravado no erro dirá quanto foi pensamento, e aí sim
             // se decide capar — com número na mão.
+            //
+            // Teto sozinho não basta, e está medido: numa peça o pensamento
+            // sozinho consumiu 22.917 tokens. O raciocínio cresce junto com a
+            // complexidade e disputa o mesmo orçamento — por isso o cronograma
+            // longo passou a vir como REGRA (bloco D do prompt), expandida no
+            // banco. Encurtar a resposta é o único conserto que a peça longa
+            // aceita.
             generationConfig: {
               responseMimeType: 'application/json',
               temperature: 0,
@@ -430,6 +452,16 @@ Deno.serve(async (req: Request) => {
       partes: Array.isArray(lido.partes) ? lido.partes : [],
       processo: (lido.processo && typeof lido.processo === 'object') ? lido.processo : null,
       cronograma: Array.isArray(lido.cronograma) ? lido.cronograma : [],
+      // A regra da série regular. Quem a expande em `cronograma` é o gatilho
+      // jm_leitura_expande_cronograma, no banco — e só quando `cronograma` vem
+      // vazio, porque parcela enumerada pela peça manda mais que regra.
+      // Assim nada que hoje lê `cronograma` precisa mudar: a coluna continua
+      // guardando a mesma lista, muda só quem a escreve.
+      cronograma_regra:
+        (lido.cronograma_regra && typeof lido.cronograma_regra === 'object'
+          && !Array.isArray(lido.cronograma_regra))
+          ? lido.cronograma_regra
+          : null,
       prompt_versao: PROMPT_VERSAO,
       // Guarda o JSON cru: se o prompt mudar, dá para reprocessar sem pagar de novo.
       texto_extraido: JSON.stringify(lido),
@@ -455,6 +487,7 @@ Deno.serve(async (req: Request) => {
       verbas: (registro.partes as { verbas?: unknown[] }[])
         .reduce((n, p) => n + (p?.verbas?.length ?? 0), 0),
       cronograma: (registro.cronograma as unknown[]).length,
+      cronograma_por_regra: registro.cronograma_regra !== null,
     });
   } catch (e) {
     return json({ success: false, error: String((e as Error)?.message || e).slice(0, 300) });
