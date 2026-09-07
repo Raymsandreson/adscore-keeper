@@ -403,7 +403,18 @@ Deno.serve(async (req: Request) => {
       // JSON.parse estoura no meio. Ler todas as partes é o jeito certo de ler
       // a resposta, qualquer que seja a causa do corte.
       const bruto = partes.map((p) => p?.text ?? '').join('');
-      const fim = String(bruto).slice(-120).replace(/\s+/g, ' ');
+
+      // `fim` mostra ONDE a resposta cortou, e isso é o que diagnostica. Mas o
+      // que está ali é conteúdo de peça judicial: nome de parte, beneficiário,
+      // valor. Gravar isso cru em `jm_documentos.leitura_erro` — que aparece na
+      // vw_jm_leitura_travada — é vazar dado de cliente para uma coluna de log.
+      // Já aconteceu: um erro guardado trazia "beneficiario": "<nome de uma
+      // pessoa real>". Os valores de texto viram reticências; as chaves e os
+      // números ficam, que é o que diz "cortou dentro do cronograma, na parcela
+      // 464".
+      const semTextoDePeca = (t: string) =>
+        t.replace(/:\s*"(?:[^"\\]|\\.)*"?/g, ': "…"');
+      const fim = semTextoDePeca(String(bruto).slice(-160)).slice(-120).replace(/\s+/g, ' ');
       const uso = resposta?.usageMetadata ?? {};
       diagnostico =
         `finishReason=${candidato?.finishReason ?? '(sem)'}` +

@@ -1494,3 +1494,71 @@ consulta** — cerca de **119 créditos** para os 6 processos.
 E elas não estão sozinhas. A base inteira tem **369 arquivos ruins em 61
 processos**: 223 com `HTTP_410`, 139 com `HTTP_404` e as 7 truncadas. Re-consultar
 todos seria da ordem de **1.200 créditos**.
+
+### Review dos consertos de 07/09 — cinco achados, três meus
+
+O review do range `9730085^..HEAD` (7 commits) achou cinco defeitos. **Três
+foram introduzidos hoje, por mim, nos próprios consertos.** Vale registrar
+porque o padrão se repete: fechar um silêncio abre outro furo se ninguém olhar.
+
+**1. Laço infinito de download — o mais caro.** `jm_esc_arquivar_tick` devolve à
+fila, a cada 6h, todo erro que não casa `^(HTTP_4|NAO_PDF)`. Os erros que criei
+hoje — `PDF_SEM_FIM` e `TRUNCADO` — não casam: as 7 peças truncadas na origem
+seriam re-baixadas **4× por dia, para sempre**, falhando sempre igual.
+
+Não bastava somar `PDF_SEM_FIM` à lista de erro permanente: a API do Escavador
+**não manda Content-Length** (medido, `declarado=?` nas 7), então um corte
+genuinamente transitório também chega como `PDF_SEM_FIM` — e seria parqueado
+para sempre. Por isso a solução é **teto, não lista**: `download_tentativas`
+com limite de 3, o mesmo número da fila de solicitações. Vale para toda a
+família de erro passageiro, não só a minha: 5xx e falha de upload também
+deixaram de girar sem fim.
+
+**2. A regra recusada era silenciosa.** `jm_expandir_cronograma_regra` devolve
+`[]` quando a regra não presta ou passa de 1.200 parcelas — e o cabeçalho que
+eu mesmo escrevi prometia "recusada **com aviso**". Não havia aviso: a leitura
+ficava idêntica a "peça sem cronograma". Prometi detector e entreguei filtro,
+que é o que a regra 8 do CLAUDE.md proíbe. Agora
+`vw_jm_cronograma_regra_recusada` lista os casos com o motivo classificado.
+
+**3. Dado de cliente numa coluna de log.** O campo `fim=` do diagnóstico
+gravava os últimos 120 caracteres crus da resposta do Gemini em
+`jm_documentos.leitura_erro` — que aparece na `vw_jm_leitura_travada`. Isso é
+conteúdo de peça: nome de parte, beneficiário, valor. **E já tinha acontecido**:
+um erro guardado trazia `"beneficiario": "<nome de uma pessoa real>"`. Violação
+direta do princípio 1 de cibersegurança do CLAUDE.md.
+
+Agora os valores de texto viram reticências e as chaves e números ficam — que é
+o que diagnostica ("cortou dentro do cronograma, na parcela 464"). Testado em
+cinco casos, incluindo o vazamento real, nome cortado no meio (aspas abertas) e
+aspas escapadas dentro do texto:
+
+| entrada | saída |
+| --- | --- |
+| `"beneficiario": "ELOIZZI PIETRA CAVALCANTE SOARES" }, { "n_parcela": 39` | `"beneficiario": "…" }, { "n_parcela": 39` |
+| `"descricao": "Retroativo Pensão Mensal (Abril/2025…)", "valor": 3` | `"descricao": "…", "valor": 3` |
+| `"nome": "EMPRESA \"X\" LTDA", "valor": 5` | `"nome": "…", "valor": 5` |
+
+Exposição real hoje: **1 linha** com `leitura_erro`, sem texto de peça — as que
+tinham nome foram limpas quando as peças foram lidas. O conserto é prospectivo.
+
+**4. A migration não se reproduzia.** `20260907160000` criava a tabela de
+backup e nunca a preenchia — o INSERT eu tinha rodado à mão. Num banco limpo a
+comparação não existiria. Entrou na migration.
+
+**5. Duas cópias do `esc-autos` no repo, divergentes em 309 linhas.** Só
+`supabase/functions/esc-autos/index.ts` (a que bate byte a byte com o deploy
+v32, conferido) recebeu a conferência de `%%EOF`. A cópia em
+`_external/esc-autos/index.ts` é uma variante tipada que ficou para trás —
+**deployar dali reverteria o conserto em silêncio.** Não apaguei arquivo sem
+autorização; pus um aviso no topo dizendo que não é a que está no ar. **Qual das
+duas deve sobreviver é decisão do dono do repo.**
+
+### Re-consulta dos 6 processos
+
+Autorizada e disparada. As 11 peças vêm de 6 processos, reabertos com
+`jm_esc_reabrir_por_cnj` (status `A_ENVIAR`, pegos pela `jm-esc-rotina` a cada
+20 min). Custo esperado: ~19,87 créditos por consulta × 6 ≈ **119 créditos**.
+
+Zerei `download_tentativas` das peças desses 6 antes de reabrir, para que os
+links novos tenham as três chances cheias.
