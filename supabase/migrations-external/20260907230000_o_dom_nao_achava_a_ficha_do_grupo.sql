@@ -107,6 +107,13 @@ declare
     select count(*) as n
     from leads l
     where l.deleted_at is null
+      -- `whatsapp_group_id is not null` NAO e redundante: e o predicado do
+      -- indice parcial idx_leads_jid_curto_do_grupo. Sem esta linha o planner
+      -- nao prova que o indice cobre a consulta e volta para a varredura de
+      -- 19.865 linhas. Medido em 07/09/2026, mesma consulta:
+      --   sem a linha  18,064 ms  2.089 buffers
+      --   com a linha   0,145 ms      3 buffers
+      and l.whatsapp_group_id is not null
       and dom_jid_curto(l.whatsapp_group_id) = dom_jid_curto(p_group_jid)
   ),
   g as (
@@ -126,6 +133,7 @@ declare
              2, l.created_at
       from leads l
       where l.deleted_at is null
+        and l.whatsapp_group_id is not null   -- idem: predicado do indice
         and dom_jid_curto(l.whatsapp_group_id) = dom_jid_curto(p_group_jid)
         and (select n from fichas) = 1
     ) s
@@ -180,11 +188,33 @@ comment on function public.dom_contexto_processual(text) is
   'atividade, só quando ainda não venceu. Ignora atividade com deleted_at.';
 
 -- ── 3. O índice que paga a varredura ─────────────────────────────────────────
--- NÃO roda junto: CONCURRENTLY não vive dentro de transação, e criar índice em
--- tabela de 23.984 linhas é decisão do dono. Rode à parte, fora de migration:
+-- Rode À PARTE, fora de migration: CONCURRENTLY não vive dentro de transação.
+-- Aplicado em 07/09/2026 com autorização do dono, índice válido (indisvalid).
 --
 --   create index concurrently if not exists idx_leads_jid_curto_do_grupo
 --     on public.leads (dom_jid_curto(whatsapp_group_id))
 --     where whatsapp_group_id is not null and deleted_at is null;
 --
--- Sem ele a RPC continua correta, só paga ~40 ms a mais por grupo.
+-- ARMADILHA, e ela mordeu na primeira tentativa: com o índice criado o planner
+-- CONTINUOU varrendo — 18,064 ms, 2.089 buffers, `idx_leads_assigned_to`. O
+-- índice é PARCIAL, e a consulta não afirmava `whatsapp_group_id is not null`;
+-- `dom_jid_curto(x) = 'algo'` não prova `x is not null` para o planner. Com a
+-- linha acrescentada (está nas duas consultas a `leads`, acima): 0,145 ms, 3
+-- buffers, `Index Scan using idx_leads_jid_curto_do_grupo`. Quem mexer nessas
+-- duas consultas e apagar a linha "redundante" devolve a varredura sem
+-- perceber — o resultado continua certo, só fica 124x mais lento.
+--
+-- Rollback do índice: drop index concurrently idx_leads_jid_curto_do_grupo;
+
+-- ── 4. Conferido em dados reais (07/09/2026, depois de aplicar) ──────────────
+--   Caso 09 (120363405106042327, sem ponte, 1 ficha)
+--     tem_vinculo true, fonte cadastro_do_lead, 1 processo,
+--     3 andamentos, 6 documentos, 4 decisões, atividade
+--     "Manifestar sobre o não pagamento da pensão", parado_dias 12.
+--   Não-regressão: 15 grupos COM ponte, a versão nova contra a
+--     dom_contexto_processual_antes_vinculo_por_cadastro — 0 diferenças em
+--     lead_id, processos e ultima_atividade; 15/15 resolvendo pela ponte.
+--   Sem ponte, por número de fichas:
+--     1 ficha  → tem_vinculo true,  fonte cadastro_do_lead, contexto cheio
+--     2+ fichas→ tem_vinculo false, ambiguo true,  contexto vazio (correto)
+--     0 fichas → tem_vinculo false, ambiguo false, contexto vazio (correto)
