@@ -1049,3 +1049,788 @@ decisão do dono do caso.
 
 O erro da migration foi a informação: sem ele, ninguém saberia que as duas
 eram a mesma.
+
+### As duas fichas duplicadas viraram uma — e o que a fusão revelou
+
+Resolvidos os dois casos que estavam em aberto. Nenhum dos dois era descarte:
+nas duas vezes a ficha "errada" carregava algo que a "certa" não tinha.
+
+**Caso 1 — `0056732-43.2026.4.05.8300`, cliente único, duas fichas.**
+
+| | `13d685de` "BPC DEFICIENTE" (04/08) | `d55c896e` "PREV 174" (20/08) |
+| --- | --- | --- |
+| dados do processo | TRF5, 15ª Vara Federal, R$ 29.178, 8 movimentações | nenhum |
+| POP / etapa | POP-BPC, marco de ajuizamento | nenhum |
+| atividades | 3 | 1 |
+| **intimações por e-mail** | **0** | **3 — uma delas um PRAZO** |
+
+A ficha "vazia" não era vazia: era para onde o push de e-mail vinha mandando as
+intimações. "Publicado Intimação para Emendar em 31/08/2026" caiu na casca —
+sem POP, sem etapa, sem histórico — enquanto quem acompanha o caso olhava a
+outra. Fundidas: a que fica tem agora 4 atividades e 11 linhas de feed, e o
+rótulo interno virou parte do título (`BPC DEFICIENTE — PREV 174`) para a
+equipe não perder o índice que usa.
+
+**Caso 2 — `1505819`: eram três fichas, não duas.**
+
+A terceira (`4ac5e67f`, outro cliente) **não** é duplicata — é litisconsórcio, e
+a trava permite de propósito. Das duas do mesmo cliente, a de CNJ correto
+(`ab73a87e`) tinha os dados mas nenhum responsável e título "Processo"; a do
+CNJ torto (`a3d2f961`, 21 dígitos) tinha o título bom, o responsável e duas
+atividades — **uma ainda pendente**. Por isso fusão: a que fica herdou título,
+responsável e as duas atividades.
+
+**O `process_title` também carregava o erro.** É campo desnormalizado: o card da
+atividade mostra aquele texto, não a ficha. Mover só o `process_id` deixaria
+`1505819-97.2025.8.26.03788` vivo na tela. Mesma coisa com `numero_cnj` e
+`processo_titulo` no feed.
+
+**E a última movimentação não se recalcula sozinha.**
+`lead_processes_avanca_ultima_movimentacao` roda `AFTER INSERT` em
+`process_updates`. Mover linha é UPDATE: o gatilho não dispara. Sem recalcular
+à mão, a ficha ficaria com a data de antes da fusão.
+
+Tudo reversível: `zz_fusao_fichas_bkp_20260907` guarda as 10 linhas inteiras em
+jsonb com o `process_id` antigo. As fichas saíram por `deleted_at`, não por
+`delete` — a tabela tem `trg_lead_processes_no_hard_delete` justamente para isso.
+
+### O buraco do 21º dígito, fechado
+
+`a3d2f961` foi criada em **25/08, depois** da trava anti-duplicata (24/08).
+Passou porque a trava só age com exatamente 20 dígitos:
+
+```
+if v_cnj is null or length(v_cnj) <> 20 then return new; end if;
+```
+
+Com 21 ela é outro número. E a validação de 06/09 tinha o mesmo ponto cego —
+essa ficha torta entraria de novo hoje, igualzinha.
+
+A regra nova confere pela **forma**, não pelo tamanho: número escrito na máscara
+do CNJ (`^[0-9]+-[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$`) tem que ser um CNJ de
+verdade. Fora dessa máscara, nada muda — o procedimento do MP
+`02.16.0079.0389620/2026-57` tem 21 dígitos e é legítimo.
+
+Conferido contra a base antes de virar trava: **1.322** fichas com cara de CNJ
+passam, **1** reprova (o typo), **413** de outro formato não são tocadas.
+Testado nos oito casos que importam:
+
+| entrada | resultado |
+| --- | --- |
+| `1505819-97.2025.8.26.03788` | recusa: "tem 21 dígitos, e CNJ tem 20" |
+| `02.16.0079.0389620/2026-57` (MP) | aceita |
+| `00108807620255030160` | vira `0010880-76.2025.5.03.0160` |
+| `0000240-19.2025.5.11.0152` | recusa: "o correto seria 16, e não 19" |
+| `1004690362` (NB) | aceita |
+| `150581-97.2025.8.26.0378` (1 dígito a menos) | recusa |
+| `0056732-43.2026.4.05.8300` | aceita |
+| `Não protocolado` | recusa |
+
+### O defeito estrutural que fundir ficha NÃO resolve
+
+`supabase/functions/sync-email-push/index.ts:167` monta o índice assim:
+
+```ts
+porChave.set(chaveIdentificador(cls.tipo, cls.digitos), p)
+```
+
+percorrendo as fichas em `order by id`. Quando duas têm os mesmos dígitos, a
+segunda **sobrescreve a primeira em silêncio**. Não há erro, não há aviso: uma
+das duas simplesmente deixa de existir para o push. Quem recebe a intimação é
+decidido por ordem de UUID.
+
+Medido em 07/09/2026, fichas vivas com dígitos repetidos:
+
+| | grupos | fichas |
+| --- | --- | --- |
+| mesmo cliente — duplicata de verdade, fundir resolve | 37 | 89 |
+| **clientes diferentes — litisconsórcio, fundir NÃO resolve** | **16** | **37** |
+
+Os 16 de litisconsórcio são o problema real: são dois clientes que legitimamente
+dividem o mesmo CNJ, e nunca vão virar uma ficha só. Hoje um dos dois não recebe
+intimação nenhuma.
+
+**Não é teoria.** Em `0010657-76.2024.5.18.0052`, dois clientes:
+
+| ficha | intimações | primeira | última |
+| --- | --- | --- | --- |
+| `28add5ed` | 12 | 12/08 | **22/08** |
+| `3be53d75` | 10 | **30/08** | 04/09 |
+
+Disjuntas no tempo, sem uma única sobreposição. A ficha do primeiro cliente
+**parou de receber** e ninguém foi avisado. (Por que virou em 30/08 é hipótese —
+provavelmente a segunda ficha só ganhou o número naquele momento, e o índice
+pula ficha sem número. O corte em si está medido.)
+
+O conserto é no código, não no dado: o índice precisa ser um-para-muitos e
+espalhar a movimentação para todas as fichas do CNJ. **Ainda não feito** — é
+mudança no pipeline do push e pede seu próprio ciclo de leitura e teste.
+
+**Também ainda aberto:** os 37 grupos de duplicata de verdade (89 fichas). Cada
+um pede a mesma leitura caso a caso feita aqui — qual ficha tem o dado e qual
+tem o cuidado nem sempre é a mesma.
+
+### A leitura de peça passa a dizer por que falhou
+
+Em 07/09/2026, **73 peças baixadas nunca viraram leitura** — a mais antiga
+parada desde 12/07 — e nenhuma delas deixou rastro. Três camadas de silêncio
+empilhadas:
+
+1. `jm-ler-peca` devolve **HTTP 200 em toda falha**, com `{success:false}` no
+   corpo. Do ponto de vista do banco, deu certo.
+2. `jm_ler_documento` chama com `perform net.http_post(...)` — **descarta a
+   resposta**. Ninguém lê o corpo.
+3. `jm_documentos` não tinha onde guardar erro de leitura. Só
+   `leitura_disparada_em`, que diz que saiu, nunca que chegou.
+
+O tick redispara a cada 24h. Resultado: peça falhando desde julho, pagando uma
+chamada de Gemini por tentativa, sem uma linha dizendo por quê. É o interfone
+que toca e ninguém atende — quem aperta o botão conclui que atenderam.
+
+**O motivo real**, capturado do `net._http_response` antes de expirar (TTL ~6h):
+
+```
+{"success":false,"documento_id":30,"error":"leitura: Expected ',' or '}' after
+ property value in JSON at position 6796"}
+{"success":false,"documento_id":110,"error":"leitura: Unterminated string in
+ JSON at position 818"}
+```
+
+O JSON que o Gemini devolve chega cortado e o `JSON.parse` estoura.
+
+**Não é teto de token.** Já está em `maxOutputTokens: 8192`, e corte na posição
+818 são ~200 tokens. Há peça de **uma página** entre as travadas. As duas
+coisas que diriam qual é a causa — `finishReason` e o número de `parts` — eram
+justamente as que o código descartava.
+
+**O que passou a existir:**
+
+| | |
+| --- | --- |
+| `jm_documentos.leitura_erro` | motivo da última falha, com o diagnóstico da resposta |
+| `jm_documentos.leitura_erro_em` | quando |
+| `jm_documentos.leitura_tentativas` | quantas vezes já custou uma chamada |
+| `vw_jm_leitura_travada` | a lista, com motivo e próxima tentativa |
+
+A `jm-ler-peca` agora escreve nessas colunas em **toda** falha do modo
+documento, e limpa quando a peça é lida — erro que fica depois de resolvido
+vira alarme falso, e alarme falso ninguém olha. O diagnóstico gravado tem a
+forma `finishReason=… partes=N chars=N fim="…"`.
+
+**Uma mudança além do combinado, declarada:** o código lia só `parts[0].text`.
+Passou a juntar todas as partes — ler a resposta inteira é o certo qualquer que
+seja a causa, e estava nas mesmas linhas.
+
+**E o registro desmentiu a hipótese na primeira rodada.** Disparadas três das
+travadas, o motivo gravado foi:
+
+| peça | páginas | diagnóstico |
+| --- | --- | --- |
+| 30 | — | `finishReason=MAX_TOKENS partes=1 chars=6796` |
+| 110 | 12 | `finishReason=MAX_TOKENS partes=1 chars=2579` |
+| 1604 | — | `finishReason=MAX_TOKENS partes=1 chars=3069` |
+
+**`partes=1` nas três** — não era resposta partida. Era teto de token mesmo, e
+o `fim=` gravado mostra onde: as três cortam dentro do `cronograma`, no meio de
+uma parcela (a peça 30 na parcela **39**). Pensão mensal e acordo longo geram
+uma lista enorme.
+
+E o número que fecha o caso: **`MAX_TOKENS` com 2.579 a 6.796 caracteres** —
+algo entre 600 e 1.700 tokens visíveis, contra um teto de 8.192. O resto do
+orçamento não foi para a resposta. `gemini-2.5-flash` é modelo com raciocínio,
+e os tokens de pensamento contam contra o mesmo `maxOutputTokens`.
+
+Ou seja: o comentário antigo no código estava certo no sintoma ("sem teto alto
+o Gemini corta no meio") e errado na conta — 8.192 nunca foram 8.192 de saída.
+
+**O que NÃO foi feito, de propósito:** não há teto de tentativas. Capar antes
+de saber a causa parqueia para sempre peça que voltaria a ler depois do
+conserto. O teto se decide depois, com o motivo na mão.
+
+**O modo anexo tem o mesmo `parts[0]`** (`processual_email_anexos`), e ali o
+efeito é pior: texto parcial não estoura, entra em silêncio como se fosse a
+transcrição inteira. Não mexi — é outro pipeline. Fica anotado.
+
+**Erro meu no caminho, registrado:** o primeiro deploy foi sem passar
+`verify_jwt`, cujo default do tool é `true`. A função é chamada pelo banco por
+pg_net **sem JWT** — ela tem autenticação própria por `x-jm-key`. A janela com
+`verify_jwt=true` durou 150 segundos e nenhuma peça chegou a ser disparada
+nela (conferido: zero linhas com `leitura_disparada_em` no período). Redeploy
+com `verify_jwt: false` restaurou a v21. **Todo deploy desta função tem que
+passar `verify_jwt: false` explicitamente.**
+
+### O teto de token que sufocava a resposta
+
+Com o motivo gravado (seção anterior), o conserto deixou de ser chute.
+`maxOutputTokens` subiu de **8.192 para 32.768**.
+
+**A conta que estava errada.** O comentário antigo no código dizia, corretamente,
+que sem teto alto o Gemini corta no meio. Só que 8.192 nunca foram 8.192 de
+resposta: `gemini-2.5-flash` raciocina antes de responder e **os tokens de
+pensamento contam contra o mesmo `maxOutputTokens`** ([Gemini API — Thinking](https://ai.google.dev/gemini-api/docs/thinking)).
+Medido nas travadas: `MAX_TOKENS` com **2.579 a 6.796 caracteres** de JSON
+visível — entre 600 e 1.700 tokens de saída dentro de um teto de 8.192. O resto
+foi pensamento.
+
+É contratar oito horas de serviço e o profissional gastar seis planejando: sobram
+duas de trabalho entregue. Não adiantava reclamar do trabalho — faltava hora.
+
+**Por que só subir o teto e NÃO desligar o raciocínio.** Dá para silenciar o
+pensamento com `thinkingConfig.thinkingBudget = 0`, e sairia mais barato. Mas
+isso muda como o modelo lê a peça, e as **9.091 leituras que já existem foram
+feitas com raciocínio** — misturar os dois regimes na mesma tabela é criar uma
+inconsistência que ninguém vai lembrar de explicar daqui a seis meses. Subir o
+teto corrige a causa medida sem mexer na qualidade. E teto alto não custa:
+paga-se pelo token gerado, não pelo limite.
+
+Há também relatos de que o `thinkingBudget` é ignorado em alguns casos
+([issue googleapis/python-genai#782](https://github.com/googleapis/python-genai/issues/782)),
+o que faria do "desligar" um conserto que não se pode confiar que pegou.
+
+**O que passou a ser gravado junto:** `pensamento=` (`thoughtsTokenCount`),
+`saida=` (`candidatesTokenCount`) e `entrada=` (`promptTokenCount`). Se ainda
+estourar, o erro diz quanto foi pensamento e quanto foi resposta — que é a
+diferença entre subir o limite de novo e capar o modelo.
+
+**E uma trava contra dado pela metade:** se `finishReason` vier `MAX_TOKENS`, a
+peça falha explicitamente mesmo que o JSON tenha feito parse. JSON cortado quase
+nunca parseia, mas quando parsear seria leitura incompleta gravada como se fosse
+inteira — no lugar exato onde alguém vai olhar valor de condenação.
+
+**Verificado em dado real**, nas três peças que falhavam:
+
+| peça | antes | depois |
+| --- | --- | --- |
+| 30 | cortava na parcela 39 | **leu** — SENTENÇA, **241 parcelas**, 3 partes, R$ 662.000 |
+| 1604 | cortava na parcela 6 | **leu** — ACORDO, **45 parcelas**, 3 partes, R$ 900.000 |
+| 110 | cortava na parcela ~6 | ainda falha, agora **na parcela 464** |
+
+E a peça 110 é o número que fecha o diagnóstico:
+
+```
+finishReason=MAX_TOKENS chars=59511 pensamento=7217 saida=25537 entrada=5447
+```
+
+**7.217 tokens de pensamento contra o teto antigo de 8.192** deixavam ~975 para
+a resposta — que é exatamente o que se via (2.579 caracteres). Não era o modelo
+falando demais; era o orçamento indo quase todo para o raciocínio antes de a
+resposta começar.
+
+### O que a peça 110 revelou, e que teto nenhum conserta
+
+Ela é uma pensão mensal com **mais de 464 parcelas** — décadas de pagamento
+mês a mês. O prompt manda gerar uma entrada por parcela ("GERE as N entradas
+com as datas calculadas"), então o modelo enumera as 464. São ~28 mil tokens só
+de `cronograma`, e a peça estoura qualquer teto razoável.
+
+O erro aqui não é de limite, é de desenho: **um cronograma definido por regra
+(valor, periodicidade, início, quantidade) está sendo materializado linha a
+linha pelo LLM**, que é o lugar mais caro e mais frágil possível para expandir
+uma progressão aritmética. Guardar a regra e expandir no banco resolveria a
+peça 110 e baratearia todas as outras.
+
+Não foi feito: muda o contrato do JSON, mexe em `jm_documento_leitura.cronograma`
+e em quem consome — é decisão de desenho, não conserto de bug. Fica medido e
+anotado.
+
+### O cronograma passa a vir como REGRA, e o banco expande
+
+Subir o teto de 8.192 para 32.768 destravou a maioria, mas cinco peças
+continuaram estourando — e o diagnóstico gravado mostrou por que **teto nenhum
+resolveria**:
+
+```
+finishReason=MAX_TOKENS  pensamento=22917  saida=9835  entrada=9576
+```
+
+**22.917 tokens só de raciocínio.** O pensamento cresce junto com a
+complexidade da peça e disputa o mesmo orçamento da resposta. É corrida
+perdida: cada teto novo é comido pelo raciocínio da peça seguinte.
+
+**O erro não era de limite, era de desenho.** Um cronograma definido por regra —
+"464 parcelas mensais de R$ 1.736,57 a partir de 05/06/2025" — estava sendo
+materializado linha a linha por um LLM. É pedir que alguém escreva "1, 2, 3…
+464" à mão em vez de dizer "de 1 a 464". Caro, lento, e sujeito a erro de conta.
+
+**O desenho novo:** o modelo devolve a regra em `cronograma_regra`, e o gatilho
+`jm_leitura_expande_cronograma` a expande em `cronograma` — a mesma lista, no
+mesmo formato de sempre.
+
+| | |
+| --- | --- |
+| `jm_documento_leitura.cronograma_regra` | `{n_parcelas, valor_parcela, primeira_data, periodicidade, beneficiario}` |
+| `jm_expandir_cronograma_regra(jsonb)` | a expansão, pura |
+| gatilho `jm_leitura_expande_cronograma` | preenche `cronograma` **só quando está vazio** |
+
+**Por que no banco e não na edge function:** assim **nada que hoje lê
+`cronograma` precisa mudar**. `cronogramaParcelas.ts`, a tela de mudanças da
+peça, o financeiro e as 179 leituras que já têm cronograma seguem idênticos.
+Muda só quem escreve a coluna.
+
+**Parcela irregular continua enumerada.** A regra serve para a série regular,
+que é justamente a que fica grande. Se vierem os dois, o enumerado vence — a
+peça manda mais que a regra.
+
+**Teto de 1.200 parcelas** (100 anos de pensão mensal). Acima disso a regra é
+recusada em vez de gerar lista absurda: número improvável é detector, não
+licença para materializar.
+
+**Periodicidade desconhecida gera parcelas SEM data**, nunca data chutada. Data
+errada em parcela é pior que data ausente — uma some do radar, a outra cobra no
+dia errado.
+
+Testado em transação com rollback, oito casos:
+
+| caso | resultado |
+| --- | --- |
+| 464× mensal a partir de 05/06/2025 | 464 parcelas, última em 05/01/2064 |
+| começa em 31/01 | 31/01 → 28/02 → **31/03** (não fica preso no 28) |
+| 11× quinzenal | 10/03 → 25/03 |
+| periodicidade desconhecida | parcelas com valor, **sem data** |
+| sem data na regra | parcelas sem data |
+| 5.000 parcelas | recusado, lista vazia |
+| `n_parcelas: "varias"` | recusado |
+| nulo / não-objeto | recusado |
+
+**Verificado nas cinco peças que estouravam**, todas leram:
+
+| peça | resultado |
+| --- | --- |
+| 1646 | ACÓRDÃO — **367 parcelas** mensais, por regra |
+| 8974 | DECISÃO — **612 parcelas** mensais, por regra |
+| 11770 | SENTENÇA DE LIQUIDAÇÃO — **522 parcelas** mensais, por regra |
+| 25652 | **360 parcelas** mensais, por regra |
+| 110 | SENTENÇA DE LIQUIDAÇÃO — leu por outro caminho, ver abaixo |
+
+**A peça 110 leu melhor, e não pelo cronograma.** Ela agora devolve
+`SENTENCA_LIQUIDACAO`, R$ 1.051.696,54 de condenação, **6 partes**, **18
+verbas** e `meses_pensionamento: 504` — o resumo diz "pensão mensal de
+R$ 1.736,57 dividida entre os sucessores do falecido até que completasse 73
+anos". O modelo classificou a pensão como VERBA com duração, não como
+cronograma de acordo — que é defensável e provavelmente mais correto. Antes ela
+enfiava a pensão em `cronograma` (464 linhas) e explodia.
+
+**Fica em aberto, e é decisão de quem revisa:** pensão de 504 meses é ou não é
+para virar parcela na carteira? Se for, `meses_pensionamento` + valor da verba
+PENSAO_MENSAL já são uma regra — a mesma regra em outra roupa — e daria para
+expandir a partir dela. Não fiz: é escolha de negócio, não conserto de bug.
+
+**Resultado da família inteira: 5 → 0.** Das 22 travadas restantes, nenhuma é
+mais por teto de token.
+
+### PDF truncado: conferindo o fim do arquivo, não só o começo
+
+Onze peças chegavam ao leitor e voltavam com
+`gemini 400: "The document has no pages."` — mas o arquivo estava lá, com
+mimetype `application/pdf`, e o Escavador dizia quantas páginas tinha: 9, 18,
+23, 24, 54, 57. Documento com página, arquivo guardado, e mesmo assim "sem
+páginas".
+
+**Os tamanhos denunciaram.** Sete dos onze eram múltiplo EXATO de 16.384 bytes:
+
+| bytes | ÷ 16.384 |
+| --- | --- |
+| 32.768 | 2 |
+| 311.296 | 19 |
+| 442.368 | 27 |
+| 475.136 | 29 |
+| 688.128 | 42 |
+| 851.968 | 52 |
+| 1.081.344 | 66 |
+
+PDF real não tem tamanho redondo assim. E o corte cai onde dói: o índice de
+páginas de um PDF mora no **fim** do arquivo (xref, trailer, `%%EOF`).
+Truncado, ele abre, começa com `%PDF` e não tem página nenhuma.
+
+**A causa no código** (`esc-autos`, ação `arquivar`):
+
+```ts
+const magic = new TextDecoder().decode(buf.slice(0, 5));
+if (!magic.startsWith("%PDF")) throw ...
+```
+
+Conferia os cinco primeiros bytes e concluía que o arquivo estava inteiro. É a
+mesma família de defeito que esta sessão já encontrou três vezes: a etapa se dá
+por bem-sucedida porque **rodou**, não porque **fez** — aqui, porque o arquivo
+COMEÇA como PDF, não porque É um PDF completo. E o preço do silêncio: o defeito
+nasceu no download, em agosto, e só apareceu semanas depois, do outro lado do
+sistema, disfarçado de erro do Gemini. Quem olhasse o erro procuraria no lugar
+errado.
+
+**O conserto** (`esc-autos` v33): o que chegou tem que bater com o
+`Content-Length` declarado, **e** o arquivo tem que terminar com `%%EOF`
+(procurado nos últimos 2 KB, porque há PDF com lixo depois do marcador).
+Falhando qualquer uma, não grava: fica com `storage_error` e volta para a fila.
+Arquivo pela metade guardado como bom é pior que ausente — some do radar e
+reaparece como defeito de outro degrau.
+
+#### A hipótese que o teste derrubou
+
+Eu escrevi que a conexão tinha morrido no meio da transferência. **Errado.** No
+re-download, as sete voltaram com **exatamente o mesmo número de bytes** e sem
+`%%EOF`. Repetição idêntica não é conexão instável: **o arquivo já está
+truncado na origem**. Nosso download é fiel; quem está quebrado é o Escavador.
+
+E a segunda metade da trava foi a que não serviu: `declarado=?` em todas — a
+API **não manda `Content-Length`**. Quem pegou o defeito foi o `%%EOF`.
+
+#### O que o re-download revelou, e o que ainda não está consertado
+
+| família | peças | o que é |
+| --- | --- | --- |
+| `PDF_SEM_FIM` | 7 | truncadas **na origem**, idênticas a cada tentativa |
+| `HTTP_410` | 4 | o link do documento morreu |
+
+**Nenhuma das 11 é legível hoje.** O que mudou é que agora elas dizem a
+verdade: em vez de um arquivo mentindo que é PDF e um erro do Gemini apontando
+para o lugar errado, há `storage_error` nomeando o defeito no degrau onde ele
+nasce.
+
+**O conserto real custa dinheiro e é decisão do dono.** As 11 vêm de **6
+processos**; recuperá-las exige nova consulta ao Escavador para regerar
+arquivo e link. Medido em 997 consultas: **19,87 créditos em média por
+consulta** — cerca de **119 créditos** para os 6 processos.
+
+E elas não estão sozinhas. A base inteira tem **369 arquivos ruins em 61
+processos**: 223 com `HTTP_410`, 139 com `HTTP_404` e as 7 truncadas. Re-consultar
+todos seria da ordem de **1.200 créditos**.
+
+### Review dos consertos de 07/09 — cinco achados, três meus
+
+O review do range `9730085^..HEAD` (7 commits) achou cinco defeitos. **Três
+foram introduzidos hoje, por mim, nos próprios consertos.** Vale registrar
+porque o padrão se repete: fechar um silêncio abre outro furo se ninguém olhar.
+
+**1. Laço infinito de download — o mais caro.** `jm_esc_arquivar_tick` devolve à
+fila, a cada 6h, todo erro que não casa `^(HTTP_4|NAO_PDF)`. Os erros que criei
+hoje — `PDF_SEM_FIM` e `TRUNCADO` — não casam: as 7 peças truncadas na origem
+seriam re-baixadas **4× por dia, para sempre**, falhando sempre igual.
+
+Não bastava somar `PDF_SEM_FIM` à lista de erro permanente: a API do Escavador
+**não manda Content-Length** (medido, `declarado=?` nas 7), então um corte
+genuinamente transitório também chega como `PDF_SEM_FIM` — e seria parqueado
+para sempre. Por isso a solução é **teto, não lista**: `download_tentativas`
+com limite de 3, o mesmo número da fila de solicitações. Vale para toda a
+família de erro passageiro, não só a minha: 5xx e falha de upload também
+deixaram de girar sem fim.
+
+**2. A regra recusada era silenciosa.** `jm_expandir_cronograma_regra` devolve
+`[]` quando a regra não presta ou passa de 1.200 parcelas — e o cabeçalho que
+eu mesmo escrevi prometia "recusada **com aviso**". Não havia aviso: a leitura
+ficava idêntica a "peça sem cronograma". Prometi detector e entreguei filtro,
+que é o que a regra 8 do CLAUDE.md proíbe. Agora
+`vw_jm_cronograma_regra_recusada` lista os casos com o motivo classificado.
+
+**3. Dado de cliente numa coluna de log.** O campo `fim=` do diagnóstico
+gravava os últimos 120 caracteres crus da resposta do Gemini em
+`jm_documentos.leitura_erro` — que aparece na `vw_jm_leitura_travada`. Isso é
+conteúdo de peça: nome de parte, beneficiário, valor. **E já tinha acontecido**:
+um erro guardado trazia `"beneficiario": "<nome de uma pessoa real>"`. Violação
+direta do princípio 1 de cibersegurança do CLAUDE.md.
+
+Agora os valores de texto viram reticências e as chaves e números ficam — que é
+o que diagnostica ("cortou dentro do cronograma, na parcela 464"). Testado em
+cinco casos, incluindo o vazamento real, nome cortado no meio (aspas abertas) e
+aspas escapadas dentro do texto:
+
+| entrada | saída |
+| --- | --- |
+| `"beneficiario": "ELOIZZI PIETRA CAVALCANTE SOARES" }, { "n_parcela": 39` | `"beneficiario": "…" }, { "n_parcela": 39` |
+| `"descricao": "Retroativo Pensão Mensal (Abril/2025…)", "valor": 3` | `"descricao": "…", "valor": 3` |
+| `"nome": "EMPRESA \"X\" LTDA", "valor": 5` | `"nome": "…", "valor": 5` |
+
+Exposição real hoje: **1 linha** com `leitura_erro`, sem texto de peça — as que
+tinham nome foram limpas quando as peças foram lidas. O conserto é prospectivo.
+
+**4. A migration não se reproduzia.** `20260907160000` criava a tabela de
+backup e nunca a preenchia — o INSERT eu tinha rodado à mão. Num banco limpo a
+comparação não existiria. Entrou na migration.
+
+**5. Duas cópias do `esc-autos` no repo, divergentes em 309 linhas.** Só
+`supabase/functions/esc-autos/index.ts` (a que bate byte a byte com o deploy
+v32, conferido) recebeu a conferência de `%%EOF`. A cópia em
+`_external/esc-autos/index.ts` é uma variante tipada que ficou para trás —
+**deployar dali reverteria o conserto em silêncio.** Não apaguei arquivo sem
+autorização; pus um aviso no topo dizendo que não é a que está no ar. **Qual das
+duas deve sobreviver é decisão do dono do repo.**
+
+### Re-consulta dos 6 processos
+
+Autorizada e disparada. As 11 peças vêm de 6 processos, reabertos com
+`jm_esc_reabrir_por_cnj` (status `A_ENVIAR`, pegos pela `jm-esc-rotina` a cada
+20 min). Custo esperado: ~19,87 créditos por consulta × 6 ≈ **119 créditos**.
+
+Zerei `download_tentativas` das peças desses 6 antes de reabrir, para que os
+links novos tenham as três chances cheias.
+
+### O intervalo de 6h entre retentativas de download nunca existiu
+
+Estava escrito assim no `jm_esc_arquivar_tick`:
+
+```sql
+and coalesce(stored_at, '-infinity'::timestamptz) < now() - interval '6 hours'
+```
+
+A intenção é clara: só devolver à fila quem já esperou 6 horas. Mas `stored_at`
+**só é preenchido quando o download dá certo**. Para a peça que nunca baixou —
+exatamente a população que a cláusula existe para tratar — `stored_at` é nulo, o
+`coalesce` vira `-infinity`, e a condição é sempre verdadeira.
+
+**Retentativa a cada 5 minutos, não a cada 6 horas. 288 por dia, não 4.** O
+relógio media o tempo de um sucesso que nunca houve.
+
+**Como apareceu.** Zerei `download_tentativas` das 11 peças às 12:05 e reabri a
+consulta para elas ganharem link novo. A consulta terminou às 12:40 e renovou
+os links — medido na resposta da colheita: `processados` 10, 22, 35, 54, 65,
+100. Só que entre 12:05 e 12:40 o tick já tinha gasto as **três** tentativas do
+teto batendo nos links **velhos**. Quando o link bom chegou, a peça já estava
+parqueada.
+
+O teto que pus ontem estava certo; o relógio ao lado dele é que estava quebrado
+desde sempre. E sem o teto, este defeito seria um laço de 5 em 5 minutos — bem
+pior do que os "4× por dia" que estimei ao propor o teto.
+
+Conserto: `download_ultima_tentativa`, que marca **quando se tentou**, não
+quando deu certo. As 11 ganharam o teto de volta uma vez, agora com link bom.
+
+### Re-consulta dos 6 processos: o que custou e o que trouxe
+
+| | |
+| --- | --- |
+| solicitações | 6, todas `SUCESSO` |
+| **custo real** | **120 créditos** (20 por consulta) — estimei 119 |
+| enviadas | 12:20 · concluídas 12:40 |
+| documentos processados | 10, 22, 35, 54, 65 e 100 — **links renovados** |
+
+**Um erro meu de leitura, corrigido:** cheguei a concluir que a consulta não
+tinha ingerido nada porque `captured_at` continuava antigo nas 11 peças. Errado
+— `captured_at` só é gravado no INSERT; a re-ingestão atualiza `link_api` e não
+mexe nele. A resposta da colheita é que prova o que aconteceu, e ela diz que os
+links vieram.
+
+### O veredito das 11 peças: nenhuma recuperada
+
+Os 120 créditos compraram links novos. Os links novos servem **os mesmos
+arquivos truncados**.
+
+| | antes | depois da re-consulta |
+| --- | --- | --- |
+| peças recuperadas | — | **0 de 11** |
+| peças lidas | 0 | **0** |
+| `PDF_SEM_FIM` | 7 | **10** |
+| `HTTP_410` | 4 | 1 |
+
+Os bytes voltaram **idênticos** nas dez: 30.360, 24.044, 26.892, 475.136,
+1.081.344, 32.768, 311.296, 442.368, 688.128, 851.968. Mesmo número, link novo,
+consulta nova. **Isso encerra a dúvida**: o arquivo está truncado na origem, no
+acervo do Escavador. Não há nada a fazer do nosso lado.
+
+**O que a consulta efetivamente fez** — e não é nada: três peças que davam
+`HTTP_410` (link morto) passaram a **responder com conteúdo**. O link foi
+ressuscitado. O conteúdo é que veio cortado. Ou seja, a re-consulta conserta
+link morto; não conserta arquivo quebrado.
+
+**O relógio novo funciona.** Uma tentativa às 12:55, e 16 minutos depois ainda
+`download_tentativas = 1`. Na lógica antiga já estaria em 3 ou 4.
+
+### O que isso diz sobre os outros 358 arquivos ruins
+
+Sobram **358 peças ruins em ~55 processos**: 223 `HTTP_410`, 139 `HTTP_404` e as
+truncadas. Re-consultar todos custaria da ordem de **1.100 créditos**.
+
+A amostra de hoje é ambígua e vale dizer isso: dos 4 links mortos, **3
+ressuscitaram** — o que é exatamente o defeito da população de 362. Mas os
+arquivos por trás vieram truncados, e os 3 eram do mesmo processo, então não dá
+para saber se o problema é "aquele processo" ou "o acervo".
+
+**Recomendação: testar 2 ou 3 processos antes de gastar os 1.100.** ~60 créditos
+para descobrir se a população de link morto se recupera, em vez de pagar tudo
+para descobrir que não.
+
+### Regra dos três degraus: testada de verdade, com resultado dividido
+
+O teste natural não vinha — só existem 2 grupos com 4 casos e 6 com 3 na base
+ativa, e nenhum escreveu desde a mudança. Em vez de esperar dias, forcei pelo
+MODO TESTE da `dom-rascunho` (`teste: true` + `group_jid`), que ignora as travas
+do cron e **não grava nada**. Confirmado na resposta: `gravou: false`.
+
+Grupo com **4 processos**, duas perguntas:
+
+**1. Pergunta genérica — "Bom dia, tem alguma novidade?"**
+`casos: 4 · panorama: false · 298 caracteres`
+
+A resposta falou de **um** processo (o que mexeu por último, com a data da
+audiência) e não listou os quatro. **O risco principal não se materializou.**
+Mas também não disse que existem outros três, nem perguntou de qual ele queria
+saber.
+
+**2. Pedido de panorama — "Quero saber como estão TODOS os meus processos"**
+`casos: 4 · panorama: true · 696 caracteres`
+
+Discriminou os quatro, cada um com fase e data, em linguagem de leigo — inclusive
+agrupando os dois arquivados. **Passa.** A decisão de "discriminar só quando ela
+pedir o panorama" está implementada e funciona.
+
+#### A causa não é desobediência do modelo
+
+Era essa a hipótese registrada no check-in: se ele listasse tudo apesar do
+aviso, o conserto seria cortar a lista na origem. **Não é o caso.** A instrução
+diz:
+
+> `NÃO liste todos. Responda sobre o que a conversa indica; se não der para
+> saber, diga quantos são, conte o mais recente e pergunte de qual ele quer
+> saber.`
+
+O "**se não der para saber**" é uma saída, e o modelo a usou legitimamente: com
+"tem novidade?" ele julgou que dava para saber, contou o mais recente e parou.
+**Ele obedeceu.** O que está ambíguo é a instrução, não o comportamento.
+
+#### A decisão que sobra é de produto, não de código
+
+Cliente com 4 processos pergunta "tem novidade?". A resposta deve:
+
+- **(a)** falar só do mais recente — comportamento de hoje. Enxuto, mas o
+  cliente pode entender que aquele é o único caso dele.
+- **(b)** falar do mais recente **e** avisar que há outros três, oferecendo
+  detalhar. Uma frase a mais, e ninguém sai da conversa achando que viu tudo.
+
+Minha leitura é que (b) é mais seguro — resposta incompleta que parece completa
+é pior que resposta longa. Mas isso é escolha de como a casa fala com o cliente,
+não conserto de defeito. **Não mexi.**
+
+### Painel de conferência: as fontes ao lado da resposta
+
+O painel mostrava a pergunta do cliente e a resposta sugerida, e mais nada. Quem
+revisava tinha que **confiar** — não tinha como conferir.
+
+**O caso que expôs isso** é real, e é o PREV 1050. O cliente perguntou "É 3 ou
+4". A resposta disse *"o INSS informou que o benefício foi concedido, mas ainda
+não detalhou o número de parcelas"*. E o `ultima_atividade.como_esta` que estava
+no contexto trazia:
+
+> Data de pagamento prevista: **22/09/2026** · Valor: **R$ 595,00** · Banco
+> BRASIL, Agência 3148
+
+Sobre parcelas a resposta pode estar certa. Mas ela **omitiu data e valor que já
+estavam na mão**. Com a fonte ao lado, o revisor pega isso em dois segundos.
+
+**O que passou a aparecer**, lendo o `contexto_usado` que já era gravado:
+
+| bloco | o que mostra |
+| --- | --- |
+| Movimentação | data, título, resumo, categoria — **com selo de origem** |
+| Documento lido | peça, data e resumo, quando houver |
+| Requerimento no INSS | serviço, status, resultado, despacho |
+| Atividade anterior | título, "como está", próximo passo, e há quantos dias |
+
+**O selo de origem é o ponto que faltava.** "Movimentação" não é uma fonte só:
+
+- no **judicial**, o e-mail do tribunal é o **gatilho** — avisa que mexeu, e a
+  partir dele se busca a peça no Escavador;
+- no **administrativo (INSS)**, o e-mail é a **única** fonte. Não há peça. Quem
+  não sabe disso procura um documento que nunca existiu.
+
+Quando todas as movimentações vêm do e-mail, o painel diz isso em uma linha, em
+vez de deixar o revisor concluir sozinho.
+
+**Sem juízo automático, de propósito.** Não há "a IA usou esta fonte para dizer
+X". Pedir ao modelo que justifique a si mesmo cria uma segunda coisa para não
+confiar. Aqui ficam os fatos que entraram no prompt; quem liga fato e frase é a
+pessoa.
+
+**As fontes vêm DEPOIS da resposta na tela**, também de propósito: o revisor lê
+a resposta primeiro e depois confere contra o que a máquina tinha na mão. Ao
+contrário, a leitura já chegaria enviesada.
+
+**Quando falta fonte, o painel diz o que isso proíbe** — "nenhuma peça foi lida,
+a resposta não pode citar conteúdo de documento; se citar, é invenção".
+
+**Conferido no dado real**, amostra de 25 grupos do piloto: **45 movimentações
+de e-mail** (8 grupos) e **32 do Escavador** (3 grupos). As duas origens chegam
+ao contexto — o pipeline está inteiro; o que faltava era mostrar.
+
+Rascunho anterior a 07/09/2026 não tem `contexto_usado` gravado, e o painel diz
+isso em vez de fingir que não havia fonte.
+
+**A conversa do grupo não é copiada para o painel, por decisão do Raym
+(07/09/2026):** ela já existe inteira e ao vivo no botão "Abrir a conversa do
+grupo", logo abaixo. Guardar uma segunda cópia criaria duas versões da mesma
+conversa para divergirem com o tempo. O painel diz isso em uma linha, para quem
+revisa não ficar procurando a conversa dentro do bloco de fontes.
+
+### O áudio parava no meio da resposta
+
+No Caso 341 o cliente mandou um áudio pedindo o status de **todos** os processos.
+A resposta escrita cobria os dois — auxílio-acidente em ajuizamento e o
+trabalhista em Recurso de Revista, com audiência marcada para 22/09. **O áudio
+parou em "ajuizamento".**
+
+**A conta:** a resposta tem **1.205 caracteres** e o teto de fala estava em
+**500** (`max_tts_chars` nulo → padrão 500, com limite duro de 1.000). O corte
+era `limpo.slice(0, maxChars)` — seco, no caractere.
+
+E os 500 nunca foram limite da ElevenLabs: o `eleven_multilingual_v2` aceita
+**10.000 caracteres** por chamada ([limites por modelo](https://elevenlabs.io/docs/help-center/product/speech-synthesis/text-to-speech/whats-the-maximum-amount-of-characters-and-text-i-can-generate)).
+Era limite nosso, vinte vezes menor que o necessário.
+
+**Áudio que omite metade da resposta é pior que áudio nenhum**, porque soa
+completo. O cliente ouviria sobre um processo e nunca saberia do segundo nem da
+audiência. É a mesma família do defeito do dia: resposta incompleta que parece
+inteira.
+
+**Três consertos:**
+
+| | |
+| --- | --- |
+| teto | 500 → **3.000** de padrão, limite duro 1.000 → **5.000** |
+| corte | no fim da **última frase inteira**, nunca no meio da palavra |
+| aviso | quando corta, grava em `audio_erro` **e a tela mostra junto com o áudio** |
+
+O aviso importa: antes, existindo `audio_url`, o `audio_erro` não era exibido —
+um áudio pela metade parecia inteiro na tela também.
+
+**Um erro meu, pego no teste.** A primeira versão do corte usava
+`lastIndexOf(" ")` como alternativa quando não havia pontuação. Num texto com
+pontuação só no começo (`"Curta. xxxxx…"`) ela achava o único espaço, no índice
+6, e cortava em **6 de 4.007 caracteres**. A correção é usar metade do teto como
+**piso para os dois candidatos**: sem frase nem espaço tarde o bastante, corta
+seco no teto. Melhor um corte reto do que meia palavra.
+
+Testado em cinco casos: resposta média (333, não corta), Caso 341 (1.205, não
+corta), texto de 4.000 (corta em 2.999 no fim de frase), texto sem pontuação
+nenhuma (corta em 2.999 no espaço) e o patológico acima (corta em 3.000).
+
+**Custo:** a ElevenLabs cobra por caractere, então resposta longa passa a custar
+mais. A média das respostas com áudio é de **333 caracteres** — a maioria não
+muda de preço. Das seis com áudio até hoje, **uma** passava de 500.
+
+**Meio conserto que já valeu, sem deploy:** `max_tts_chars` foi para **3.000** na
+tabela do agente. O valor foi escolhido para estar certo nos dois mundos:
+
+| | clamp | resultado |
+| --- | --- | --- |
+| código **em produção hoje** | `min(max(3000,100), 1000)` | **1.000** — dobra o que era |
+| código **depois do deploy** | `min(max(3000,100), 5000)` | **3.000** — conserto inteiro |
+
+Um valor só, sem armadilha para o eu do futuro: não precisa lembrar de mexer de
+novo depois de deployar.
+
+**Deployado em 07/09/2026 — `dom-rascunho` v13**, `verify_jwt: true` (mesmo valor
+da v12; a ferramenta de deploy assume `true` por padrão e isso já derrubou a
+`jm-ler-peca` uma vez — sempre passar o valor explícito). O teto em vigor agora
+é **3.000**, e o conserto está inteiro: corte no fim da frase, aviso em
+`audio_erro`, aviso na tela.
+
+Verificado depois do deploy, nesta ordem:
+
+1. **Roda**: chamada em MODO TESTE (`teste: true`) num grupo do piloto devolveu
+   **200**, intenção `A1`, resposta de 406 caracteres coerente com o caso, e
+   `gravou: false` — nada entrou na fila, nenhum cliente viu nada.
+2. **É o arquivo certo**: o fonte lido de volta do servidor bate com o arquivo do
+   repo nos três pontos alterados (`avisoCorte`, o piso de metade do teto, o
+   clamp `min(max(max_tts_chars || 3000, 100), 5000)`).
+3. **O corte funciona**: a lógica que está no ar, rodada isolada com o teto real
+   de 3.000 — Caso 341 (1.205 ch) passa **inteiro, sem aviso**, que era o defeito;
+   4.007 ch corta em 2.969 no fim de uma frase, com aviso; e os dois patológicos
+   (pontuação só no começo, e sem espaço nenhum) cortam secos em 3.000, sem
+   partir palavra.

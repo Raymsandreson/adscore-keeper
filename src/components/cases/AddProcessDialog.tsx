@@ -21,6 +21,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
+import { avisarErro } from '@/lib/erroDoBanco';
 import { KanbanBoard, isBoardArchived } from '@/hooks/useKanbanBoards';
 import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
 import { syncProcessMarcos, syncProcessCompromissos } from '@/utils/escavadorMovementUtils';
@@ -522,7 +523,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
       }
     } catch (err: any) {
       console.error('Save error:', err);
-      toast.error(err.message || 'Erro ao salvar processos');
+      avisarErro(err, 'Erro ao salvar processos');
     } finally {
       setSaving(false);
     }
@@ -617,7 +618,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
       resetForm();
     } catch (err: any) {
       console.error('Save error:', err);
-      toast.error(err.message || 'Erro ao salvar processo');
+      avisarErro(err, 'Erro ao salvar processo');
     } finally {
       setSaving(false);
     }

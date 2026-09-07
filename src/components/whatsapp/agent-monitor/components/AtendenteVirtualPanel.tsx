@@ -20,6 +20,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { db, ensureExternalSession } from '@/integrations/supabase';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { FontesDaResposta, type ContextoUsado } from './FontesDaResposta';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -29,7 +30,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2, Search } from 'lucide-react';
+import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2, Search, AlertTriangle } from 'lucide-react';
 import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 import { ContagemAteEnvio } from '@/components/whatsapp/ContagemAteEnvio';
 
@@ -42,6 +43,9 @@ interface Pendente {
   resposta_sugerida: string; resposta_final: string | null; intencao: string | null;
   motivo_revisao: string | null; status: string; criado_em: string; enviado_em: string | null;
   atendente_id: string | null;
+  /** O que a dom_contexto_processual devolveu e virou prompt. Nulo nos
+   *  rascunhos anteriores a 07/09/2026, quando ninguem guardava a fonte. */
+  contexto_usado: ContextoUsado | null;
   /**
    * O PostgREST devolve relação embutida como ARRAY, mesmo sendo um-para-um.
    * Aceito os dois formatos porque depender do formato de hoje é o tipo de coisa
@@ -182,7 +186,7 @@ export function AtendenteVirtualPanel() {
     setCarregando(true);
     try {
       await ensureExternalSession();
-      const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, dom_atendentes(nome)';
+      const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, contexto_usado, dom_atendentes(nome)';
       const [f, e, h, s, gp] = await Promise.all([
         // "Na fila" é tudo que AINDA NÃO SAIU — inclusive o que alguém já
         // aprovou. Filtrar só por 'pendente' fazia a resposta aprovada sumir
@@ -741,6 +745,15 @@ export function AtendenteVirtualPanel() {
                 <Textarea className="text-xs min-h-[180px]" value={texto} onChange={e => setTexto(e.target.value)} />
               </div>
 
+              {/* As fontes que geraram a resposta. Vêm DEPOIS dela de propósito:
+                  quem revisa lê a resposta primeiro e depois confere contra o
+                  que a máquina tinha na mão — não o contrário, que enviesaria a
+                  leitura. */}
+              <div className="space-y-1">
+                <Label className="text-xs">De onde saiu (para conferir)</Label>
+                <FontesDaResposta contexto={aberto.contexto_usado} />
+              </div>
+
               {/* O cliente falou por áudio, então ele gravou a resposta também.
                   Isto NÃO foi enviado e não vai ser: é só para escutar. */}
               {(aberto.audio_url || aberto.audio_erro) && (
@@ -755,6 +768,15 @@ export function AtendenteVirtualPanel() {
                   {aberto.audio_url
                     ? <audio controls src={aberto.audio_url} className="w-full h-8" />
                     : <p className="text-[11px] text-destructive">Não consegui gerar: {aberto.audio_erro}</p>}
+                  {/* Áudio PRONTO e mesmo assim com aviso = ele foi cortado. Antes
+                      este caso ficava invisível: existindo url, o erro não era
+                      mostrado, e um áudio pela metade parecia inteiro. */}
+                  {aberto.audio_url && aberto.audio_erro && (
+                    <p className="text-[11px] text-amber-700 flex items-start gap-1">
+                      <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      {aberto.audio_erro}
+                    </p>
+                  )}
                   <p className="text-[10px] text-muted-foreground">
                     Este áudio <strong>não foi enviado</strong> e não vai sair sozinho — nem em grupo
                     que responde sozinho, onde quem sai é o texto. Ele existe para você ouvir antes

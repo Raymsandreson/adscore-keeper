@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
+import { avisarErro } from '@/lib/erroDoBanco';
 
 export interface LeadProcess {
   id: string;
@@ -78,7 +79,9 @@ export function useLeadProcesses(caseId?: string) {
       return data as LeadProcess;
     } catch (error) {
       console.error('Error adding process:', error);
-      toast.error('Erro ao adicionar processo');
+      // O banco recusa numero de processo torto com o motivo e o conserto no
+      // detail/hint. Dizer so "Erro ao adicionar processo" jogava os dois fora.
+      avisarErro(error, 'Erro ao adicionar processo');
       throw error;
     }
   }, []);
@@ -97,7 +100,7 @@ export function useLeadProcesses(caseId?: string) {
       return data as LeadProcess;
     } catch (error) {
       console.error('Error updating process:', error);
-      toast.error('Erro ao atualizar processo');
+      avisarErro(error, 'Erro ao atualizar processo');
       throw error;
     }
   }, []);

@@ -34,6 +34,7 @@ import { VincularParteContatoDialog } from './VincularParteContatoDialog';
 import { CriarCasoDoProcessoDialog } from './CriarCasoDoProcessoDialog';
 import { notaDeCadastro, soDigitos, tipoDeDocumento } from '@/lib/parteContato';
 import { toast } from 'sonner';
+import { avisarErro } from '@/lib/erroDoBanco';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
@@ -857,7 +858,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       );
       onUpdated?.();
     } catch (err: any) {
-      toast.error('Não consegui gravar os campos', { description: err?.message });
+      avisarErro(err, 'Não consegui gravar os campos');
     } finally {
       setCompletandoDoBanco(false);
     }
@@ -1096,7 +1097,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       onUpdated?.(data[0]);
     } catch (err: any) {
       console.error('Error updating process:', err);
-      toast.error('Erro ao salvar: ' + (err.message || JSON.stringify(err)));
+      avisarErro(err, 'Erro ao salvar o processo');
     } finally {
       setSaving(false);
     }

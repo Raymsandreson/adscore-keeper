@@ -1,4 +1,21 @@
 // =============================================================================
+// ATENÇÃO: ESTA CÓPIA NÃO É A QUE ESTÁ NO AR.
+//
+// Existem DUAS cópias do esc-autos no repo, e elas divergiram em 309 linhas:
+//   supabase/functions/esc-autos/index.ts   <- É ESTA QUE ESTÁ DEPLOYADA
+//   supabase/functions/_external/esc-autos/index.ts  (este arquivo)
+//
+// Conferido em 07/09/2026 contra a v32 em produção: o conteúdo deployado bate
+// byte a byte com `functions/esc-autos/index.ts`. Este arquivo é uma variante
+// TIPADA que ficou para trás — não recebeu, entre outras coisas, a conferência
+// de Content-Length e %%EOF que impede guardar PDF truncado (v33).
+//
+// DEPLOYAR A PARTIR DAQUI REVERTE ESSES CONSERTOS EM SILÊNCIO.
+//
+// Qual das duas deve sobreviver é decisão do dono do repo; até lá, este arquivo
+// é histórico, não fonte.
+// =============================================================================
+// =============================================================================
 // esc-autos — ponte com a API v2 do Escavador. Roda no projeto EXTERNO
 // (kmedldlepwiityjsdahz), NÃO no cloud. Deploy: supabase functions deploy
 // esc-autos --project-ref kmedldlepwiityjsdahz.

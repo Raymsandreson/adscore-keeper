@@ -37,6 +37,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 // (Removido Tabs do Radix — usando renderização condicional simples)
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
+import { avisarErro } from '@/lib/erroDoBanco';
 import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
   Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2, Info,
@@ -532,7 +533,7 @@ export function ContactsListPage() {
       started_at: j?.data_protocolo || null,
       notes: 'Ficha criada pela conciliação de grupos do WhatsApp (nº do caso no nome do grupo × jurimetria).',
     } as any);
-    if (error) { toast.error('Falha ao cadastrar o processo: ' + error.message); return false; }
+    if (error) { avisarErro(error, 'Falha ao cadastrar o processo'); return false; }
 
     toast.success(`Processo ${numero} cadastrado no lead.`);
     // A sugestão morreu: agora o processo tem ficha e passa a ser cnj_do_lead.

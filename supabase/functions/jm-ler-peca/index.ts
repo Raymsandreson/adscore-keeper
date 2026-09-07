@@ -19,6 +19,10 @@
 //
 // NADA daqui vira valor_pago sozinho: peça é alegação, não fato conciliado.
 // `jm_documento_leitura.revisado_por` é o que promove leitura a número oficial.
+//
+// ATENÇÃO AO DEPLOY: esta função roda com verify_jwt = false e autenticação
+// própria (x-jm-key). Todo deploy tem que passar verify_jwt: false
+// explicitamente — o default do tool é true e, com true, o banco leva 401.
 // =============================================================================
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -30,7 +34,7 @@ const corsHeaders = {
 const MODEL = 'gemini-2.5-flash';
 const BUCKET = 'jm-autos';
 
-const PROMPT_VERSAO = "v3-json-plano-2026-08-20";
+const PROMPT_VERSAO = "v4-cronograma-por-regra-2026-09-07";
 
 const SYSTEM_PROMPT = `Você lê UMA peça de processo trabalhista/cível brasileiro e devolve DUAS coisas:
 (A) o que ela diz sobre DINHEIRO QUE ANDOU e sobre o ESTADO da execução;
@@ -101,15 +105,30 @@ O objeto começa assim: {"especie": ..., "valor": ..., "partes": [...], ...}
   * "vitima_idade": número ou null.
 
 ═══ D — cronograma, quando a peça o estabelecer ═══
-- "cronograma": lista de parcelas que a peça FIXA (acordo parcelado, pensão, plano de pagamento).
-  Vazia se a peça não estabelece cronograma. Cada item:
+São DOIS campos, e você usa UM deles. Escolha pela forma do plano de pagamento.
+
+- "cronograma_regra": use quando as parcelas são TODAS IGUAIS e em intervalo REGULAR
+  ("120 parcelas mensais de R$ 1.736,57 a partir de 05/06/2025"). Objeto:
+  * "n_parcelas": número total de parcelas.
+  * "valor_parcela": valor de CADA parcela.
+  * "primeira_data": "AAAA-MM-DD" do primeiro vencimento, ou null se a peça não diz.
+  * "periodicidade", TAXATIVO: SEMANAL | QUINZENAL | MENSAL | BIMESTRAL | TRIMESTRAL | SEMESTRAL | ANUAL
+  * "beneficiario": nome da parte, ou null se for global.
+  NESTE CASO deixe "cronograma" como lista VAZIA. NÃO escreva as parcelas uma a uma —
+  o sistema as gera a partir da regra, sem erro de conta. Uma pensão de 40 anos são
+  480 parcelas: escrevê-las é desperdício e trunca a resposta.
+
+- "cronograma": use quando as parcelas NÃO seguem uma regra única — valores diferentes
+  entre si, datas salteadas, entrada maior seguida do resto, ou uma parcela por parte
+  com valores distintos. Lista, cada item:
   * "n_parcela": número.
   * "data_prevista": "AAAA-MM-DD" ou null.
   * "valor": número ou null.
   * "beneficiario": nome da parte, ou null se for global.
-  * Se a peça diz "N parcelas de R$ X, vencendo todo dia D a partir de <mês>", GERE as N
-    entradas com as datas calculadas. Se diz o total e o número de parcelas sem as datas,
-    gere as N entradas com data_prevista null.
+
+- Sem cronograma nenhum: "cronograma": [] e "cronograma_regra": null.
+- Na dúvida entre os dois, use "cronograma_regra" se der para descrever o plano com
+  uma frase do tipo "N parcelas de X, a cada <período>, a partir de <data>".
 
 ═══ REGRAS DURAS ═══
 1. NÃO INVENTE. Se a peça não traz o dado, use null / lista vazia. Preferir null a chutar é o comportamento CORRETO e esperado.
@@ -270,12 +289,35 @@ Deno.serve(async (req: Request) => {
 
     if (erroDoc) return json({ success: false, error: `documento: ${erroDoc.message}` });
     if (!doc) return json({ success: false, error: 'documento não encontrado' });
-    if (!doc.storage_path) return json({ success: false, error: 'peça sem arquivo baixado' });
+
+    /**
+     * Toda falha daqui para baixo deixa RASTRO na própria peça.
+     *
+     * Até 07/09/2026 não deixava nenhum: a função devolvia HTTP 200 com
+     * {success:false} no corpo, e quem chama (`jm_ler_documento`, por
+     * `perform net.http_post`) descarta a resposta. Setenta e três peças
+     * ficaram assim — disparadas, falhando, redisparadas a cada 24h desde
+     * julho, pagando uma chamada de Gemini por tentativa, sem uma linha
+     * dizendo por quê.
+     *
+     * Continua devolvendo 200 de propósito: quem chama é sempre o banco por
+     * pg_net e não olha status. O que importa é o registro durável, que
+     * sobrevive ao TTL de ~6h do net._http_response.
+     */
+    const falhaDaPeca = async (motivo: string) => {
+      await sb.from('jm_documentos').update({
+        leitura_erro: motivo.slice(0, 1000),
+        leitura_erro_em: new Date().toISOString(),
+      }).eq('id', documento_id);
+      return json({ success: false, documento_id, error: motivo });
+    };
+
+    if (!doc.storage_path) return await falhaDaPeca('peça sem arquivo baixado');
 
     // Bucket privado: baixa com service role em vez de assinar URL.
     const { data: arquivo, error: erroArquivo } = await sb.storage.from(BUCKET).download(doc.storage_path);
     if (erroArquivo || !arquivo) {
-      return json({ success: false, error: `storage: ${erroArquivo?.message || 'sem arquivo'}` });
+      return await falhaDaPeca(`storage: ${erroArquivo?.message || 'sem arquivo'}`);
     }
 
     const base64 = paraBase64(new Uint8Array(await arquivo.arrayBuffer()));
@@ -284,9 +326,14 @@ Deno.serve(async (req: Request) => {
     // como inline_data e `responseMimeType: application/json` obriga o modelo a
     // devolver JSON puro — sem cerca de markdown para limpar depois.
     const chave = Deno.env.get('GOOGLE_AI_API_KEY');
-    if (!chave) return json({ success: false, error: 'GOOGLE_AI_API_KEY não configurada' });
+    if (!chave) return await falhaDaPeca('GOOGLE_AI_API_KEY não configurada');
 
     let lido: Record<string, unknown>;
+    // Preenchido antes do JSON.parse para o catch ter o que contar. Sem isso,
+    // "JSON cortado na posição 818" não diz se foi teto de token, corte por
+    // segurança ou resposta partida em vários pedaços — e sem saber qual,
+    // qualquer conserto é chute.
+    let diagnostico = 'resposta do Gemini não chegou a ser lida';
     try {
       const r = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(chave)}`,
@@ -309,27 +356,88 @@ Deno.serve(async (req: Request) => {
               ],
             }],
             // temperatura 0: extração de dado de peça não é lugar de criatividade
-            // maxOutputTokens explícito: o JSON do prompt v2 traz partes, verbas e
-            // cronograma e ficou bem maior que o do v1. Sem teto alto o Gemini
-            // corta no meio e o JSON.parse estoura — falha que aparece como
-            // "leitura:" genérico e custa a chamada do mesmo jeito.
+            //
+            // maxOutputTokens 32768 (era 8192, 07/09/2026). O teto de 8192 estava
+            // certo na intenção e errado na conta: `gemini-2.5-flash` raciocina
+            // antes de responder, e os tokens de pensamento contam contra o MESMO
+            // maxOutputTokens. Medido nas peças travadas: finishReason=MAX_TOKENS
+            // com 2.579 a 6.796 CARACTERES de JSON visível — algo entre 600 e
+            // 1.700 tokens de saída dentro de um teto de 8.192. O resto foi
+            // pensamento. As três cortavam dentro do "cronograma", no meio de uma
+            // parcela (uma delas na parcela 39): pensão mensal e acordo longo
+            // geram lista grande, e não sobrava orçamento para ela.
+            //
+            // Por que só subir o teto e NÃO desligar o raciocínio: dá para
+            // silenciar o pensamento com thinkingConfig.thinkingBudget = 0, mas
+            // isso muda como o modelo lê a peça — e as 9.091 leituras que já
+            // existem foram feitas COM raciocínio. Subir o teto corrige a causa
+            // medida sem mexer na qualidade. Teto alto não custa: paga-se pelo
+            // token gerado, não pelo limite. Se ainda assim estourar, o
+            // usageMetadata gravado no erro dirá quanto foi pensamento, e aí sim
+            // se decide capar — com número na mão.
+            //
+            // Teto sozinho não basta, e está medido: numa peça o pensamento
+            // sozinho consumiu 22.917 tokens. O raciocínio cresce junto com a
+            // complexidade e disputa o mesmo orçamento — por isso o cronograma
+            // longo passou a vir como REGRA (bloco D do prompt), expandida no
+            // banco. Encurtar a resposta é o único conserto que a peça longa
+            // aceita.
             generationConfig: {
               responseMimeType: 'application/json',
               temperature: 0,
-              maxOutputTokens: 8192,
+              maxOutputTokens: 32768,
             },
           }),
         },
       );
       if (!r.ok) {
         const detalhe = (await r.text()).replace(/\s+/g, ' ').slice(0, 300);
-        return json({ success: false, documento_id, error: `gemini ${r.status}: ${detalhe}` });
+        return await falhaDaPeca(`gemini ${r.status}: ${detalhe}`);
       }
       const resposta = await r.json();
-      const bruto = resposta?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      const candidato = resposta?.candidates?.[0];
+      const partes = (candidato?.content?.parts ?? []) as Array<{ text?: string }>;
+
+      // JUNTA TODAS AS PARTES. Antes lia só `parts[0].text`: quando o modelo
+      // divide a saída em mais de um pedaço, o primeiro é um fragmento e o
+      // JSON.parse estoura no meio. Ler todas as partes é o jeito certo de ler
+      // a resposta, qualquer que seja a causa do corte.
+      const bruto = partes.map((p) => p?.text ?? '').join('');
+
+      // `fim` mostra ONDE a resposta cortou, e isso é o que diagnostica. Mas o
+      // que está ali é conteúdo de peça judicial: nome de parte, beneficiário,
+      // valor. Gravar isso cru em `jm_documentos.leitura_erro` — que aparece na
+      // vw_jm_leitura_travada — é vazar dado de cliente para uma coluna de log.
+      // Já aconteceu: um erro guardado trazia "beneficiario": "<nome de uma
+      // pessoa real>". Os valores de texto viram reticências; as chaves e os
+      // números ficam, que é o que diz "cortou dentro do cronograma, na parcela
+      // 464".
+      const semTextoDePeca = (t: string) =>
+        t.replace(/:\s*"(?:[^"\\]|\\.)*"?/g, ': "…"');
+      const fim = semTextoDePeca(String(bruto).slice(-160)).slice(-120).replace(/\s+/g, ' ');
+      const uso = resposta?.usageMetadata ?? {};
+      diagnostico =
+        `finishReason=${candidato?.finishReason ?? '(sem)'}` +
+        ` partes=${partes.length} chars=${bruto.length}` +
+        // Quanto do orçamento foi pensamento e quanto foi resposta. Sem esses
+        // dois números, "MAX_TOKENS" não diz se falta teto ou se sobra
+        // raciocínio — e é a diferença entre subir o limite e capar o modelo.
+        ` pensamento=${uso.thoughtsTokenCount ?? '?'} saida=${uso.candidatesTokenCount ?? '?'}` +
+        ` entrada=${uso.promptTokenCount ?? '?'} fim="${fim}"`;
+
+      // JSON cortado quase nunca faz parse — mas quando fizer, seria leitura
+      // PELA METADE gravada como se fosse inteira. Peça truncada é peça não
+      // lida: falha explícita, com o motivo, em vez de dado silenciosamente
+      // incompleto no lugar onde alguém vai olhar valor de condenação.
+      if (candidato?.finishReason === 'MAX_TOKENS') {
+        return await falhaDaPeca(`resposta truncada pelo teto de tokens | ${diagnostico}`);
+      }
+
       lido = achatar(JSON.parse(String(bruto)));
     } catch (e) {
-      return json({ success: false, documento_id, error: `leitura: ${String((e as Error)?.message).slice(0, 300)}` });
+      return await falhaDaPeca(
+        `leitura: ${String((e as Error)?.message).slice(0, 300)} | ${diagnostico}`,
+      );
     }
 
     const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number(v));
@@ -355,6 +463,16 @@ Deno.serve(async (req: Request) => {
       partes: Array.isArray(lido.partes) ? lido.partes : [],
       processo: (lido.processo && typeof lido.processo === 'object') ? lido.processo : null,
       cronograma: Array.isArray(lido.cronograma) ? lido.cronograma : [],
+      // A regra da série regular. Quem a expande em `cronograma` é o gatilho
+      // jm_leitura_expande_cronograma, no banco — e só quando `cronograma` vem
+      // vazio, porque parcela enumerada pela peça manda mais que regra.
+      // Assim nada que hoje lê `cronograma` precisa mudar: a coluna continua
+      // guardando a mesma lista, muda só quem a escreve.
+      cronograma_regra:
+        (lido.cronograma_regra && typeof lido.cronograma_regra === 'object'
+          && !Array.isArray(lido.cronograma_regra))
+          ? lido.cronograma_regra
+          : null,
       prompt_versao: PROMPT_VERSAO,
       // Guarda o JSON cru: se o prompt mudar, dá para reprocessar sem pagar de novo.
       texto_extraido: JSON.stringify(lido),
@@ -364,7 +482,13 @@ Deno.serve(async (req: Request) => {
     const { error: erroGrava } = await sb
       .from('jm_documento_leitura')
       .upsert(registro, { onConflict: 'documento_id' });
-    if (erroGrava) return json({ success: false, documento_id, error: `gravar: ${erroGrava.message}` });
+    if (erroGrava) return await falhaDaPeca(`gravar: ${erroGrava.message}`);
+
+    // Leu: o erro antigo sai de cena. Erro que fica depois de resolvido vira
+    // alarme falso, e alarme falso ninguém olha.
+    await sb.from('jm_documentos')
+      .update({ leitura_erro: null, leitura_erro_em: null })
+      .eq('id', documento_id);
 
     return json({
       success: true, documento_id, especie: registro.especie,
@@ -374,6 +498,7 @@ Deno.serve(async (req: Request) => {
       verbas: (registro.partes as { verbas?: unknown[] }[])
         .reduce((n, p) => n + (p?.verbas?.length ?? 0), 0),
       cronograma: (registro.cronograma as unknown[]).length,
+      cronograma_por_regra: registro.cronograma_regra !== null,
     });
   } catch (e) {
     return json({ success: false, error: String((e as Error)?.message || e).slice(0, 300) });
