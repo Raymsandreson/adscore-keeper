@@ -450,6 +450,106 @@ async function gerarAudioDoRascunho(
 }
 
 /**
+ * Pendência achada pelo atendente vira ATIVIDADE na esteira da equipe.
+ *
+ * O painel do Dom já mostrava a pendência, e mostrar não é encaminhar: quem
+ * não abrisse aquela tela não ficava sabendo. A atividade entra onde a equipe
+ * já trabalha todo dia, com dono e com prazo — que é a diferença entre
+ * registrar um problema e fazer alguém resolvê-lo.
+ *
+ * TRÊS CUIDADOS, cada um por um jeito de isto dar errado:
+ *
+ *  1. SÓ COM PENDÊNCIA DE VERDADE. Nasce do [REVISAR] que o próprio modelo
+ *     emitiu, ou da intenção que exige gente. Em modo rascunho TODA resposta
+ *     passa por revisão, e criar atividade para cada uma encheria a esteira de
+ *     ruído até ninguém mais olhar.
+ *
+ *  2. NÃO REPETE. Sem esta trava, o mesmo processo parado geraria uma
+ *     atividade por rodada do cron — a cada cinco minutos, para sempre. Só
+ *     cria se não houver outra igual, aberta, nos últimos 7 dias.
+ *
+ *  3. FALHAR AQUI NÃO DERRUBA O RASCUNHO. A resposta ao cliente é a entrega;
+ *     a atividade é consequência. Se o insert falhar, o motivo vai para o log
+ *     e a rodada segue.
+ */
+async function registrarPendencia(
+  supabase: any,
+  dados: {
+    leadId: string | null;
+    grupo: string | null;
+    motivo: string;
+    pergunta: string;
+    atendenteId: string | null;
+  },
+): Promise<string | null> {
+  try {
+    if (!dados.leadId) return null;
+
+    const titulo = `Pendência do atendente virtual: ${dados.motivo}`.slice(0, 200);
+
+    const seteDiasAtras = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const { data: jaExiste } = await supabase
+      .from("lead_activities")
+      .select("id")
+      .eq("lead_id", dados.leadId)
+      .eq("title", titulo)
+      .is("completed_at", null)
+      .is("deleted_at", null)
+      .gte("created_at", seteDiasAtras)
+      .limit(1).maybeSingle();
+    if (jaExiste) return (jaExiste as any).id ?? null;
+
+    // Quem cuida: o mesmo rodízio que já atende reclamação. `pick_dom_atendente`
+    // devolve o id em dom_atendentes; o dono da atividade é o USUÁRIO por trás
+    // dele, senão a linha nasce sem ninguém que a enxergue na própria tela.
+    let atendenteId = dados.atendenteId;
+    if (!atendenteId) {
+      const { data: pick } = await supabase.rpc("pick_dom_atendente", { p_escopo: "reclamacao" });
+      atendenteId = (pick as any) || null;
+    }
+    let userId: string | null = null;
+    let userNome: string | null = null;
+    if (atendenteId) {
+      const { data: at } = await supabase.from("dom_atendentes")
+        .select("user_id, nome").eq("id", atendenteId).maybeSingle();
+      userId = (at as any)?.user_id ?? null;
+      userNome = (at as any)?.nome ?? null;
+    }
+
+    // Três dias: perto o bastante para não virar prateleira, longe o bastante
+    // para caber num dia cheio.
+    const prazo = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+
+    const { data: nova, error } = await supabase.from("lead_activities").insert({
+      lead_id: dados.leadId,
+      title: titulo,
+      description:
+        `Aberta automaticamente pelo atendente virtual.\n\n` +
+        `Motivo: ${dados.motivo}\n` +
+        `Grupo: ${dados.grupo ?? "(sem nome)"}\n\n` +
+        `O que o cliente escreveu:\n${dados.pergunta.slice(0, 500)}`,
+      activity_type: "acompanhamento",
+      status: "pendente",
+      deadline: prazo,
+      assigned_to: userId,
+      assigned_to_name: userNome,
+      created_by_ai: true,
+      action_source: "dom-rascunho",
+      action_source_detail: dados.motivo.slice(0, 200),
+    }).select("id").maybeSingle();
+
+    if (error) {
+      console.error("[dom-rascunho] não consegui abrir a atividade da pendência", error.message);
+      return null;
+    }
+    return (nova as any)?.id ?? null;
+  } catch (e) {
+    console.error("[dom-rascunho] pendência falhou", (e as Error)?.message);
+    return null;
+  }
+}
+
+/**
  * Toda decisão vira linha em dom_decisoes — inclusive o silêncio.
  *
  * Sem isto o piloto não responde a pergunta que importa: "ele está calando
@@ -858,7 +958,21 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // 6. O cliente falou por áudio? Então a resposta nasce falada também —
+      // 6. Pendência vira atividade com dono e prazo. Depois da fila de
+      //    propósito: se o rascunho não entrou, não há o que encaminhar.
+      if (motivo) {
+        const atvId = await registrarPendencia(supabase, {
+          leadId: g.lead_id || domCtx.contexto?.lead_id || null,
+          grupo: g.group_name ?? null,
+          motivo,
+          pergunta,
+          atendenteId,
+        });
+        // Log sem texto de cliente: só o que dá para auditar.
+        console.log(`[dom-rascunho] pendência grupo=${g.group_jid} atividade=${atvId ?? "nenhuma"}`);
+      }
+
+      // 7. O cliente falou por áudio? Então a resposta nasce falada também —
       //    mas SÓ como rascunho. Ver gerarAudioDoRascunho: nem em grupo
       //    automático o áudio sai; quem sai é o texto, como sempre.
       const clientePorAudio = ["audio", "ptt", "voice"].includes(String(ultima.tipo || "").toLowerCase());
@@ -883,7 +997,7 @@ Deno.serve(async (req) => {
         if (som.erro) console.warn(`[dom-rascunho] áudio falhou grupo=${g.group_jid}: ${som.erro}`);
       }
 
-      // 7. Modo automático: o rascunho entra na MESMA fila de agendamento que a
+      // 8. Modo automático: o rascunho entra na MESMA fila de agendamento que a
       //    equipe já usa. É de lá que sai a bolha tracejada com o cronômetro na
       //    conversa, o "tirar da fila" e o "enviar agora" — nada disso precisou
       //    ser escrito de novo.

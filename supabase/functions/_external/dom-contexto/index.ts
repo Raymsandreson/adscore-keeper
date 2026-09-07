@@ -365,11 +365,36 @@ function blocoProcessual(ctx: any, panorama: boolean): string {
             ` no futuro neste processo].`,
         );
       } else {
+        // O NÚMERO DE DIAS É A RESPOSTA; a data é só a conta que o cliente
+        // teria que fazer sozinho. "Foi em 28 de agosto" obriga a pessoa a
+        // contar nos dedos; "faz 10 dias" já responde.
+        const efetivo = Number(p.parado_dias_efetivo);
         linhas.push(
           `  Última movimentação: ${dataBR(p.ultima_movimentacao)}` +
-            (dias !== null ? ` (há ${dias} dias)` : ""),
+            (dias !== null ? ` — parado há ${dias} dias` : ""),
         );
+        // Despacho é ordem de andamento e, sozinho, não move o caso: o
+        // processo "andou" no papel e continua onde estava. Quando as duas
+        // contas divergem, é sinal de que o último movimento foi de rotina.
+        if (Number.isFinite(efetivo) && dias !== null && efetivo > dias) {
+          linhas.push(
+            `  ATENÇÃO: descontando despacho de rotina, o caso está parado há` +
+              ` ${efetivo} dias. Os ${dias} acima incluem um despacho que não` +
+              ` moveu nada. Ao falar de espera, use ${efetivo}.`,
+          );
+        }
       }
+    } else {
+      // Sem isto o processo sem movimento simplesmente não aparecia, e o
+      // modelo preenchia o vazio. Medido em 07/09/2026: 16 dos 30 processos do
+      // piloto não têm UMA movimentação registrada. Não saber é um fato, e
+      // um fato dito é melhor que um silêncio interpretado.
+      linhas.push(
+        "  Última movimentação: NÃO TEMOS REGISTRO NENHUM deste processo." +
+          " NÃO diga que ele está parado, NÃO estime tempo e NÃO invente fase." +
+          " Diga que vai confirmar com a equipe como está e emita" +
+          " [REVISAR: processo sem nenhuma movimentação registrada].",
+      );
     }
 
     // DETECTOR, não filtro. Em 05/09/2026, 473 dos 503 processos do piloto que
@@ -445,12 +470,36 @@ function blocoProcessual(ctx: any, panorama: boolean): string {
       }
     }
 
-    // Sem movimento há muito tempo o cliente costuma achar que foi esquecido.
-    // Melhor o Dom saber disso do que ser pego de surpresa.
-    if (dias !== null && dias > 90 && dias > 0) {
+    // PARADO DEMAIS: a conta que vale é a que ignora despacho.
+    //
+    // Antes isto era só uma NOTA INTERNA ("se cobrarem, seja honesto"), o que
+    // deixava a iniciativa com o cliente: quem não cobrava, não sabia. Agora o
+    // Dom fala primeiro.
+    //
+    // O QUE ELE NÃO FAZ: prometer a ouvidoria. Reclamação em ouvidoria é ato
+    // que alguém precisa protocolar, e atendente virtual anunciando ato
+    // jurídico cria dívida que ele não pode pagar — se ninguém entrar, o
+    // cliente cobra a promessa depois e o escritório fica pior do que se
+    // tivesse ficado calado. Ele diz a verdade do tempo, diz que está
+    // acionando a equipe, e marca [REVISAR] para uma pessoa decidir e fazer.
+    const paradoReal = Number.isFinite(Number(p.parado_dias_efetivo))
+      ? Number(p.parado_dias_efetivo)
+      : dias;
+    if (paradoReal !== null && paradoReal > 90) {
       linhas.push(
-        `  NOTA INTERNA: sem movimentação há ${dias} dias. Se cobrarem, seja honesto` +
-          " sobre a espera — não prometa prazo que você não tem.",
+        `  >>> PARADO HÁ ${paradoReal} DIAS, acima do limite de 90 que a casa aceita.` +
+          " Diga isto ao cliente com todas as letras, sem rodeio e sem pedir desculpa" +
+          " genérica: quantos dias faz, e que isso é tempo demais.",
+      );
+      linhas.push(
+        "      Em seguida diga que você JÁ ESTÁ ACIONANDO a equipe para cobrar" +
+          " o andamento. É PROIBIDO prometer reclamação na ouvidoria, prazo de" +
+          " resposta, ou qualquer providência com data — quem decide isso é a" +
+          " equipe, não você.",
+      );
+      linhas.push(
+        `      E emita [REVISAR: processo parado há ${paradoReal} dias — avaliar` +
+          " reclamação na ouvidoria].",
       );
     }
 
@@ -666,6 +715,11 @@ function blocoComoFalar(panorama: boolean): string {
     '  réplica → "nós respondemos o que o outro lado alegou"',
     '  instrução → "a fase de juntar as provas e ouvir as pessoas"',
     '  conclusos ao juiz → "está na mesa do juiz esperando ele analisar"',
+    '  autos → "o processo" (nunca escreva "autos")',
+    '  audiência de instrução → "o dia em que o juiz ouve você, as testemunhas',
+    '    e o outro lado"',
+    '  ata da audiência → "o documento que registra o que ficou combinado na',
+    '    audiência"',
     '  sentença → "a decisão do juiz sobre o caso"',
     '  acórdão → "a decisão de um grupo de juízes, no tribunal"',
     '  trânsito em julgado → "a decisão virou definitiva, ninguém pode mais',
@@ -682,6 +736,13 @@ function blocoComoFalar(panorama: boolean): string {
     '  agravo → "um recurso contra uma decisão tomada no meio do processo"',
     '  recurso extraordinário / especial → "quando o caso sobe para um tribunal',
     '    superior, em Brasília"',
+    '  admissibilidade → "o tribunal está decidindo se aceita analisar o',
+    '    recurso". NUNCA escreva a palavra: ela não diz nada para o cliente e',
+    '    já vazou para uma mensagem real.',
+    '  recurso de revista → "o pedido para o caso ser analisado pelo tribunal',
+    '    superior do trabalho"',
+    '  agravo de instrumento → "um pedido para o tribunal aceitar analisar o',
+    '    recurso que foi barrado"',
     '  acolhidos em parte → "o juiz concordou com uma parte do que foi pedido"',
     '  procedente / improcedente → "o juiz deu ganho de causa" / "o juiz negou o',
     '    pedido"',
@@ -721,8 +782,40 @@ function blocoComoFalar(panorama: boolean): string {
     '  concessão → "quando o benefício foi aprovado"',
     '  implantação → "quando o benefício começa a ser pago de verdade"',
     "",
-    "Se precisar mesmo citar o nome técnico, escreva-o e explique em seguida,",
-    "entre parênteses, no lugar de deixar solto.",
+    "-----------------------------------------------------------------------",
+    "A PALAVRA TÉCNICA NÃO ENTRA, NEM EXPLICADA",
+    "-----------------------------------------------------------------------",
+    "Até 07/09/2026 esta parte dizia: \"se precisar mesmo citar o nome técnico,",
+    "escreva-o e explique em seguida\". Era uma porta aberta, e saiu por ela uma",
+    "mensagem real com \"fase de admissibilidade do Recurso de Revista\",",
+    "\"anexada uma petição aos autos\" e \"audiência de instrução\" — cada uma",
+    "seguida de explicação, e nenhuma compreensível para quem está do outro lado.",
+    "",
+    "A porta está fechada. NÃO escreva o termo técnico, nem para explicá-lo",
+    "depois. Escreva DIRETO o que ele significa:",
+    "",
+    '  ERRADO: "está na fase de admissibilidade do Recurso de Revista, que é',
+    '          quando o tribunal analisa o recurso"',
+    '  CERTO:  "o tribunal está decidindo se aceita analisar o nosso recurso"',
+    "",
+    '  ERRADO: "foi anexada uma petição aos autos"',
+    '  CERTO:  "a gente entregou um documento novo no processo"',
+    "",
+    '  ERRADO: "os autos foram conclusos ao juiz"',
+    '  CERTO:  "o processo foi para a mesa do juiz"',
+    "",
+    '  ERRADO: "temos audiência de instrução marcada para 22 de setembro"',
+    '  CERTO:  "no dia 22 de setembro tem a audiência, que é o dia em que o juiz',
+    '          ouve o senhor, as testemunhas e o outro lado"',
+    "",
+    "A pessoa do outro lado pode não ter estudado. Escreva para ela como você",
+    "explicaria para a sua avó — sem infantilizar, sem palavra difícil, sem",
+    "parênteses de dicionário. Se a frase precisa de explicação, é porque a",
+    "palavra está errada: troque a palavra.",
+    "",
+    "SEJA DIRETO. Diga o que aconteceu, há quantos dias, e o que vem agora.",
+    "Nada de \"informamos que\", \"cumpre esclarecer\", nem frase de enfeite antes",
+    "do assunto.",
     "",
     "-----------------------------------------------------------------------",
     "COMPARAÇÃO DO DIA A DIA — uma por resposta, no máximo",
