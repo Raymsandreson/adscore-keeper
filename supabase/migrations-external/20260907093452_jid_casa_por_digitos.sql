@@ -2,7 +2,7 @@
 -- Vínculo de grupo passa a casar por DÍGITOS, não por "tirar o @g.us".
 --
 -- O ERRO
--- A 20260907140000 normalizava o JID com split_part(group_jid, '@', 1),
+-- A 20260907093136 normalizava o JID com split_part(group_jid, '@', 1),
 -- acreditando que a única diferença entre as tabelas era o sufixo '@g.us'.
 -- Não é. Grupo criado no formato legado tem hífen no meio:
 --
@@ -61,7 +61,7 @@ create index if not exists idx_dom_grupos_piloto_jid_chave
   on public.dom_grupos_piloto (public.jid_chave(group_jid));
 
 -- A busca, com o join consertado. Só o bloco de texto livre muda; os ramos de
--- processo e de caso ficam idênticos aos de 20260907140000.
+-- processo e de caso ficam idênticos aos de 20260907093136.
 create or replace function public.busca_unificada(
   p_termo  text,
   p_limite integer default 30
@@ -188,7 +188,7 @@ end $$;
 -- drop index if exists public.idx_dom_grupos_piloto_jid_chave;
 -- drop index if exists public.idx_lead_whatsapp_groups_jid_chave;
 -- drop function if exists public.jid_chave(text);
--- -- e recolar busca_unificada da 20260907140000 (a que usa split_part) —
+-- -- e recolar busca_unificada da 20260907093136 (a que usa split_part) —
 -- -- lembrando que ela perde o vinculo de 48 grupos.
 -- commit;
 -- =============================================================================

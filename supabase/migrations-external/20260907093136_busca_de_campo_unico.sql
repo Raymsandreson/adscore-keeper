@@ -39,7 +39,7 @@
 --   `cnj_valido(text)`      confere o dígito verificador por módulo 97 (ISO 7064)
 --   `search_whatsapp_groups_by_tokens(...)`  casa todos os tokens em AND, com
 --                           unaccent, e já devolve DISTINCT ON (group_jid)
---   `dom_normalizar_nome_grupo(text)`  (migration 20260907120000)
+--   `dom_normalizar_nome_grupo(text)`  (migration 20260907090811)
 --
 -- A ARMADILHA DO JID — três tabelas, três formatos, uma delas misturada:
 --   whatsapp_groups_index  30.195 linhas, 30.195 com '@g.us'
