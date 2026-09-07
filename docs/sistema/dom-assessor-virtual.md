@@ -1049,3 +1049,123 @@ decisão do dono do caso.
 
 O erro da migration foi a informação: sem ele, ninguém saberia que as duas
 eram a mesma.
+
+### As duas fichas duplicadas viraram uma — e o que a fusão revelou
+
+Resolvidos os dois casos que estavam em aberto. Nenhum dos dois era descarte:
+nas duas vezes a ficha "errada" carregava algo que a "certa" não tinha.
+
+**Caso 1 — `0056732-43.2026.4.05.8300`, cliente único, duas fichas.**
+
+| | `13d685de` "BPC DEFICIENTE" (04/08) | `d55c896e` "PREV 174" (20/08) |
+| --- | --- | --- |
+| dados do processo | TRF5, 15ª Vara Federal, R$ 29.178, 8 movimentações | nenhum |
+| POP / etapa | POP-BPC, marco de ajuizamento | nenhum |
+| atividades | 3 | 1 |
+| **intimações por e-mail** | **0** | **3 — uma delas um PRAZO** |
+
+A ficha "vazia" não era vazia: era para onde o push de e-mail vinha mandando as
+intimações. "Publicado Intimação para Emendar em 31/08/2026" caiu na casca —
+sem POP, sem etapa, sem histórico — enquanto quem acompanha o caso olhava a
+outra. Fundidas: a que fica tem agora 4 atividades e 11 linhas de feed, e o
+rótulo interno virou parte do título (`BPC DEFICIENTE — PREV 174`) para a
+equipe não perder o índice que usa.
+
+**Caso 2 — `1505819`: eram três fichas, não duas.**
+
+A terceira (`4ac5e67f`, outro cliente) **não** é duplicata — é litisconsórcio, e
+a trava permite de propósito. Das duas do mesmo cliente, a de CNJ correto
+(`ab73a87e`) tinha os dados mas nenhum responsável e título "Processo"; a do
+CNJ torto (`a3d2f961`, 21 dígitos) tinha o título bom, o responsável e duas
+atividades — **uma ainda pendente**. Por isso fusão: a que fica herdou título,
+responsável e as duas atividades.
+
+**O `process_title` também carregava o erro.** É campo desnormalizado: o card da
+atividade mostra aquele texto, não a ficha. Mover só o `process_id` deixaria
+`1505819-97.2025.8.26.03788` vivo na tela. Mesma coisa com `numero_cnj` e
+`processo_titulo` no feed.
+
+**E a última movimentação não se recalcula sozinha.**
+`lead_processes_avanca_ultima_movimentacao` roda `AFTER INSERT` em
+`process_updates`. Mover linha é UPDATE: o gatilho não dispara. Sem recalcular
+à mão, a ficha ficaria com a data de antes da fusão.
+
+Tudo reversível: `zz_fusao_fichas_bkp_20260907` guarda as 10 linhas inteiras em
+jsonb com o `process_id` antigo. As fichas saíram por `deleted_at`, não por
+`delete` — a tabela tem `trg_lead_processes_no_hard_delete` justamente para isso.
+
+### O buraco do 21º dígito, fechado
+
+`a3d2f961` foi criada em **25/08, depois** da trava anti-duplicata (24/08).
+Passou porque a trava só age com exatamente 20 dígitos:
+
+```
+if v_cnj is null or length(v_cnj) <> 20 then return new; end if;
+```
+
+Com 21 ela é outro número. E a validação de 06/09 tinha o mesmo ponto cego —
+essa ficha torta entraria de novo hoje, igualzinha.
+
+A regra nova confere pela **forma**, não pelo tamanho: número escrito na máscara
+do CNJ (`^[0-9]+-[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$`) tem que ser um CNJ de
+verdade. Fora dessa máscara, nada muda — o procedimento do MP
+`02.16.0079.0389620/2026-57` tem 21 dígitos e é legítimo.
+
+Conferido contra a base antes de virar trava: **1.322** fichas com cara de CNJ
+passam, **1** reprova (o typo), **413** de outro formato não são tocadas.
+Testado nos oito casos que importam:
+
+| entrada | resultado |
+| --- | --- |
+| `1505819-97.2025.8.26.03788` | recusa: "tem 21 dígitos, e CNJ tem 20" |
+| `02.16.0079.0389620/2026-57` (MP) | aceita |
+| `00108807620255030160` | vira `0010880-76.2025.5.03.0160` |
+| `0000240-19.2025.5.11.0152` | recusa: "o correto seria 16, e não 19" |
+| `1004690362` (NB) | aceita |
+| `150581-97.2025.8.26.0378` (1 dígito a menos) | recusa |
+| `0056732-43.2026.4.05.8300` | aceita |
+| `Não protocolado` | recusa |
+
+### O defeito estrutural que fundir ficha NÃO resolve
+
+`supabase/functions/sync-email-push/index.ts:167` monta o índice assim:
+
+```ts
+porChave.set(chaveIdentificador(cls.tipo, cls.digitos), p)
+```
+
+percorrendo as fichas em `order by id`. Quando duas têm os mesmos dígitos, a
+segunda **sobrescreve a primeira em silêncio**. Não há erro, não há aviso: uma
+das duas simplesmente deixa de existir para o push. Quem recebe a intimação é
+decidido por ordem de UUID.
+
+Medido em 07/09/2026, fichas vivas com dígitos repetidos:
+
+| | grupos | fichas |
+| --- | --- | --- |
+| mesmo cliente — duplicata de verdade, fundir resolve | 37 | 89 |
+| **clientes diferentes — litisconsórcio, fundir NÃO resolve** | **16** | **37** |
+
+Os 16 de litisconsórcio são o problema real: são dois clientes que legitimamente
+dividem o mesmo CNJ, e nunca vão virar uma ficha só. Hoje um dos dois não recebe
+intimação nenhuma.
+
+**Não é teoria.** Em `0010657-76.2024.5.18.0052`, dois clientes:
+
+| ficha | intimações | primeira | última |
+| --- | --- | --- | --- |
+| `28add5ed` | 12 | 12/08 | **22/08** |
+| `3be53d75` | 10 | **30/08** | 04/09 |
+
+Disjuntas no tempo, sem uma única sobreposição. A ficha do primeiro cliente
+**parou de receber** e ninguém foi avisado. (Por que virou em 30/08 é hipótese —
+provavelmente a segunda ficha só ganhou o número naquele momento, e o índice
+pula ficha sem número. O corte em si está medido.)
+
+O conserto é no código, não no dado: o índice precisa ser um-para-muitos e
+espalhar a movimentação para todas as fichas do CNJ. **Ainda não feito** — é
+mudança no pipeline do push e pede seu próprio ciclo de leitura e teste.
+
+**Também ainda aberto:** os 37 grupos de duplicata de verdade (89 fichas). Cada
+um pede a mesma leitura caso a caso feita aqui — qual ficha tem o dado e qual
+tem o cuidado nem sempre é a mesma.
