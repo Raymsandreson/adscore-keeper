@@ -30,7 +30,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2 } from 'lucide-react';
+import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2, AlertTriangle } from 'lucide-react';
 import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 import { ContagemAteEnvio } from '@/components/whatsapp/ContagemAteEnvio';
 
@@ -661,6 +661,15 @@ export function AtendenteVirtualPanel() {
                   {aberto.audio_url
                     ? <audio controls src={aberto.audio_url} className="w-full h-8" />
                     : <p className="text-[11px] text-destructive">Não consegui gerar: {aberto.audio_erro}</p>}
+                  {/* Áudio PRONTO e mesmo assim com aviso = ele foi cortado. Antes
+                      este caso ficava invisível: existindo url, o erro não era
+                      mostrado, e um áudio pela metade parecia inteiro. */}
+                  {aberto.audio_url && aberto.audio_erro && (
+                    <p className="text-[11px] text-amber-700 flex items-start gap-1">
+                      <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      {aberto.audio_erro}
+                    </p>
+                  )}
                   <p className="text-[10px] text-muted-foreground">
                     Este áudio <strong>não foi enviado</strong> e não vai sair sozinho — nem em grupo
                     que responde sozinho, onde quem sai é o texto. Ele existe para você ouvir antes

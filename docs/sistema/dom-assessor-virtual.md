@@ -1757,3 +1757,49 @@ isso em vez de fingir que não havia fonte.
 grupo", logo abaixo. Guardar uma segunda cópia criaria duas versões da mesma
 conversa para divergirem com o tempo. O painel diz isso em uma linha, para quem
 revisa não ficar procurando a conversa dentro do bloco de fontes.
+
+### O áudio parava no meio da resposta
+
+No Caso 341 o cliente mandou um áudio pedindo o status de **todos** os processos.
+A resposta escrita cobria os dois — auxílio-acidente em ajuizamento e o
+trabalhista em Recurso de Revista, com audiência marcada para 22/09. **O áudio
+parou em "ajuizamento".**
+
+**A conta:** a resposta tem **1.205 caracteres** e o teto de fala estava em
+**500** (`max_tts_chars` nulo → padrão 500, com limite duro de 1.000). O corte
+era `limpo.slice(0, maxChars)` — seco, no caractere.
+
+E os 500 nunca foram limite da ElevenLabs: o `eleven_multilingual_v2` aceita
+**10.000 caracteres** por chamada ([limites por modelo](https://elevenlabs.io/docs/help-center/product/speech-synthesis/text-to-speech/whats-the-maximum-amount-of-characters-and-text-i-can-generate)).
+Era limite nosso, vinte vezes menor que o necessário.
+
+**Áudio que omite metade da resposta é pior que áudio nenhum**, porque soa
+completo. O cliente ouviria sobre um processo e nunca saberia do segundo nem da
+audiência. É a mesma família do defeito do dia: resposta incompleta que parece
+inteira.
+
+**Três consertos:**
+
+| | |
+| --- | --- |
+| teto | 500 → **3.000** de padrão, limite duro 1.000 → **5.000** |
+| corte | no fim da **última frase inteira**, nunca no meio da palavra |
+| aviso | quando corta, grava em `audio_erro` **e a tela mostra junto com o áudio** |
+
+O aviso importa: antes, existindo `audio_url`, o `audio_erro` não era exibido —
+um áudio pela metade parecia inteiro na tela também.
+
+**Um erro meu, pego no teste.** A primeira versão do corte usava
+`lastIndexOf(" ")` como alternativa quando não havia pontuação. Num texto com
+pontuação só no começo (`"Curta. xxxxx…"`) ela achava o único espaço, no índice
+6, e cortava em **6 de 4.007 caracteres**. A correção é usar metade do teto como
+**piso para os dois candidatos**: sem frase nem espaço tarde o bastante, corta
+seco no teto. Melhor um corte reto do que meia palavra.
+
+Testado em cinco casos: resposta média (333, não corta), Caso 341 (1.205, não
+corta), texto de 4.000 (corta em 2.999 no fim de frase), texto sem pontuação
+nenhuma (corta em 2.999 no espaço) e o patológico acima (corta em 3.000).
+
+**Custo:** a ElevenLabs cobra por caractere, então resposta longa passa a custar
+mais. A média das respostas com áudio é de **333 caracteres** — a maioria não
+muda de preço. Das seis com áudio até hoje, **uma** passava de 500.

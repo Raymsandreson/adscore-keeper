@@ -306,7 +306,39 @@ async function gerarAudioDoRascunho(
       voiceId = vozCustom?.elevenlabs_voice_id || "FGY2WhTYpPnrIDTdsKH5";
     }
 
-    const trecho = limpo.length > maxChars ? limpo.slice(0, maxChars) : limpo;
+    // CORTE, QUANDO PRECISA, NO FIM DE UMA FRASE — e nunca em silêncio.
+    //
+    // Até 07/09/2026 isto era `limpo.slice(0, maxChars)` com teto de 500: corte
+    // seco no caractere. No Caso 341 a resposta tinha 1.205 caracteres e o
+    // áudio parou em "ajuizamento", no meio — o cliente ouviria sobre UM
+    // processo e nunca saberia do segundo, nem da audiência marcada. Áudio que
+    // omite metade da resposta é pior que áudio nenhum: soa completo.
+    //
+    // O `eleven_multilingual_v2` aceita 10.000 caracteres por chamada, então os
+    // 500 nunca foram limite da API — eram limite nosso, 20x menor que o
+    // necessário. Agora o teto é de verdade e, quando ele for atingido, o corte
+    // cai no fim da última frase inteira e o motivo fica gravado em
+    // `audio_erro` para aparecer na tela ao lado do áudio.
+    let trecho = limpo;
+    let avisoCorte: string | null = null;
+    if (limpo.length > maxChars) {
+      const bruto = limpo.slice(0, maxChars);
+      // Última pontuação de fim de frase; se não houver nenhuma, o último
+      // espaço — palavra partida ao meio é o pior dos mundos.
+      const fim = Math.max(bruto.lastIndexOf("."), bruto.lastIndexOf("!"),
+                           bruto.lastIndexOf("?"), bruto.lastIndexOf("\n"));
+      // A METADE DO TETO É PISO, e vale para os dois candidatos. Sem isso, um
+      // texto cuja única pontuação está no começo ("Curta. xxxxx…") cortava no
+      // primeiro espaço: medido, 6 caracteres de 4.007. Melhor um corte seco no
+      // teto do que um áudio de meia palavra.
+      const meio = maxChars * 0.5;
+      const espaco = bruto.lastIndexOf(" ");
+      const corte = fim > meio ? fim + 1 : (espaco > meio ? espaco : maxChars);
+      trecho = bruto.slice(0, corte).trim();
+      avisoCorte =
+        `áudio cortado: a resposta tem ${limpo.length} caracteres e o teto de fala é ${maxChars}. ` +
+        `Foram falados ${trecho.length}. O final NÃO está no áudio — confira antes de mandar.`;
+    }
     const resp = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
       {
@@ -328,7 +360,9 @@ async function gerarAudioDoRascunho(
     if (errUp) return { url: null, voz: nomeDaVoz, erro: `storage: ${errUp.message}` };
 
     const { data: pub } = supabase.storage.from("whatsapp-media").getPublicUrl(arquivo);
-    return { url: pub?.publicUrl ?? null, voz: nomeDaVoz, erro: null };
+    // `erro` carrega o aviso de corte mesmo com o áudio pronto: a tela mostra os
+    // dois. Áudio que existe e está incompleto precisa dizer isso.
+    return { url: pub?.publicUrl ?? null, voz: nomeDaVoz, erro: avisoCorte };
   } catch (e) {
     return { url: null, voz: null, erro: (e as Error)?.message ?? "erro" };
   }
@@ -655,7 +689,14 @@ Deno.serve(async (req) => {
           resposta,
           agente.reply_voice_id ?? null,
           ultima.instancia,
-          Math.min(Math.max(agente.max_tts_chars || 500, 100), 1000),
+          // Teto de fala. Era 500 por padrão e 1.000 no limite — e o
+          // eleven_multilingual_v2 aceita 10.000. Os 500 cortavam a resposta
+          // média pela metade. Agora o padrão é 3.000 (cobre com folga a maior
+          // resposta já gerada, de 1.205) e o limite duro é 5.000, que é o teto
+          // do modelo mais restrito da casa, caso alguém troque de modelo.
+          // Custo: a ElevenLabs cobra por caractere, então resposta longa passa
+          // a custar mais. A média é de 333 caracteres — a maioria não muda.
+          Math.min(Math.max(agente.max_tts_chars || 3000, 100), 5000),
         );
         await supabase.from("dom_respostas_pendentes")
           .update({ audio_url: som.url, audio_voz: som.voz, audio_erro: som.erro })
