@@ -17,7 +17,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { db, ensureExternalSession } from '@/integrations/supabase';
+import { db, ensureExternalSession, externalFunctionUrl } from '@/integrations/supabase';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { FontesDaResposta, type ContextoUsado } from './FontesDaResposta';
@@ -39,6 +39,7 @@ const dbAny = db as unknown as SupabaseClient;
 interface Pendente {
   id: string; group_jid: string; instance_name: string | null; agendamento_id: string | null;
   audio_url: string | null; audio_voz: string | null; audio_erro: string | null;
+  audio_velocidade: number | null;
   group_name: string | null; pergunta: string | null; pergunta_autor: string | null;
   resposta_sugerida: string; resposta_final: string | null; intencao: string | null;
   motivo_revisao: string | null; status: string; criado_em: string; enviado_em: string | null;
@@ -165,12 +166,63 @@ export function AtendenteVirtualPanel() {
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState<Pendente | null>(null);
   const [texto, setTexto] = useState('');
+  const [regerando, setRegerando] = useState(false);
+
+  /**
+   * Refaz o áudio deste rascunho — e, quando vem velocidade, guarda ela na voz.
+   *
+   * Por que passa pela edge function em vez de escrever direto na tabela: a
+   * RLS de `custom_voices` só deixa o DONO da voz mexer, e a sessão do painel
+   * no banco externo é anônima. Quem tem permissão para gravar a velocidade é
+   * a função, com a chave de serviço — e ela é o único lugar que fala com a
+   * ElevenLabs de qualquer jeito.
+   *
+   * O áudio antigo NÃO é apagado do storage de propósito: se a velocidade nova
+   * ficar pior, o arquivo anterior ainda existe para comparar.
+   */
+  const regerarAudio = useCallback(async (velocidade?: number) => {
+    if (!aberto || regerando) return;
+    setRegerando(true);
+    try {
+      await ensureExternalSession();
+      const { data: { session } } = await db.auth.getSession();
+      if (!session?.access_token) throw new Error('sem sessão para chamar o atendente');
+      const r = await fetch(externalFunctionUrl('dom-rascunho'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ regerar_audio: aberto.id, ...(velocidade !== undefined ? { velocidade } : {}) }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.regerado) throw new Error(j?.error || `falhou (HTTP ${r.status})`);
+
+      // A tela tem que mudar AGORA, não na próxima recarga: quem está
+      // escolhendo ritmo clica, ouve, clica de novo. Recarregar a lista
+      // inteira entre um clique e outro quebra esse laço.
+      const novo: Pendente = {
+        ...aberto,
+        audio_url: j.audio_url ?? null,
+        audio_voz: j.audio_voz ?? null,
+        audio_erro: j.audio_erro ?? null,
+        audio_velocidade: typeof j.velocidade === 'number' ? j.velocidade : null,
+      };
+      setAberto(novo);
+      const trocar = (lista: Pendente[]) => lista.map(x => (x.id === novo.id ? novo : x));
+      setFila(trocar); setEnviadas(trocar); setComHumano(trocar);
+
+      if (j.audio_url) toast.success(`Áudio refeito a ${Number(j.velocidade).toFixed(2)}x`);
+      else toast.error(`Não consegui gerar: ${j.audio_erro ?? 'sem motivo'}`);
+    } catch (e) {
+      toast.error(`Não consegui refazer o áudio: ${(e as Error).message}`);
+    } finally {
+      setRegerando(false);
+    }
+  }, [aberto, regerando]);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
       await ensureExternalSession();
-      const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, contexto_usado, dom_atendentes(nome)';
+      const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, audio_velocidade, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, contexto_usado, dom_atendentes(nome)';
       const [f, e, h, s, gp] = await Promise.all([
         // "Na fila" é tudo que AINDA NÃO SAIU — inclusive o que alguém já
         // aprovou. Filtrar só por 'pendente' fazia a resposta aprovada sumir
@@ -670,6 +722,52 @@ export function AtendenteVirtualPanel() {
                       {aberto.audio_erro}
                     </p>
                   )}
+                  {/* ESCOLHER O RITMO OUVINDO, que é o único jeito de escolher.
+                      Cada botão regera o áudio naquela velocidade E guarda ela
+                      na voz — então o que você acertar aqui vale para todos os
+                      próximos áudios desta voz, não só para este. Voz diferente
+                      pede ritmo diferente: quem fala pausado na gravação
+                      original soa arrastado a 0,90x. */}
+                  <div className="space-y-1 border-t pt-2">
+                    <Label className="text-[11px] text-muted-foreground">
+                      Velocidade da fala
+                      {aberto.audio_velocidade != null && (
+                        <span className="ml-1 font-normal">
+                          · este áudio saiu a <strong>{Number(aberto.audio_velocidade).toFixed(2)}x</strong>
+                        </span>
+                      )}
+                      {aberto.audio_velocidade == null && aberto.audio_url && (
+                        <span className="ml-1 font-normal">· gerado antes deste ajuste (1,10x)</span>
+                      )}
+                    </Label>
+                    <div className="flex flex-wrap gap-1">
+                      {[0.85, 0.9, 0.95, 1.0, 1.05, 1.1].map(v => (
+                        <Button
+                          key={v}
+                          size="sm"
+                          variant={Number(aberto.audio_velocidade) === v ? 'default' : 'outline'}
+                          className="h-7 px-2 text-[11px] tabular-nums"
+                          disabled={regerando}
+                          onClick={() => regerarAudio(v)}>
+                          {v.toFixed(2).replace('.', ',')}x
+                        </Button>
+                      ))}
+                    </div>
+                    <Button
+                      size="sm" variant="outline" className="w-full h-7 text-[11px] gap-1"
+                      disabled={regerando}
+                      onClick={() => regerarAudio()}>
+                      {regerando
+                        ? <><Loader2 className="h-3 w-3 animate-spin" />Gravando…</>
+                        : <><RefreshCw className="h-3 w-3" />Refazer com o texto de agora</>}
+                    </Button>
+                    <p className="text-[10px] text-muted-foreground">
+                      O botão de cima refaz falando o texto que está no campo <strong>já salvo</strong> —
+                      se você editou a resposta e ainda não salvou, o áudio sai com o texto antigo.
+                      Escolher uma velocidade passa a valer para todos os próximos áudios
+                      desta voz{aberto.audio_voz ? ` (${aberto.audio_voz})` : ''}.
+                    </p>
+                  </div>
                   <p className="text-[10px] text-muted-foreground">
                     Este áudio <strong>não foi enviado</strong> e não vai sair sozinho — nem em grupo
                     que responde sozinho, onde quem sai é o texto. Ele existe para você ouvir antes

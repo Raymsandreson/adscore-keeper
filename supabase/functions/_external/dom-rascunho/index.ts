@@ -38,6 +38,10 @@
 //                            cron (equipe falou por último, já
 //                            rascunhado, já decidido, silêncio).
 //   POST { limite }        → teto de grupos por rodada (padrão 8)
+//   POST { regerar_audio: <id>, velocidade? }
+//                          → refaz o áudio de um rascunho que já existe,
+//                            falando o texto EDITADO se alguém editou.
+//                            `velocidade` também vira o padrão da voz.
 //   →     { grupos, rascunhos, pulados: [{ grupo, motivo }] }
 //
 // SEGURANÇA: nada de texto de cliente nos logs. Só JID, intenção e contagem.
@@ -49,6 +53,30 @@ const DOM_AGENT_ID = "d6ad8eee-d6a3-452c-b852-b94ef8dd54bf";
 
 /** A janela entre escrever e falar. É ela que faz o papel da revisão. */
 const ATRASO_MIN = 5;
+
+// VELOCIDADE DE FALA
+//
+// Até 07/09/2026 isto era `speed: 1.1` escrito à mão aqui dentro, igual para
+// toda voz. É errado na raiz: cada voz clonada carrega o ritmo da pessoa que a
+// gravou. A Keilane a 1,1x soa apressada; outra voz na mesma 1,1x pode soar
+// natural. Velocidade é propriedade DA VOZ — agora mora em
+// `custom_voices.velocidade_fala`, e isto aqui é só o padrão de quem não
+// escolheu nada (o comportamento antigo, para nada mudar sozinho).
+const VELOCIDADE_PADRAO = 1.1;
+
+// A API REST da ElevenLabs aceita 0.25 a 4.0. A faixa aqui é apertada de
+// propósito: fora dela não é ajuste de naturalidade, é voz de desenho animado
+// ou de câmera lenta. Mesmos números do CHECK no banco — se um mudar, o outro
+// tem que mudar junto.
+const VELOCIDADE_MIN = 0.5;
+const VELOCIDADE_MAX = 1.5;
+
+/** Nunca deixa um valor torto do banco virar `speed: NaN` na chamada da API. */
+const velocidadeValida = (v: unknown, padrao: number): number => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return padrao;
+  return Math.min(Math.max(n, VELOCIDADE_MIN), VELOCIDADE_MAX);
+};
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -268,6 +296,9 @@ function instrucaoDaIntencao(cod: string, panorama = false): string {
  * como sempre, e o áudio espera liberação humana.
  *
  * Falha de áudio NUNCA derruba o rascunho de texto: devolve o motivo e segue.
+ *
+ * `velocidadeForcada` é para o botão de regerar: a pessoa está experimentando
+ * um ritmo e quer ouvir AGORA. Nulo = usa a velocidade da voz.
  */
 async function gerarAudioDoRascunho(
   supabase: any,
@@ -275,10 +306,12 @@ async function gerarAudioDoRascunho(
   vozConfigurada: string | null,
   instanceName: string | null,
   maxChars: number,
-): Promise<{ url: string | null; voz: string | null; erro: string | null }> {
+  velocidadeForcada: number | null = null,
+): Promise<{ url: string | null; voz: string | null; erro: string | null; velocidade: number }> {
+  let velocidade = velocidadeValida(velocidadeForcada, VELOCIDADE_PADRAO);
   try {
     const chave = Deno.env.get("ELEVENLABS_API_KEY");
-    if (!chave) return { url: null, voz: null, erro: "ELEVENLABS_API_KEY não configurada" };
+    if (!chave) return { url: null, voz: null, erro: "ELEVENLABS_API_KEY não configurada", velocidade };
 
     // O que se fala é diferente do que se escreve: asterisco de negrito virava
     // "asterisco" na boca da voz, e link lido em voz alta é ruído puro.
@@ -288,7 +321,7 @@ async function gerarAudioDoRascunho(
       .replace(/https?:\/\/\S+/g, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
-    if (limpo.length < 5) return { url: null, voz: null, erro: "texto curto demais para virar áudio" };
+    if (limpo.length < 5) return { url: null, voz: null, erro: "texto curto demais para virar áudio", velocidade };
 
     // Mesma cascata de resolução do whatsapp-ai-agent-reply, para a voz do
     // atendente virtual ser a MESMA em qualquer caminho.
@@ -301,9 +334,14 @@ async function gerarAudioDoRascunho(
     }
     if (voiceId.length === 36 && voiceId.includes("-")) {
       const { data: vozCustom } = await supabase.from("custom_voices")
-        .select("name, elevenlabs_voice_id").eq("id", voiceId).eq("status", "ready").maybeSingle();
+        .select("name, elevenlabs_voice_id, velocidade_fala").eq("id", voiceId).eq("status", "ready").maybeSingle();
       nomeDaVoz = vozCustom?.name ?? null;
       voiceId = vozCustom?.elevenlabs_voice_id || "FGY2WhTYpPnrIDTdsKH5";
+      // A velocidade da voz só vale se ninguém pediu uma na mão. Ordem:
+      // o que a pessoa está experimentando > o que a voz tem guardado > o padrão.
+      if (velocidadeForcada === null && vozCustom?.velocidade_fala !== null && vozCustom?.velocidade_fala !== undefined) {
+        velocidade = velocidadeValida(vozCustom.velocidade_fala, VELOCIDADE_PADRAO);
+      }
     }
 
     // CORTE, QUANDO PRECISA, NO FIM DE UMA FRASE — e nunca em silêncio.
@@ -347,24 +385,32 @@ async function gerarAudioDoRascunho(
         body: JSON.stringify({
           text: trecho,
           model_id: "eleven_multilingual_v2",
-          voice_settings: { stability: 0.6, similarity_boost: 0.75, style: 0.3, speed: 1.1 },
+          voice_settings: { stability: 0.6, similarity_boost: 0.75, style: 0.3, speed: velocidade },
         }),
       },
     );
-    if (!resp.ok) return { url: null, voz: nomeDaVoz, erro: `ElevenLabs HTTP ${resp.status}` };
+    if (!resp.ok) {
+      // O corpo do erro diz QUAL parâmetro a API recusou — sem isso, uma
+      // velocidade fora do que ela aceita vira um "HTTP 422" mudo na tela.
+      const detalhe = await resp.text().catch(() => "");
+      return {
+        url: null, voz: nomeDaVoz, velocidade,
+        erro: `ElevenLabs HTTP ${resp.status}${detalhe ? `: ${detalhe.slice(0, 200)}` : ""} (velocidade ${velocidade})`,
+      };
+    }
 
     const audio = await resp.arrayBuffer();
     const arquivo = `tts/dom-rascunho-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
     const { error: errUp } = await supabase.storage.from("whatsapp-media")
       .upload(arquivo, new Uint8Array(audio), { contentType: "audio/mpeg", upsert: false });
-    if (errUp) return { url: null, voz: nomeDaVoz, erro: `storage: ${errUp.message}` };
+    if (errUp) return { url: null, voz: nomeDaVoz, erro: `storage: ${errUp.message}`, velocidade };
 
     const { data: pub } = supabase.storage.from("whatsapp-media").getPublicUrl(arquivo);
     // `erro` carrega o aviso de corte mesmo com o áudio pronto: a tela mostra os
     // dois. Áudio que existe e está incompleto precisa dizer isso.
-    return { url: pub?.publicUrl ?? null, voz: nomeDaVoz, erro: avisoCorte };
+    return { url: pub?.publicUrl ?? null, voz: nomeDaVoz, erro: avisoCorte, velocidade };
   } catch (e) {
-    return { url: null, voz: null, erro: (e as Error)?.message ?? "erro" };
+    return { url: null, voz: null, erro: (e as Error)?.message ?? "erro", velocidade };
   }
 }
 
@@ -427,6 +473,79 @@ Deno.serve(async (req) => {
       .eq("id", DOM_AGENT_ID)
       .maybeSingle();
     if (!agente) return json({ error: "agente Dom não encontrado" }, 500);
+
+    // REGERAR O ÁUDIO DE UM RASCUNHO QUE JÁ EXISTE
+    //
+    // Duas coisas que só se resolvem ouvindo: o ritmo certo de uma voz, e um
+    // áudio que ficou ruim. Sem isto, a única forma de ouvir uma velocidade
+    // diferente era esperar o próximo cliente mandar um áudio — o que faz o
+    // ajuste depender de acaso.
+    //
+    // Não passa pela fila de grupos e não gera rascunho nenhum: entra, refaz o
+    // áudio daquela linha, e sai.
+    if (corpo?.regerar_audio) {
+      const idPendente = String(corpo.regerar_audio);
+
+      const { data: linha } = await supabase
+        .from("dom_respostas_pendentes")
+        .select("id, resposta_sugerida, resposta_final, instance_name")
+        .eq("id", idPendente).maybeSingle();
+      if (!linha) return json({ error: "rascunho não encontrado" }, 404);
+
+      // Fala o que VAI ser mandado, não o que a máquina escreveu primeiro. Se
+      // alguém editou a resposta, o áudio antigo já era mentira; regerar ele
+      // com o texto velho seria repetir a mentira com voz nova.
+      const texto = String((linha as any).resposta_final || (linha as any).resposta_sugerida || "").trim();
+      if (!texto) return json({ error: "esta linha não tem texto para falar" }, 400);
+
+      // A velocidade que vier fica guardada NA VOZ: é isso que a torna
+      // configuração, e não um ajuste que se perde no próximo áudio.
+      let velocidadeNova: number | null = null;
+      if (corpo?.velocidade !== undefined && corpo?.velocidade !== null) {
+        const v = Number(corpo.velocidade);
+        if (!Number.isFinite(v) || v < VELOCIDADE_MIN || v > VELOCIDADE_MAX) {
+          return json({ error: `velocidade precisa ser um número entre ${VELOCIDADE_MIN} e ${VELOCIDADE_MAX}` }, 400);
+        }
+        velocidadeNova = Math.round(v * 100) / 100;
+        const vozId = String(agente.reply_voice_id || "");
+        // Só voz clonada tem onde guardar. Voz embutida da ElevenLabs não é
+        // nossa para configurar — nesse caso a velocidade vale só desta geração
+        // e some depois, o que é honesto: não existe lugar para ela morar.
+        if (vozId.length === 36 && vozId.includes("-")) {
+          const { error: errVoz } = await supabase.from("custom_voices")
+            .update({ velocidade_fala: velocidadeNova, updated_at: new Date().toISOString() })
+            .eq("id", vozId);
+          if (errVoz) return json({ error: `não consegui salvar a velocidade na voz: ${errVoz.message}` }, 500);
+        }
+      }
+
+      // Usa a voz que o agente tem HOJE, não a que gerou o áudio antigo: quem
+      // clica em regerar quer ouvir a configuração atual.
+      const som = await gerarAudioDoRascunho(
+        supabase,
+        texto,
+        agente.reply_voice_id ?? null,
+        (linha as any).instance_name,
+        Math.min(Math.max(agente.max_tts_chars || 3000, 100), 5000),
+        velocidadeNova,
+      );
+
+      const { error: errGrava } = await supabase.from("dom_respostas_pendentes")
+        .update({ audio_url: som.url, audio_voz: som.voz, audio_erro: som.erro, audio_velocidade: som.velocidade })
+        .eq("id", idPendente);
+      if (errGrava) return json({ error: `áudio gerado mas não consegui gravar: ${errGrava.message}` }, 500);
+
+      console.log(`[dom-rascunho] regerou áudio pendente=${idPendente} velocidade=${som.velocidade} ok=${!!som.url}`);
+      return json({
+        regerado: true,
+        id: idPendente,
+        audio_url: som.url,
+        audio_voz: som.voz,
+        audio_erro: som.erro,
+        velocidade: som.velocidade,
+        caracteres: texto.length,
+      });
+    }
 
     const { data: equipeRows } = await supabase
       .from("dom_numeros_equipe").select("phone").eq("ativo", true);
@@ -699,7 +818,7 @@ Deno.serve(async (req) => {
           Math.min(Math.max(agente.max_tts_chars || 3000, 100), 5000),
         );
         await supabase.from("dom_respostas_pendentes")
-          .update({ audio_url: som.url, audio_voz: som.voz, audio_erro: som.erro })
+          .update({ audio_url: som.url, audio_voz: som.voz, audio_erro: som.erro, audio_velocidade: som.velocidade })
           .eq("id", (linhaFila as any).id);
         if (som.erro) console.warn(`[dom-rascunho] áudio falhou grupo=${g.group_jid}: ${som.erro}`);
       }
