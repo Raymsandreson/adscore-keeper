@@ -1646,3 +1646,54 @@ para saber se o problema é "aquele processo" ou "o acervo".
 **Recomendação: testar 2 ou 3 processos antes de gastar os 1.100.** ~60 créditos
 para descobrir se a população de link morto se recupera, em vez de pagar tudo
 para descobrir que não.
+
+### Regra dos três degraus: testada de verdade, com resultado dividido
+
+O teste natural não vinha — só existem 2 grupos com 4 casos e 6 com 3 na base
+ativa, e nenhum escreveu desde a mudança. Em vez de esperar dias, forcei pelo
+MODO TESTE da `dom-rascunho` (`teste: true` + `group_jid`), que ignora as travas
+do cron e **não grava nada**. Confirmado na resposta: `gravou: false`.
+
+Grupo com **4 processos**, duas perguntas:
+
+**1. Pergunta genérica — "Bom dia, tem alguma novidade?"**
+`casos: 4 · panorama: false · 298 caracteres`
+
+A resposta falou de **um** processo (o que mexeu por último, com a data da
+audiência) e não listou os quatro. **O risco principal não se materializou.**
+Mas também não disse que existem outros três, nem perguntou de qual ele queria
+saber.
+
+**2. Pedido de panorama — "Quero saber como estão TODOS os meus processos"**
+`casos: 4 · panorama: true · 696 caracteres`
+
+Discriminou os quatro, cada um com fase e data, em linguagem de leigo — inclusive
+agrupando os dois arquivados. **Passa.** A decisão de "discriminar só quando ela
+pedir o panorama" está implementada e funciona.
+
+#### A causa não é desobediência do modelo
+
+Era essa a hipótese registrada no check-in: se ele listasse tudo apesar do
+aviso, o conserto seria cortar a lista na origem. **Não é o caso.** A instrução
+diz:
+
+> `NÃO liste todos. Responda sobre o que a conversa indica; se não der para
+> saber, diga quantos são, conte o mais recente e pergunte de qual ele quer
+> saber.`
+
+O "**se não der para saber**" é uma saída, e o modelo a usou legitimamente: com
+"tem novidade?" ele julgou que dava para saber, contou o mais recente e parou.
+**Ele obedeceu.** O que está ambíguo é a instrução, não o comportamento.
+
+#### A decisão que sobra é de produto, não de código
+
+Cliente com 4 processos pergunta "tem novidade?". A resposta deve:
+
+- **(a)** falar só do mais recente — comportamento de hoje. Enxuto, mas o
+  cliente pode entender que aquele é o único caso dele.
+- **(b)** falar do mais recente **e** avisar que há outros três, oferecendo
+  detalhar. Uma frase a mais, e ninguém sai da conversa achando que viu tudo.
+
+Minha leitura é que (b) é mais seguro — resposta incompleta que parece completa
+é pior que resposta longa. Mas isso é escolha de como a casa fala com o cliente,
+não conserto de defeito. **Não mexi.**
