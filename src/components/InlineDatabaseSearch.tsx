@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Toggle } from '@/components/ui/toggle';
 import {
   Users, MessageCircle, Contact, Send, Search, Loader2, User, Calendar, ExternalLink, X,
+  Scale, FileText, MessagesSquare,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -16,8 +17,10 @@ import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { useLeads, Lead } from '@/hooks/useLeads';
 import { Contact as ContactType } from '@/hooks/useContacts';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
+import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
+import { toast } from 'sonner';
 
-type ResultType = 'lead' | 'contact' | 'comment' | 'dm';
+type ResultType = 'lead' | 'contact' | 'comment' | 'dm' | 'processo' | 'caso' | 'grupo';
 
 interface SearchResult {
   id: string;
@@ -27,6 +30,10 @@ interface SearchResult {
   extra?: string;
   date?: string;
   raw: any;
+  /** Só em grupo: 'nao_classificado' vira selo de quarentena. Mostrar, nunca esconder. */
+  escopoStatus?: string | null;
+  /** Só em grupo: 'vincular_caso' quando o grupo não tem caso. */
+  acaoSugerida?: string | null;
 }
 
 const TYPE_CONFIG: Record<ResultType, { icon: typeof Users; label: string; color: string }> = {
@@ -34,9 +41,12 @@ const TYPE_CONFIG: Record<ResultType, { icon: typeof Users; label: string; color
   contact: { icon: Contact, label: 'Contato', color: 'bg-green-500/10 text-green-700 border-green-200 dark:text-green-400' },
   comment: { icon: MessageCircle, label: 'Comentário', color: 'bg-orange-500/10 text-orange-700 border-orange-200 dark:text-orange-400' },
   dm: { icon: Send, label: 'DM', color: 'bg-purple-500/10 text-purple-700 border-purple-200 dark:text-purple-400' },
+  processo: { icon: Scale, label: 'Processo', color: 'bg-teal-500/10 text-teal-700 border-teal-200 dark:text-teal-400' },
+  caso: { icon: FileText, label: 'Caso', color: 'bg-rose-500/10 text-rose-700 border-rose-200 dark:text-rose-400' },
+  grupo: { icon: MessagesSquare, label: 'Grupo', color: 'bg-emerald-500/10 text-emerald-700 border-emerald-200 dark:text-emerald-400' },
 };
 
-const ALL_TYPES: ResultType[] = ['lead', 'contact', 'comment', 'dm'];
+const ALL_TYPES: ResultType[] = ['processo', 'caso', 'grupo', 'lead', 'contact', 'comment', 'dm'];
 
 export function InlineDatabaseSearch() {
   const [query, setQuery] = useState('');
@@ -131,7 +141,17 @@ export function InlineDatabaseSearch() {
           'created_at', 10));
       }
 
-      const responses = await Promise.all(promises);
+      // `busca_unificada` (Externo) cobre o que o `ilike` das consultas acima
+      // nao alcanca: CNJ colado sem mascara (lead_processes guarda 1.330
+      // mascarados e ZERO puros), codigo de caso por (familia, numero), e nome
+      // de grupo de WhatsApp. Soma, nao substitui: se a RPC falhar, a busca que
+      // ja funcionava continua de pe.
+      const uniP = (externalSupabase as any)
+        .rpc('busca_unificada', { p_termo: term.trim(), p_limite: 30 })
+        .then((r: any) => r)
+        .catch(() => ({ data: [] }));
+
+      const [responses, uniRes] = await Promise.all([Promise.all(promises), uniP]);
       const mapped: SearchResult[] = [];
 
       responses.forEach((res, i) => {
@@ -154,7 +174,39 @@ export function InlineDatabaseSearch() {
         });
       });
 
-      setResults(mapped);
+      // Resultados da busca_unificada. Aqui a ficha nao precisa da linha
+      // inteira (o clique abre a conversa ou a ficha por id), entao nao ha
+      // consulta extra: o que a RPC devolve ja basta para a lista.
+      const uniRows: any[] = (uniRes as any)?.data || [];
+      uniRows.forEach((u: any) => {
+        if (u.tipo === 'processo' && types.has('processo')) {
+          mapped.push({ id: u.process_id || u.id, type: 'processo', title: u.titulo || 'Processo', subtitle: u.subtitulo || '', raw: u });
+        } else if (u.tipo === 'caso' && types.has('caso')) {
+          mapped.push({ id: u.case_id || u.id, type: 'caso', title: u.titulo || 'Caso', subtitle: u.subtitulo || '', raw: u });
+        } else if (u.tipo === 'grupo' && types.has('grupo')) {
+          // Grupo em quarentena APARECE, com selo. Escopo aqui e rotulo, nunca
+          // filtro: esconder o grupo esconderia o que precisa de gente olhando.
+          mapped.push({
+            id: u.group_jid,
+            type: 'grupo',
+            title: u.titulo || 'Grupo sem nome',
+            subtitle: u.subtitulo || '',
+            escopoStatus: u.escopo_status,
+            acaoSugerida: u.acao_sugerida,
+            raw: { group_jid: u.group_jid, instance_name: (u.subtitulo || '').split(' · ')[0] || null },
+          });
+        }
+      });
+
+      // A RPC e o `ilike` podem achar a MESMA linha; sem dedup ela apareceria
+      // duas vezes.
+      const vistos = new Set<string>();
+      setResults(mapped.filter((r) => {
+        const chave = `${r.type}:${r.id}`;
+        if (vistos.has(chave)) return false;
+        vistos.add(chave);
+        return true;
+      }));
     } catch (err) {
       console.error('Search error:', err);
     } finally {
@@ -184,6 +236,41 @@ export function InlineDatabaseSearch() {
       case 'contact': setSelectedContact(result.raw); setContactSheetOpen(true); break;
       case 'comment': setSelectedComment(result.raw); setCommentSheetOpen(true); break;
       case 'dm': setSelectedDm(result.raw); setDmSheetOpen(true); break;
+      case 'grupo':
+        // Painel por cima, nunca redirecionar (skill ui-sem-redirecionar).
+        // A conversa e onde mora "criar caso a partir do WhatsApp" — ou seja,
+        // e a esteira de conserto do grupo que ainda nao tem caso.
+        openWhatsAppChatSheet({
+          phone: result.raw.group_jid,
+          instanceName: result.raw.instance_name,
+          contactName: result.title,
+          direction: 'bottom',
+          forceSheet: true,
+        });
+        break;
+      case 'processo':
+      case 'caso': {
+        // Clique que nao faz nada e pior que resultado que nao aparece: a
+        // pessoa acha o processo e fica sem saber o que clicar. A RPC devolve
+        // `lead_id`, entao abre a FICHA DO CLIENTE — o formulario unico do
+        // sistema (LeadEditDialog), o mesmo que o resto do app usa.
+        //
+        // A linha do lead e buscada AQUI, no clique, e nao durante a digitacao:
+        // durante a busca seria uma consulta por resultado a cada tecla.
+        const leadId = result.raw?.lead_id;
+        if (!leadId) {
+          toast.info('Sem cliente vinculado. Abra pelo Ctrl+K para ver a ficha do processo.');
+          break;
+        }
+        (externalSupabase as any).from('leads').select('*').eq('id', leadId).maybeSingle()
+          .then(({ data }: any) => {
+            if (!data) { toast.error('Cliente nao encontrado.'); return; }
+            setSelectedLead(data as Lead);
+            setLeadSheetOpen(true);
+          })
+          .catch(() => toast.error('Falha ao abrir a ficha do cliente.'));
+        break;
+      }
     }
   };
 
@@ -270,6 +357,16 @@ export function InlineDatabaseSearch() {
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-sm truncate">{item.title}</span>
                             <Badge variant="outline" className={`text-[10px] shrink-0 ${cfg.color}`}>{cfg.label}</Badge>
+                            {item.escopoStatus === 'nao_classificado' && (
+                              <Badge variant="outline" className="text-[10px] shrink-0 border-orange-400 text-orange-700 dark:text-orange-400">
+                                quarentena
+                              </Badge>
+                            )}
+                            {item.acaoSugerida === 'vincular_caso' && (
+                              <Badge variant="outline" className="text-[10px] shrink-0 border-sky-400 text-sky-700 dark:text-sky-400">
+                                vincular a um caso
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-xs text-muted-foreground truncate">{item.subtitle}</p>
                         </div>

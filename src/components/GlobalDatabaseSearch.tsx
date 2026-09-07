@@ -15,7 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Users, MessageCircle, Contact, Send, Search, Loader2, User, Phone, Mail, MapPin, Calendar, FileText, Building, ExternalLink,
-  ClipboardList, Workflow, LayoutDashboard, Scale, Megaphone,
+  ClipboardList, Workflow, LayoutDashboard, Scale, Megaphone, MessagesSquare,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -30,17 +30,22 @@ import { detectDuplicates, DuplicateGroup, KeyFn, normalizeName, normalizePhone,
 import { DuplicateMergeDialog, MergeType } from '@/components/search/DuplicateMergeDialog';
 import { Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 
 const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 
 interface SearchResult {
   id: string;
-  type: 'lead' | 'contact' | 'comment' | 'dm' | 'activity' | 'workflow' | 'case' | 'process' | 'campaign';
+  type: 'lead' | 'contact' | 'comment' | 'dm' | 'activity' | 'workflow' | 'case' | 'process' | 'campaign' | 'grupo';
   title: string;
   subtitle: string;
   extra?: string;
   date?: string;
   raw: any;
+  /** Só em grupo: 'nao_classificado' vira selo de quarentena. Mostrar, nunca esconder. */
+  escopoStatus?: string | null;
+  /** Só em grupo: 'vincular_caso' quando o grupo não tem caso. */
+  acaoSugerida?: string | null;
 }
 
 // Global search component
@@ -128,7 +133,23 @@ export function GlobalDatabaseSearch() {
       const numericMatch = term.trim().match(/^(?:caso[\s-]*)?(\d{1,8})$/i);
       const caseNumberTerm = numericMatch ? `%${numericMatch[1]}%` : `%${term}%`;
 
-      const [leadsRes, contactsRes, commentsRes, dmsRes, activitiesRes, workflowsRes, casesRes, processesRes, campaignsRes] = await Promise.all([
+      // `busca_unificada` (Externo) roda EM PARALELO com as consultas por texto
+      // acima, e SOMA — não substitui. Ela cobre o que o `ilike` não alcança:
+      //   - CNJ colado sem máscara. lead_processes guarda 1.330 CNJ mascarados
+      //     e ZERO com 20 dígitos puros, então `process_number ilike '%<20
+      //     dígitos>%'` nunca casava. A RPC compara por `cnj_digitos`.
+      //   - Código de caso por (família, número). "PREV 1802" e "1802" são o
+      //     mesmo caso, e ele está com prefixo em legal_cases e sem prefixo em
+      //     1.279 leads. String nunca casa os dois.
+      //   - Nome de grupo de WhatsApp, que não estava em lugar nenhum da busca.
+      // Somar em vez de trocar é de propósito: o que funciona hoje continua
+      // funcionando mesmo se a RPC falhar, e a falha aparece como "faltou
+      // resultado novo", não como busca quebrada.
+      const uniP = (externalSupabase as any)
+        .rpc('busca_unificada', { p_termo: term.trim(), p_limite: 30 });
+
+      const [uniRes, leadsRes, contactsRes, commentsRes, dmsRes, activitiesRes, workflowsRes, casesRes, processesRes, campaignsRes] = await Promise.all([
+        uniP.then((r: any) => r).catch(() => ({ data: [] })),
         dual('leads',
           `lead_name.ilike.${searchTerm},victim_name.ilike.${searchTerm},lead_phone.ilike.${searchTerm},lead_email.ilike.${searchTerm},notes.ilike.${searchTerm},instagram_username.ilike.${searchTerm},city.ilike.${searchTerm},cpf.ilike.${searchTerm},state.ilike.${searchTerm},source.ilike.${searchTerm}`,
           'updated_at', 15),
@@ -285,7 +306,78 @@ export function GlobalDatabaseSearch() {
         });
       });
 
-      setResults(mapped);
+      // ---- resultados da busca_unificada -------------------------------------
+      const uniRows: any[] = (uniRes as any)?.data || [];
+
+      // Processo e caso vêm da RPC só com id: as fichas precisam da linha
+      // inteira para abrir. Duas consultas por id, e só quando a RPC achou algo
+      // — não é N+1: é uma consulta por TIPO, com todos os ids de uma vez.
+      const uniProcessIds = uniRows.filter(r => r.tipo === 'processo' && r.process_id).map(r => r.process_id);
+      const uniCaseIds = uniRows.filter(r => r.tipo === 'caso' && r.case_id).map(r => r.case_id);
+
+      const [uniProcRows, uniCaseRows] = await Promise.all([
+        uniProcessIds.length
+          ? (externalSupabase as any).from('lead_processes').select('*').in('id', uniProcessIds).then((r: any) => r?.data || []).catch(() => [])
+          : Promise.resolve([]),
+        uniCaseIds.length
+          ? (externalSupabase as any).from('legal_cases').select('*').in('id', uniCaseIds).then((r: any) => r?.data || []).catch(() => [])
+          : Promise.resolve([]),
+      ]);
+
+      (uniProcRows as any[]).forEach((p: any) => {
+        if (p.deleted_at) return;
+        mapped.push({
+          id: p.id,
+          type: 'process',
+          title: p.process_number || p.title || 'Processo',
+          subtitle: p.process_number ? (p.title || '') : '',
+          extra: p.status === 'em_andamento' ? 'Em Andamento' : (p.status || ''),
+          date: p.updated_at,
+          raw: p,
+        });
+      });
+
+      (uniCaseRows as any[]).forEach((c: any) => {
+        if (c.deleted_at) return;
+        mapped.push({
+          id: c.id,
+          type: 'case',
+          title: c.case_number || 'Caso',
+          subtitle: c.title || '',
+          extra: c.status || '',
+          date: c.updated_at,
+          raw: c,
+        });
+      });
+
+      // Grupos de WhatsApp. A RPC devolve TODOS, inclusive os em quarentena
+      // (`nao_classificado`) — o escopo entra como SELO, nunca como filtro:
+      // esconder o grupo da busca esconderia justamente o que precisa de gente
+      // olhando. O grupo pessoal "Familia gold1p.x" tem que aparecer aqui.
+      uniRows.filter(r => r.tipo === 'grupo').forEach((g: any) => {
+        mapped.push({
+          id: g.group_jid,
+          type: 'grupo',
+          title: g.titulo || 'Grupo sem nome',
+          subtitle: g.subtitulo || '',
+          escopoStatus: g.escopo_status,
+          acaoSugerida: g.acao_sugerida,
+          raw: { group_jid: g.group_jid, instance_name: (g.subtitulo || '').split(' · ')[0] || null, lead_id: g.lead_id },
+        });
+      });
+
+      // Dedup: a RPC e o `ilike` podem achar a MESMA linha (ex.: "PREV 1802"
+      // casa por código na RPC e por texto no ilike). Sem isto o mesmo caso
+      // apareceria duas vezes na lista, que é exatamente a queixa da fila.
+      const vistos = new Set<string>();
+      const unicos = mapped.filter((r) => {
+        const chave = `${r.type}:${r.id}`;
+        if (vistos.has(chave)) return false;
+        vistos.add(chave);
+        return true;
+      });
+
+      setResults(unicos);
     } catch (err) {
       console.error('Search error:', err);
     } finally {
@@ -340,6 +432,22 @@ export function GlobalDatabaseSearch() {
       case 'campaign':
         // Sem tela dedicada de detalhe; apenas fecha (o valor aqui é a detecção de duplicado)
         break;
+      case 'grupo':
+        // Painel por cima, nunca redirecionar (skill ui-sem-redirecionar).
+        // `forceSheet` porque quem buscou pode estar dentro de /whatsapp: sem
+        // isso a conversa trocaria ATRÁS do que já está aberto.
+        //
+        // Grupo sem caso vinculado cai AQUI de propósito, e não num selo mudo:
+        // a conversa é onde mora "criar caso a partir do WhatsApp", ou seja, é
+        // a esteira de conserto. Selo que não leva a lugar nenhum não é entrega.
+        openWhatsAppChatSheet({
+          phone: result.raw.group_jid,
+          instanceName: result.raw.instance_name,
+          contactName: result.title,
+          direction: 'bottom',
+          forceSheet: true,
+        });
+        break;
     }
   };
 
@@ -353,6 +461,7 @@ export function GlobalDatabaseSearch() {
     comment: { icon: MessageCircle, label: 'Comentário', color: 'bg-orange-500/10 text-orange-700 border-orange-200' },
     dm: { icon: Send, label: 'DM', color: 'bg-purple-500/10 text-purple-700 border-purple-200' },
     campaign: { icon: Megaphone, label: 'Campanha', color: 'bg-pink-500/10 text-pink-700 border-pink-200' },
+    grupo: { icon: MessagesSquare, label: 'Grupo', color: 'bg-emerald-500/10 text-emerald-700 border-emerald-200' },
   };
 
   const grouped = results.reduce((acc, r) => {
@@ -361,7 +470,7 @@ export function GlobalDatabaseSearch() {
     return acc;
   }, {} as Record<string, SearchResult[]>);
 
-  const groupOrder: Array<SearchResult['type']> = ['process', 'case', 'lead', 'contact', 'campaign', 'activity', 'workflow', 'comment', 'dm'];
+  const groupOrder: Array<SearchResult['type']> = ['process', 'case', 'grupo', 'lead', 'contact', 'campaign', 'activity', 'workflow', 'comment', 'dm'];
 
   // Detecção de duplicados nos tipos que sabemos fundir.
   // Chaves por tipo: lead/contato = nome+telefone+CPF; processo = nº CNJ; caso = mesmo cliente (lead_id).
@@ -404,7 +513,7 @@ export function GlobalDatabaseSearch() {
     <>
       <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput
-          placeholder="Buscar leads, contatos, atividades, fluxos, comentários, DMs... (⌘K)"
+          placeholder="Nº do processo, PREV 1802, nome do grupo ou do cliente... (⌘K)"
           value={query}
           onValueChange={handleQueryChange}
         />
@@ -419,7 +528,7 @@ export function GlobalDatabaseSearch() {
               <div className="text-center py-6 space-y-2">
                 <Search className="h-8 w-8 mx-auto text-muted-foreground/50" />
                 <p className="text-sm text-muted-foreground">Digite ao menos 2 caracteres para buscar</p>
-                <p className="text-xs text-muted-foreground/70">Busca em leads, contatos, comentários e DMs</p>
+                <p className="text-xs text-muted-foreground/70">Nº do processo (com ou sem máscara), código do caso, grupo, lead, contato, comentário ou DM</p>
               </div>
             </CommandEmpty>
           ) : results.length === 0 ? (
@@ -470,6 +579,16 @@ export function GlobalDatabaseSearch() {
                             {dup?.suspectIds.has(item.id) && (
                               <Badge variant="outline" className="text-[10px] shrink-0 border-amber-400 text-amber-700 dark:text-amber-400 gap-1">
                                 <Copy className="h-2.5 w-2.5" /> duplicado?
+                              </Badge>
+                            )}
+                            {item.escopoStatus === 'nao_classificado' && (
+                              <Badge variant="outline" className="text-[10px] shrink-0 border-orange-400 text-orange-700 dark:text-orange-400">
+                                quarentena
+                              </Badge>
+                            )}
+                            {item.acaoSugerida === 'vincular_caso' && (
+                              <Badge variant="outline" className="text-[10px] shrink-0 border-sky-400 text-sky-700 dark:text-sky-400">
+                                vincular a um caso
                               </Badge>
                             )}
                           </div>
