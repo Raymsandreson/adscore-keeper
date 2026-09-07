@@ -120,6 +120,39 @@ function blocoAtividade(atv: any, movMaisRecente: string | null): string {
   if (atv.proximo_passo) {
     linhas.push(`Próximo passo definido pela equipe: ${atv.proximo_passo}`);
   }
+
+  // COMO ESTA RESPOSTA TERMINA
+  //
+  // "Qualquer novidade a gente avisa" é verdade e não ajuda ninguém a esperar:
+  // devolve ao cliente a mesma incerteza com que ele chegou. Quando a equipe JÁ
+  // programou a volta, dizer a data é o que transforma espera em previsão.
+  //
+  // A RPC só entrega `prazo_contato` quando ele AINDA NÃO VENCEU. Medido em
+  // 07/09/2026: das 8.179 fichas com atividade nos últimos 180 dias, o prazo da
+  // atividade mais recente está vencido em 79,6%. Data no passado é promessa
+  // quebrada antes de ser feita, e o cliente confere — por isso, sem data
+  // válida, o fecho volta a ser o genérico.
+  //
+  // O formato falado (mês por extenso) NÃO é decidido aqui: quem converte é a
+  // geração do áudio, para toda data de uma vez. Instruir o modelo a escrever
+  // uma data por extenso e as outras em números deixaria o texto desencontrado
+  // consigo mesmo.
+  if (atv.prazo_contato) {
+    linhas.push("");
+    linhas.push(
+      `FECHE A RESPOSTA ASSIM: diga que a equipe volta a falar com ele até ${dataBR(atv.prazo_contato)},` +
+        " e que qualquer novidade antes disso você avisa aqui no grupo." +
+        " ESSA DATA É DO NOSSO PRÓXIMO CONTATO, NÃO DA DECISÃO: é proibido dizer ou sugerir" +
+        " que o caso será resolvido, julgado ou pago até ela.",
+    );
+  } else {
+    linhas.push("");
+    linhas.push(
+      "FECHE A RESPOSTA ASSIM: diga que qualquer novidade vocês avisam aqui no grupo." +
+        " É PROIBIDO inventar data de retorno — a equipe não programou nenhuma, e uma data" +
+        " chutada aqui vira cobrança do cliente depois.",
+    );
+  }
   linhas.push("");
   // A anotação envelhece; o processo continua andando. Sem datar as duas, o
   // modelo repetia "permanece sem novas movimentações" de uma nota antiga em

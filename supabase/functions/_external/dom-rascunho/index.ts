@@ -71,6 +71,39 @@ const VELOCIDADE_PADRAO = 1.1;
 const VELOCIDADE_MIN = 0.5;
 const VELOCIDADE_MAX = 1.5;
 
+// DATA FALADA NÃO É DATA ESCRITA
+//
+// "28/08/2026" no papel é compacto e claro. Na boca de uma voz vira "vinte e
+// oito barra zero oito barra dois mil e vinte e seis" — que ninguém fala e
+// ninguém entende de primeira, ainda mais quem está ansioso pelo processo.
+//
+// A conversão acontece SÓ no áudio, junto da limpeza de asterisco e link: a
+// mensagem escrita continua com a data em números, e as duas ficam
+// consistentes cada uma no seu meio.
+const MESES = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
+/**
+ * 28/08/2026 → "28 de agosto de 2026"; 31/08 → "31 de agosto".
+ *
+ * A forma sem ano exige DOIS dígitos em cada lado de propósito: "1/2" é uma
+ * fração e viraria "1 de fevereiro". Mês fora de 1..12 fica como está — melhor
+ * uma barra lida em voz alta do que uma data inventada.
+ */
+function datasPorExtenso(texto: string): string {
+  return texto
+    .replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g, (todo, d, m, a) => {
+      const mes = MESES[Number(m) - 1];
+      return mes ? `${Number(d)} de ${mes} de ${a}` : todo;
+    })
+    .replace(/\b(\d{2})\/(\d{2})\b(?!\/)/g, (todo, d, m) => {
+      const mes = MESES[Number(m) - 1];
+      return mes && Number(d) >= 1 && Number(d) <= 31 ? `${Number(d)} de ${mes}` : todo;
+    });
+}
+
 /** Nunca deixa um valor torto do banco virar `speed: NaN` na chamada da API. */
 const velocidadeValida = (v: unknown, padrao: number): number => {
   const n = Number(v);
@@ -315,12 +348,13 @@ async function gerarAudioDoRascunho(
 
     // O que se fala é diferente do que se escreve: asterisco de negrito virava
     // "asterisco" na boca da voz, e link lido em voz alta é ruído puro.
-    const limpo = texto
-      .replace(/\*([^*]+)\*/g, "$1")
-      .replace(/_([^_]+)_/g, "$1")
-      .replace(/https?:\/\/\S+/g, "")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
+    const limpo = datasPorExtenso(
+      texto
+        .replace(/\*([^*]+)\*/g, "$1")
+        .replace(/_([^_]+)_/g, "$1")
+        .replace(/https?:\/\/\S+/g, "")
+        .replace(/\n{3,}/g, "\n\n"),
+    ).trim();
     if (limpo.length < 5) return { url: null, voz: null, erro: "texto curto demais para virar áudio", velocidade };
 
     // Mesma cascata de resolução do whatsapp-ai-agent-reply, para a voz do
