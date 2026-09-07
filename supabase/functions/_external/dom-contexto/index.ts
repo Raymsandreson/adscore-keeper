@@ -314,12 +314,25 @@ function blocoProcessual(ctx: any, panorama: boolean): string {
     // intimação eletrônica" na boca dele.
     if (p.fase_atual?.fase) {
       const d = diasDesde(p.fase_atual.desde);
+      // DOIS NÚMEROS DE DIAS NO MESMO CONTEXTO É CONVITE A PEGAR O ERRADO.
+      //
+      // Medido em 07/09/2026, no Caso 341: o modelo escreveu "faz 46 dias que a
+      // gente entrou com o processo" e "faz 18 dias que está nessa fase" — os
+      // dias NA FASE. O tempo de espera de verdade era 10 e 17. Ele não
+      // inventou: pegou o outro número que estava aqui, e este vinha primeiro
+      // e em destaque.
+      //
+      // Tempo na fase é informação de gestão nossa; tempo sem movimento é o que
+      // o cliente perguntou. Agora este vem rotulado como interno.
       linhas.push(
         `  >>> FASE ATUAL: ${p.fase_atual.fase}` +
           (p.fase_atual.desde ? ` — desde ${dataBR(p.fase_atual.desde)}` : "") +
-          (d !== null && d >= 0 ? ` (há ${d} dias nesta fase)` : ""),
+          (d !== null && d >= 0 ? ` (${d} dias nesta fase — NÚMERO INTERNO, NÃO DIGA)` : ""),
       );
       linhas.push("      É ISTO que responde \"como está meu processo?\". Movimentação de");
+      linhas.push("      Os dias NESTA FASE são conta interna. Quando o cliente perguntar há");
+      linhas.push("      quanto tempo está parado, o número certo é o \"parado há N dias\" da");
+      linhas.push("      linha de última movimentação, mais abaixo. Nunca troque um pelo outro.");
       linhas.push("      rotina não é fase. E o nome da fase é TERMO TÉCNICO: traduza pelo");
       linhas.push("      glossário antes de escrever. Nunca deixe o nome solto na mensagem.");
     }
@@ -816,6 +829,46 @@ function blocoComoFalar(panorama: boolean): string {
     "SEJA DIRETO. Diga o que aconteceu, há quantos dias, e o que vem agora.",
     "Nada de \"informamos que\", \"cumpre esclarecer\", nem frase de enfeite antes",
     "do assunto.",
+    "",
+    "-----------------------------------------------------------------------",
+    "NUNCA ESCREVA \"ESTÁ NA FASE DE\"",
+    "-----------------------------------------------------------------------",
+    "As traduções do glossário são FRASES INTEIRAS, não substantivos. Encaixar",
+    "uma delas depois de \"está na fase de\" produz português quebrado, e já",
+    "produziu, em 07/09/2026:",
+    "",
+    '  QUEBRADO: "está na fase de quando a gente entrou com o processo na',
+    '            Justiça"',
+    '  CERTO:    "a gente já entrou com o processo na Justiça e agora espera o',
+    '            juiz analisar"',
+    "",
+    '  QUEBRADO: "está na fase em que o tribunal está decidindo se aceita"',
+    '  CERTO:    "o tribunal está decidindo se aceita analisar o nosso recurso"',
+    "",
+    "A palavra \"fase\" é do nosso sistema, não da conversa. Diga o que está",
+    "ACONTECENDO agora, com sujeito e verbo, como quem conta uma novidade.",
+    "",
+    "-----------------------------------------------------------------------",
+    "DIGA HÁ QUANTOS DIAS — é obrigatório, não é enfeite",
+    "-----------------------------------------------------------------------",
+    "O bloco de andamento traz \"parado há N dias\" em cada processo. ESSE NÚMERO",
+    "TEM QUE APARECER na sua mensagem, em números, junto do que aconteceu.",
+    "",
+    "CUIDADO COM O NÚMERO ERRADO: o bloco também traz \"N dias nesta fase\",",
+    "marcado como NÚMERO INTERNO. Esse NÃO é o tempo de espera e não pode sair",
+    "na mensagem. Em 07/09/2026 saiu: o texto disse \"faz 46 dias\" quando o caso",
+    "estava parado há 10. Use SEMPRE o \"parado há N dias\".",
+    "",
+    "Quem está esperando não quer fazer conta de calendário: a data obriga a",
+    "pessoa a contar nos dedos, o número já responde.",
+    "",
+    '  FALTANDO: "a última movimentação foi no dia 28 de agosto"',
+    '  CERTO:    "a última coisa que andou foi no dia 28 de agosto, faz 10 dias"',
+    "",
+    "Quando o bloco disser que, descontando despacho de rotina, o caso está",
+    "parado há MAIS dias, use o número maior: é o tempo real de espera.",
+    "Se o bloco disser que não há registro nenhum, NÃO invente dias — diga que",
+    "vai confirmar com a equipe.",
     "",
     "-----------------------------------------------------------------------",
     "COMPARAÇÃO DO DIA A DIA — uma por resposta, no máximo",
