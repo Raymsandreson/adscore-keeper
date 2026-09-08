@@ -4,10 +4,12 @@
 // com outro membro da equipe (ex: "joao" sozinho colidiria João Manoel x João Pedro).
 import analyneOliveira from '@/assets/acolhedores/analyne-oliveira.jpg';
 import brunoDantas from '@/assets/acolhedores/bruno-dantas.jpg';
+import fabricioFigueiredo from '@/assets/acolhedores/fabricio-figueiredo.jpg';
 import grazielleAline from '@/assets/acolhedores/grazielle-aline.jpg';
 import joaoManoel from '@/assets/acolhedores/joao-manoel.jpg';
 import julianaPimentel from '@/assets/acolhedores/juliana-pimentel.jpg';
 import luizRicardo from '@/assets/acolhedores/luiz-ricardo.jpg';
+import renanMendes from '@/assets/acolhedores/renan-mendes.jpg';
 
 const PHOTOS: Record<string, string> = {
   'joao manoel cavalcante santana': joaoManoel,
@@ -23,6 +25,11 @@ const PHOTOS: Record<string, string> = {
   'grazielle aline moreira da silva': grazielleAline,
   'grazielle aline': grazielleAline,
   'grazielle': grazielleAline,
+  'renan vieira mendes': renanMendes,
+  'renan mendes': renanMendes,
+  'renan': renanMendes,
+  'fabricio figueiredo': fabricioFigueiredo,
+  'fabricio': fabricioFigueiredo,
 };
 
 function normalize(name: string): string {

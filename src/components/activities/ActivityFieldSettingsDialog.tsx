@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Settings, GripVertical, ArrowUp, ArrowDown } from 'lucide-react';
 import { ActivityFieldSetting } from '@/hooks/useActivityFieldSettings';
+import { completarCamposComMarcosLigado, setCompletarCamposComMarcos } from '@/lib/completarCamposComMarcos';
 import { toast } from 'sonner';
 
 interface Props {
@@ -17,9 +18,16 @@ interface Props {
 export function ActivityFieldSettingsDialog({ fields, onUpdateField, onReorder }: Props) {
   const [open, setOpen] = useState(false);
   const [localFields, setLocalFields] = useState<ActivityFieldSetting[]>([]);
+  // Completar "Como está?", "O que foi feito?" e "Próximo passo" vazios com os
+  // marcos do processo. Vem desligado; a escolha é deste navegador, enquanto os
+  // campos acima são do escritório inteiro (tabela `activity_field_settings`).
+  const [completarMarcos, setCompletarMarcos] = useState(false);
 
   const handleOpen = (isOpen: boolean) => {
-    if (isOpen) setLocalFields([...fields]);
+    if (isOpen) {
+      setLocalFields([...fields]);
+      setCompletarMarcos(completarCamposComMarcosLigado());
+    }
     setOpen(isOpen);
   };
 
@@ -53,6 +61,7 @@ export function ActivityFieldSettingsDialog({ fields, onUpdateField, onReorder }
       if (orderChanged) {
         await onReorder(localFields);
       }
+      setCompletarCamposComMarcos(completarMarcos);
       toast.success('Configurações salvas!');
       setOpen(false);
     } catch {
@@ -113,6 +122,28 @@ export function ActivityFieldSettingsDialog({ fields, onUpdateField, onReorder }
               </div>
             </div>
           ))}
+          {/* Preenchimento automático das três seções vazias. Fica embaixo da
+              lista porque não é um campo: é o que a mensagem faz com os campos
+              que ficaram em branco. */}
+          <div className="flex items-start gap-2 p-3 border rounded-lg">
+            <Switch
+              id="completar-campos-marcos"
+              checked={completarMarcos}
+              onCheckedChange={setCompletarMarcos}
+              className="scale-75 mt-0.5"
+            />
+            <Label htmlFor="completar-campos-marcos" className="cursor-pointer space-y-1">
+              <span className="text-xs font-medium block">
+                Completar campos vazios com os marcos do processo
+              </span>
+              <span className="text-[11px] text-muted-foreground font-normal block">
+                Desligado, a mensagem sai só com o que você escreveu. Ligado, as seções
+                "Como está?", "O que foi feito?" e "Próximo passo" que ficarem em branco
+                são preenchidas com as movimentações já detectadas no processo. O que
+                você digitar sempre vence. Vale só neste navegador.
+              </span>
+            </Label>
+          </div>
         </div>
         <Button className="w-full" onClick={handleSave}>
           Salvar configurações

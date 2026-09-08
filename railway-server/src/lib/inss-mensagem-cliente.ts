@@ -50,6 +50,12 @@ export interface EntradaMensagemCliente {
   pontosPendentes?: string | null;
   nome?: string | null;
   beneficio?: string | null;
+  /**
+   * `inss_admin_processes.servico` — o nome do serviço no INSS
+   * ("SALÁRIO-MATERNIDADE URBANO", "BENEFÍCIO ASSISTENCIAL À PESSOA COM
+   * DEFICIÊNCIA"). É o campo limpo: ver `ehSalarioMaternidade`.
+   */
+  servico?: string | null;
   requerimento?: string | null;
 }
 
@@ -96,12 +102,29 @@ export function mensagemVaiAoCliente(tipo: TipoMensagemCliente): boolean {
  * grupo do cliente. Por isso: só sai o que a whitelist reconhece; o resto vira
  * "seu pedido no INSS". Medido em 26/08/2026.
  */
-export function beneficioLegivel(beneficio?: string | null): string {
+export function beneficioLegivel(
+  beneficio?: string | null,
+  /**
+   * `inss_admin_processes.servico` como SEGUNDA fonte, consultada só quando o
+   * `benefit_type` não diz nada — ele está vazio em 441 dos requerimentos, e
+   * era isso que fazia a mensagem de salário-maternidade sair como "seu pedido
+   * no INSS". Mesma whitelist para as duas fontes: o serviço também é texto
+   * vindo do INSS e não pode ser ecoado cru.
+   */
+  servico?: string | null,
+): string {
+  const rotulo = rotuloDaWhitelist(beneficio);
+  if (rotulo) return rotulo;
+  return rotuloDaWhitelist(servico) || 'seu pedido no INSS';
+}
+
+/** Devolve o rótulo da whitelist, ou `null` quando o texto não diz nada. */
+function rotuloDaWhitelist(beneficio?: string | null): string | null {
   const b = (beneficio || '')
     .replace(/\s+/g, ' ')
     .split(/\bData\b|\(NB\)/i)[0]
     .trim();
-  if (!b) return 'seu pedido no INSS';
+  if (!b) return null;
   if (/bpc|loas|assistencial à pessoa com defici|assistencial a pessoa com defici/i.test(b))
     return 'seu pedido de BPC/LOAS';
   if (/assistencial ao idoso/i.test(b)) return 'seu pedido de BPC/LOAS do idoso';
@@ -112,7 +135,23 @@ export function beneficioLegivel(beneficio?: string | null): string {
   if (/aposentadoria/i.test(b)) return 'seu pedido de aposentadoria';
   if (/recurso/i.test(b)) return 'seu recurso no INSS';
   if (/revis[ãa]o/i.test(b)) return 'seu pedido de revisão';
-  return 'seu pedido no INSS';
+  return null;
+}
+
+/**
+ * Salário-maternidade indeferido NÃO vira ação judicial: vira recurso no
+ * próprio INSS (correção do usuário, 08/09/2026). Todo o resto — BPC,
+ * incapacidade, pensão por morte, auxílio-acidente — segue no caminho da ação,
+ * que é o que o áudio gravado pela equipe promete.
+ *
+ * A fonte é `servico`, não `benefit_type`: medido em 08/09/2026 sobre os 409
+ * indeferimentos da base, `servico` reconhece os 64 de maternidade
+ * ("SALÁRIO-MATERNIDADE URBANO" e "SALÁRIO-MATERNIDADE RURAL") e `benefit_type`
+ * reconhece 6 — está vazio em 125 e guarda recorte de e-mail no resto.
+ * `beneficio` fica como reserva para o requerimento que não trouxe serviço.
+ */
+export function ehSalarioMaternidade(e: EntradaMensagemCliente): boolean {
+  return /sal[áa]rio.?maternidade/i.test(`${e.servico || ''} ${e.beneficio || ''}`);
 }
 
 /**
@@ -135,7 +174,7 @@ export function fallbackMensagemCliente(
   tipo: TipoMensagemCliente,
   e: EntradaMensagemCliente,
 ): string {
-  const alvo = beneficioLegivel(e.beneficio);
+  const alvo = beneficioLegivel(e.beneficio, e.servico);
   switch (tipo) {
     case 'protocolado':
       return (
@@ -160,6 +199,15 @@ export function fallbackMensagemCliente(
         `A gente vai conferir os valores e te explica o que acontece agora.`
       );
     case 'indeferido':
+      // Salário-maternidade é a exceção (correção do usuário, 08/09/2026): o
+      // caminho é o recurso no próprio INSS. Ver `ehSalarioMaternidade`.
+      if (ehSalarioMaternidade(e)) {
+        return (
+          `O INSS não aprovou ${alvo}.\n\n` +
+          `Não precisa se preocupar: a gente vai entrar com um recurso no próprio INSS pra pedir que revejam essa decisão.\n\n` +
+          `Assim que a gente entrar com o recurso, avisa aqui no grupo e vai contando cada etapa. Não precisa fazer nada agora.`
+        );
+      }
       // Alinhado ao áudio que a equipe gravou (decisão do usuário, 04/09/2026):
       // o caminho depois do indeferimento é a ação judicial, não o pedido de
       // revisão administrativa. Texto e áudio precisam dizer a mesma coisa —
@@ -183,9 +231,28 @@ function maiuscula(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/**
+ * Regra de vocabulário do caminho JUDICIAL — vale para BPC, incapacidade,
+ * pensão e o resto, cujo indeferimento vira ação na Justiça.
+ */
+const REGRA_VOCABULARIO_ACAO =
+  'Troque palavra difícil por palavra simples: "mandar" no lugar de "encaminhar"; "papéis" ou "documentos" no lugar de "documentação"; "entrar com uma ação na Justiça" no lugar de "ajuizar" ou "recorrer"; "pedido" no lugar de "requerimento"; "não aprovou" no lugar de "indeferiu".';
+
+/**
+ * A mesma regra no caminho ADMINISTRATIVO (salário-maternidade). Sem esta
+ * troca, a regra de cima mandava a IA escrever "ação na Justiça" justamente
+ * onde o desfecho é recurso no INSS — o texto errado saía do próprio prompt.
+ */
+const REGRA_VOCABULARIO_RECURSO =
+  'Troque palavra difícil por palavra simples: "mandar" no lugar de "encaminhar"; "papéis" ou "documentos" no lugar de "documentação"; "entrar com um recurso no INSS" no lugar de "recorrer", "interpor recurso" ou "ajuizar"; "pedido" no lugar de "requerimento"; "não aprovou" no lugar de "indeferiu".';
+
+/** Trava do caminho administrativo: nada de prometer Justiça. */
+const REGRA_SEM_JUSTICA =
+  'NUNCA diga que o caso vai para a Justiça, para o juiz, para um processo judicial ou que o escritório vai processar o INSS: aqui o caminho é o recurso dentro do próprio INSS.';
+
 const REGRAS_COMUNS = [
   'Escreva para uma pessoa de baixa renda e pouca escolaridade. Frases curtas, palavras do dia a dia.',
-  'Troque palavra difícil por palavra simples: "mandar" no lugar de "encaminhar"; "papéis" ou "documentos" no lugar de "documentação"; "entrar com uma ação na Justiça" no lugar de "ajuizar" ou "recorrer"; "pedido" no lugar de "requerimento"; "não aprovou" no lugar de "indeferiu".',
+  REGRA_VOCABULARIO_ACAO,
   'Nada de termo jurídico, nada de número de lei, nada de "conforme", "referente", "mediante", "providenciar".',
   'Seja breve. É melhor faltar detalhe do que a pessoa não entender.',
   'NUNCA repita número de CPF, RG ou número do benefício que apareça no texto do INSS.',
@@ -227,6 +294,17 @@ const INSTRUCAO_POR_TIPO: Record<TipoMensagemCliente, string> = {
 };
 
 /**
+ * Tarefa do indeferimento quando o serviço é salário-maternidade: mesma
+ * notícia, outro desfecho. Fica fora do `INSTRUCAO_POR_TIPO` porque não é um
+ * tipo novo de mensagem — é o mesmo tipo com outro caminho.
+ */
+const INSTRUCAO_INDEFERIDO_MATERNIDADE =
+  'O pedido NÃO foi aprovado. Dê a notícia em uma frase curta e sem drama. Diga o motivo do ' +
+  'INSS em palavras simples. Diga que o escritório vai entrar com um recurso no próprio INSS ' +
+  'pedindo que revejam essa decisão e que avisa no grupo a cada etapa. Não fale em Justiça, ' +
+  'juiz nem processo judicial. Não prometa que vai ganhar. Não peça nada agora. No máximo 4 linhas.';
+
+/**
  * Prompt do humanizador. Devolve `null` quando o tipo não usa IA (protocolado)
  * ou quando não há despacho para reescrever — nesses casos vale o fallback,
  * que já é a mensagem certa e não corre risco de alucinação.
@@ -238,21 +316,28 @@ export function promptMensagemCliente(
   if (tipo === 'protocolado') return null;
   const fonte = (tipo === 'exigencia' ? e.pontosPendentes || e.despacho : e.despacho) || '';
   if (fonte.trim().length < 40) return null;
+  // O caminho prometido muda a tarefa E o vocabulário. Ver `ehSalarioMaternidade`.
+  const maternidade = tipo === 'indeferido' && ehSalarioMaternidade(e);
+  const instrucao = maternidade ? INSTRUCAO_INDEFERIDO_MATERNIDADE : INSTRUCAO_POR_TIPO[tipo];
+  const regras = REGRAS_COMUNS.map((r) =>
+    maternidade && r === REGRA_VOCABULARIO_ACAO ? REGRA_VOCABULARIO_RECURSO : r,
+  );
+  if (maternidade) regras.push(REGRA_SEM_JUSTICA);
   return [
     'Você escreve mensagens de WhatsApp para o cliente de um escritório de advocacia previdenciária.',
     'O grupo tem o cliente e a equipe do escritório.',
     '',
-    `Assunto: ${beneficioLegivel(e.beneficio)}.`,
+    `Assunto: ${beneficioLegivel(e.beneficio, e.servico)}.`,
     '',
     'Texto que o INSS enviou (reescreva a partir dele, não copie):',
     '"""',
     fonte.slice(0, 2500),
     '"""',
     '',
-    `Tarefa: ${INSTRUCAO_POR_TIPO[tipo]}`,
+    `Tarefa: ${instrucao}`,
     '',
     'Regras:',
-    ...REGRAS_COMUNS.map((r) => `- ${r}`),
+    ...regras.map((r) => `- ${r}`),
     '',
     'Responda só com a mensagem, sem aspas e sem comentários.',
   ].join('\n');

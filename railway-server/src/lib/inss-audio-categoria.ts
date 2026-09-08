@@ -36,7 +36,16 @@ export type CategoriaAudio =
   | 'laudo_medico'
   | 'doc_pessoal_residencia'
   | 'ctps_cnis'
-  | 'cat';
+  | 'cat'
+  /**
+   * Única categoria que NÃO sai do despacho: o assunto vem do serviço do
+   * requerimento (`inss_admin_processes.servico`). Existe porque o
+   * indeferimento de salário-maternidade promete recurso no INSS, e o áudio
+   * gravado da chave `indeferido` promete ação judicial — ver
+   * `ehSalarioMaternidade` em lib/inss-mensagem-cliente. Quem a escolhe é o
+   * chamador, passando `categoria` para `resolverAudioDaMensagem`.
+   */
+  | 'maternidade';
 
 /**
  * Cada categoria é um assunto que o INSS pede sozinho com frequência e que cabe
@@ -254,6 +263,16 @@ export const ROTEIROS: Record<string, string> = {
     'Oi, tudo bem? O INSS pediu a CAT, que é o papel que a empresa emite quando acontece um ' +
     'acidente de trabalho. Se você tiver esse documento, manda aqui no grupo. Se a empresa não ' +
     'tiver emitido, avisa a gente aqui mesmo que o escritório cuida disso.',
+  // Indeferimento de salário-maternidade: recurso no INSS, nunca Justiça. O
+  // áudio da chave `indeferido` (gravado pela equipe) diz o contrário e vale
+  // para todos os outros benefícios — por isso este assunto tem chave própria.
+  // Quando a equipe gravar a voz dela, é só trocar a linha do catálogo por
+  // `origem = 'gravado'` com a URL do arquivo.
+  'indeferido:maternidade':
+    'Oi, tudo bem? O INSS não aprovou o seu pedido de salário-maternidade. Mas não precisa se ' +
+    'preocupar: a gente vai entrar com um recurso no próprio INSS pedindo que eles olhem essa ' +
+    'decisão de novo. Assim que a gente entrar com o recurso, avisa aqui no grupo e vai contando ' +
+    'cada etapa. Você não precisa fazer nada agora.',
   arquivado_decurso:
     'Oi, tudo bem? O INSS encerrou o seu pedido porque o prazo para mandar os documentos acabou. ' +
     'Isso não é o fim: ainda dá para fazer alguma coisa. A gente já está vendo qual é o melhor ' +

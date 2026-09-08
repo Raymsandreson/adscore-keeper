@@ -42,6 +42,8 @@ import { buildNotificationAt, hydrateNotificationTime } from "@/lib/notification
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
 import { CompleteAndNotifyDialog, fetchLeadGroupOptions, type GroupOption } from '@/components/activities/CompleteAndNotifyDialog';
 import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
+import { ActivityHandoffSummary, ActivityMovementsPanel } from '@/components/activities/ActivityMovementsPanel';
+import { describeActivityAuthor } from '@/lib/activityHistory';
 import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
@@ -114,6 +116,7 @@ import { summarizeActivityConversation, type SuggestedActivity } from '@/lib/act
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
+import { completarCamposComMarcosLigado } from '@/lib/completarCamposComMarcos';
 
 // IMPORTANTE: lazy() precisa ficar no escopo do módulo. Se ficar dentro do
 // render, cada re-render (ex.: tick do cronômetro ativo) cria um componente
@@ -3659,6 +3662,9 @@ const ActivitiesPage = () => {
       fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
       // Andamento pela régua de marcos — a mesma medida da ficha do processo.
       regua: resumirRegua(reguaDoProcesso.marcos),
+      // Só completa os campos vazios com os marcos se a pessoa tiver ligado —
+      // de fábrica a mensagem sai com o que está escrito na ficha, e só.
+      completarCamposComMarcos: completarCamposComMarcosLigado(),
       currentUserId: user?.id || null, resolveUserName, getTemplateForContext, inssDesfecho,
     }, audience);
 
@@ -6521,7 +6527,16 @@ const ActivitiesPage = () => {
                     {activityFormContent}
                   </TabsContent>
 
-                  <TabsContent value="historico" className="mt-0">
+                  <TabsContent value="historico" className="mt-0 space-y-4">
+                    {/* Vida DESTA atividade: quem criou, por quantas mãos passou,
+                        em que situação estava em cada repasse. Vem antes da
+                        sequência porque é a pergunta que mais chega
+                        ("por que essa atividade saiu de mim?"). */}
+                    <ActivityMovementsPanel
+                      activityId={selectedActivity?.id || null}
+                      activityCreatedAt={selectedActivity?.created_at || null}
+                      resolveUserName={resolveUserName}
+                    />
                     <ActivityChainPanel
                       currentActivityId={selectedActivity?.id || null}
                       items={activityChain.items}
@@ -6541,7 +6556,30 @@ const ActivitiesPage = () => {
 
                 {sheetMode === 'edit' && selectedActivity && (
                   <div className="text-xs text-muted-foreground mt-3 space-y-1">
-                    <p>Criado por: {resolveUserName(selectedActivity.created_by) || '—'} em {format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+                    {/* Autoria: robô vem do carimbo do banco (action_source /
+                        created_by_ai), pessoa vem do created_by. O traço "—" que
+                        ficava aqui escondia informação que o banco já tinha:
+                        10.152 atividades vivas estão sem created_by e TODAS
+                        dizem a fonte em action_source (medido 08/09/2026). */}
+                    {(() => {
+                      const autor = describeActivityAuthor(
+                        selectedActivity,
+                        resolveUserName(selectedActivity.created_by),
+                      );
+                      return (
+                        <p className="flex flex-wrap items-center gap-1">
+                          <span>Criado por:</span>
+                          {autor.robot && <RobotBadge activity={selectedActivity} />}
+                          <span
+                            className={autor.known ? '' : 'italic'}
+                            title={autor.known ? undefined : 'A atividade foi gravada sem carimbo de autor — criação antiga ou rotina que não registrou quem pediu'}
+                          >
+                            {autor.label}
+                          </span>
+                          <span>em {format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm")}</span>
+                        </p>
+                      );
+                    })()}
                     {selectedActivity.updated_at && selectedActivity.updated_at !== selectedActivity.created_at && (
                       <p>
                         Última atualização por:{' '}
@@ -6556,6 +6594,14 @@ const ActivitiesPage = () => {
                         em {format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm")}
                       </p>
                     )}
+                    {/* Por quantas mãos passou — a pergunta seguinte a "quem
+                        criou" e "quem mexeu por último". Fica aqui, e não só na
+                        aba Histórico, porque quem lê o rodapé já está com a
+                        dúvida na cabeça. Some quando não há repasse gravado. */}
+                    <ActivityHandoffSummary
+                      activityId={selectedActivity.id}
+                      resolveUserName={resolveUserName}
+                    />
                   </div>
                 )}
               </div>

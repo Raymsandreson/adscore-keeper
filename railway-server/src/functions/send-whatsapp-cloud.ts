@@ -140,6 +140,14 @@ interface SendBody {
   // vai ler. Quem manda pela tela conhece o corpo aprovado; gravar isso evita
   // que a conversa fique com "[template: nome]" no lugar da mensagem real.
   template_body_text?: string;
+  /**
+   * "Responder" — o wamid CRU da mensagem citada.
+   *
+   * Mesmo nome que a edge `send-whatsapp` já usa no canal UazAPI, de propósito:
+   * quem chama manda um corpo só e não precisa saber por qual linha a conversa
+   * fala. Aqui ele vira o `context` da Graph.
+   */
+  replyid?: string | null;
 }
 
 function mediaKindFromMime(mime: string | undefined): 'image' | 'audio' | 'video' | 'document' {
@@ -321,6 +329,26 @@ export const handler: RequestHandler = async (req, res) => {
       type: 'text',
       text: { preview_url: false, body: text },
     };
+  }
+
+  /**
+   * A citação — o "responder" do WhatsApp.
+   *
+   * Até 04/09/2026 este handler ignorava o `replyid`: o campo chegava, era
+   * aceito e descartado, e a mensagem saía solta. Por isso o app mobile
+   * **desliga** o gesto de responder no canal oficial em vez de oferecer uma
+   * citação que não sai — o que valia até aqui.
+   *
+   * A Graph aceita `context` em texto e mídia. Em template, não: a Meta monta a
+   * mensagem a partir do modelo aprovado e o campo é recusado.
+   *
+   * O `wamid.` no começo é o que separa um id da Cloud API do id da UazAPI, que
+   * tem outro formato e faria a Graph devolver 131009 sobre um campo que a
+   * pessoa nem sabe que existe.
+   */
+  const idCitado = typeof body.replyid === 'string' ? body.replyid.trim() : '';
+  if (idCitado.startsWith('wamid.') && !isTemplate) {
+    payload.context = { message_id: idCitado };
   }
 
   const url = `${GRAPH}/${API_VERSION}/${phoneNumberId}/messages`;

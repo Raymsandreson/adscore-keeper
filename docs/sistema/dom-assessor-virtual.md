@@ -172,7 +172,7 @@ ruído — cliente não usa esse número.
 O cron **não foi criado** por causa do item 1: um tick de 2 em 2 minutos hoje
 encheria a fila de resposta para "obrigada".
 
-## Como ele decide: as 19 intenções
+## Como ele decide: as 23 intenções
 
 `dom-rascunho` classifica a última mensagem do cliente num modelo barato
 (flash-lite) ANTES de gastar o modelo bom, e o grupo da intenção decide a ação:
@@ -180,13 +180,39 @@ encheria a fila de resposta para "obrigada".
 | Grupo | O que ele faz | Intenções |
 |---|---|---|
 | A | responde a pergunta | A1 andamento, A2 explicação, A3 problema prático, A4 o que ele precisa fazer |
-| B | acolhe, **sem falar de processo** | B5 desabafo, B6 notícia boa, B7 notícia ruim |
+| B | acolhe, **sem falar de processo** | B5 desabafo, B6 notícia boa, B7 notícia ruim, B23 elogio |
 | C | confirma curto | C8 entregando dado, C9 documento, C10 agendamento, C11 fato novo |
 | D | **cala** | D12 cumprimento, D13 agradecimento, D14 fora do caso, D15 mensagem da equipe |
-| E | chama humano | E16 reclamação, E17 dinheiro/prazo, E18 quer pessoa, E19 assunto novo |
+| E | chama humano | E16 reclamação, E17 dinheiro/prazo do caso, E18 quer pessoa, E19 assunto novo, E20 desistência, E21 pede dinheiro adiantado, E22 indicação de cliente |
 
 Mais `conversa_encerrada`: quando a última mensagem só reconhece o que já foi
 dito, ninguém responde de volta. O Dom é convidado na conversa, não dono dela.
+
+### E20 a E22 e B23 — o que as 19 primeiras engoliam calado (08/09/2026)
+
+As quatro entraram depois, cada uma tapando um buraco medido nos dados, não
+imaginado:
+
+- **E20 (desistência)** era **B5**. "Falar em desistir" é desabafo pela forma e
+  emergência pelo conteúdo — e B acolhe **sozinho**, sem avisar ninguém. Em
+  04/09/2026 o Caso 341 mandou *"eu já tô desistindo, já não tô aguentando
+  mais"* e o único rascunho vivo do grupo era **C9**, sobre uma foto do dia
+  seguinte. Ninguém foi acionado.
+- **E21 (pede dinheiro adiantado)** era **E17**, junto com "quando cai meu
+  dinheiro". Vai para humano nos dois casos, mas a resposta que o Dom escreve
+  enquanto o humano não chega é outra: em E21 é proibido citar valor, prazo ou
+  dizer sim ou não.
+- **E22 (indicação de cliente)** era **D14** (assunto fora do caso) → **silêncio**.
+  Cliente oferecendo cliente e o sistema não registrava nada.
+- **B23 (elogio)** era **D13** → silêncio. D13 sozinho gerou 115 silêncios.
+
+O classificador ganhou junto uma **ordem de prioridade explícita**
+(`E20 > E16 > E21 > E22 > E17 > E18 > E19 > A > C > B > D`), porque estas falas
+quase nunca chegam puras: vêm dentro de um bom-dia com pergunta de andamento.
+
+No painel, estas cinco (as quatro novas mais E16) ganharam chips **por código**,
+na fileira "Olho nelas" — filtrar por letra E devolvia a desistência misturada
+com quem só perguntou de prazo.
 
 ## Cron: `dom_rascunho_tick`, de 5 em 5 minutos
 
@@ -1873,9 +1899,14 @@ um áudio**. Ajuste que depende de acaso não é ajuste.
 A `dom-rascunho` ganhou a ação `regerar_audio`:
 
 ```
-POST { regerar_audio: "<id do rascunho>", velocidade?: 0.5..1.5 }
-→ { regerado, audio_url, audio_voz, audio_erro, velocidade, caracteres }
+POST { regerar_audio: "<id do rascunho>",
+       velocidade?: 0.5..1.5, estabilidade?: 0..1, estilo?: 0..1, pausa_ms?: 0..3000 }
+→ { regerado, audio_url, audio_voz, audio_erro,
+    velocidade, estabilidade, estilo, pausa_ms, caracteres }
 ```
+
+Manda **só o que mudou**: campo ausente no corpo é campo que a função não toca.
+Mexer no tom não pode reescrever a velocidade que já estava boa.
 
 No painel, dentro do bloco "Como ficaria falado": os botões **0,85× a 1,10×**
 refazem o áudio naquela velocidade e **guardam ela na voz** — é isso que faz
@@ -1914,6 +1945,109 @@ mexer em produção:** `whatsapp-ai-agent-reply` (~5,9 mil chamadas/dia),
 `_shared/whatsapp-utils.ts`, `whatsapp-command-processor`, `elevenlabs-tts` e
 `elevenlabs-voice-clone`. Enquanto isso, a velocidade da voz vale **só no
 atendente virtual** — nos outros caminhos a mesma voz continua saindo a 1,1×.
+
+### Tom e pausa — as outras duas alavancas (08/09/2026)
+
+A velocidade resolveu "a Keilane soa apressada". Ela não resolve as outras duas
+queixas que aparecem quando alguém escuta uma nota de voz do escritório:
+
+| o que se escuta | o que falta |
+| --- | --- |
+| "a voz fala tudo emendado" | **pausa** |
+| "soa uma robô lendo formulário" | **tom** |
+
+Como a velocidade, as duas são propriedade **da voz** e moram em
+`custom_voices` — a mesma pausa de 0,6 s que dá respiro numa voz corrida soa
+arrastada numa voz que já é pausada por natureza.
+
+#### Tom não é grave nem agudo — e isso não é escolha nossa
+
+**A API da ElevenLabs não tem `pitch`.** Os campos de `voice_settings` são
+exatamente cinco (`stability`, `similarity_boost`, `style`, `speed`,
+`use_speaker_boost` — fonte: `elevenlabs/skills`,
+`text-to-speech/references/voice-settings.md`, a mesma citada na velocidade).
+Se alguém pedir "deixa a voz mais grave", a resposta honesta é: a altura da voz
+é da **gravação que clonou ela** e só muda regravando.
+
+O que dá para mudar é a **expressividade**, e ela é a combinação de dois campos
+que puxam para lados diferentes:
+
+| campo | alto | baixo |
+| --- | --- | --- |
+| `stability` | fala firme, pouca variação | mais variação emocional |
+| `style` | exagera o jeito próprio da voz | neutro |
+
+Por isso a tela oferece o tom **por nome**, num clique, e não como dois sliders
+soltos: ninguém revisando resposta de cliente sabe o que 0,45 de `style` faz,
+mas todo mundo sabe se quer soar sério ou caloroso.
+
+| botão | `estabilidade_fala` | `estilo_fala` | para quando |
+| --- | --- | --- | --- |
+| Sério | 0,80 | 0,00 | prazo, exigência, notícia ruim |
+| **Equilibrado** | **0,60** | **0,30** | o padrão de hoje — serve para quase tudo |
+| Caloroso | 0,45 | 0,45 | acolher quem está ansioso |
+| Expressivo | 0,30 | 0,65 | o que mais escorrega para teatral |
+
+**O banco guarda os números, não o nome.** Renomear "Caloroso" amanhã não pode
+reescrever o que já foi gravado. "Equilibrado" é exatamente a constante que
+estava escrita à mão na função até 08/09/2026 — quem não clicar em nada
+continua soando igual.
+
+#### Pausa é tag no texto, não parâmetro
+
+Não existe campo de pausa em `voice_settings`. Pausa se faz com
+`<break time="0.7s" />` **dentro do texto**, com teto de 3 s.
+
+Ela entra em **cada quebra de linha da resposta** — onde quem escreveu já quis
+um respiro. A máquina não adivinha prosódia: ela respeita a pontuação de quem
+redigiu. As quebras das pontas saem antes, senão o áudio terminaria com um
+silêncio esperando por nada.
+
+| botão | `pausa_fala_ms` |
+| --- | --- |
+| **Sem pausa** | **0** — o padrão, nenhuma tag é inserida |
+| Curta | 400 |
+| Média | 700 |
+| Longa | 1000 |
+
+> **Esta é a parte com evidência fraca, e está escrito para não se perder.** A
+> doc oficial da ElevenLabs sobre a tag `<break>` **não pôde ser lida de
+> primeira mão** quando isto foi escrito: `elevenlabs.io` e `help.elevenlabs.io`
+> estavam bloqueados por egress no ambiente, e o repositório oficial de skills
+> não cobre pausas. A fonte é secundária. **Se o modelo não interpretar a tag,
+> ele a lê em voz alta** e o cliente ouviria "break time zero vírgula sete s".
+>
+> Duas travas, e é por elas que deu para subir mesmo sem a doc: **(1)** o padrão
+> é 0, nenhuma tag é inserida e o texto sai idêntico ao de hoje — nada muda para
+> voz nenhuma sem um clique; **(2)** isto é rascunho, o áudio toca no painel e
+> só sai com aprovação humana. **A primeira escuta com pausa ligada confirma ou
+> derruba a hipótese** — e o resultado tem que voltar para cá.
+
+#### A ordem de aplicação, que não é opcional
+
+A tag entra **depois** do corte por `max_tts_chars`, nunca antes. `maxChars` é o
+teto de **resposta falada**, e é isso que a tela diz quando avisa "a resposta tem
+N caracteres e o teto de fala é M". Se as tags entrassem antes, elas comeriam
+esse orçamento — uma resposta com 10 quebras perderia ~220 caracteres de
+conteúdo para marcação invisível, e o aviso de corte passaria a mentir sobre o
+motivo.
+
+**Custo:** a ElevenLabs cobra por caractere de entrada e a tag tem ~22. A
+resposta média (333 caracteres) com 4 quebras passa a custar ~88 caracteres a
+mais, ~26%. Em dezenas de áudios/dia é ruído; ficaria relevante em milhares/dia.
+
+#### O que registra o passado
+
+`dom_respostas_pendentes` ganhou `audio_estabilidade`, `audio_estilo` e
+`audio_pausa_ms`, pelo mesmo motivo de `audio_velocidade`: sem isso, mexer nos
+ajustes da voz **reescreveria o passado** — o áudio antigo continuaria soando
+igual e a tela diria os números novos, o que inutiliza a comparação "antes e
+depois", que é justamente como se escolhe. Nulo = gerado antes de 08/09/2026,
+nas constantes antigas (1,10× / 0,60 / 0,30 / sem pausa).
+
+O erro da ElevenLabs agora carrega **os quatro** ajustes. Com só a velocidade
+ali, um 422 causado pelo tom apontaria para o parâmetro errado — e quem lê a
+tela iria mexer justo no que não era o problema.
 
 ### Data falada por extenso, e a data do próximo contato
 

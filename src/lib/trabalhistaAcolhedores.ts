@@ -10,6 +10,8 @@ export const TRABALHISTA_ACOLHEDORES: string[] = [
   'Juliana Clara Santos Pimentel',
   'Luiz Ricardo',
   'Grazielle Aline Moreira da Silva',
+  'Renan Vieira Mendes',
+  'Fabrício Figueiredo',
 ];
 
 export function isTrabalhistaBoard(boardId: string | null | undefined): boolean {
