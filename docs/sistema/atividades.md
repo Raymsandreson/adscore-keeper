@@ -557,6 +557,17 @@ Três decisões do usuário, tomadas sobre o caso 60 (`0100419-74.2021.5.01.0281
 
 Caso 60 depois de tudo: **Admissibilidade do RR · 17/07/2026 · marco 11 de 24 · 46%**.
 
+## Completar campos vazios com os marcos virou opt-in (08/09/2026)
+
+Desde 30/08/2026, ao montar a mensagem da atividade (**Copiar**, **Enviar ao Grupo**, prévia e áudio), as seções **"Como está?"**, **"O que foi feito?"** e **"Próximo passo"** deixadas **em branco** eram preenchidas sozinhas com os marcos da régua do processo. Nasceu para a atividade automática, que saía sem nenhuma das três seções — mas passava a valer para **qualquer** atividade com régua: quem preenchia só duas via a terceira aparecer escrita ao clicar em Copiar, sem ter pedido, e o texto ia pro grupo do cliente como se fosse do assessor.
+
+Agora é **opt-in**, desligado de fábrica:
+
+- **Interruptor**: ⚙ *Configurar campos* (ao lado de Copiar/Enviar, tanto na `ActivitiesPage` quanto no `ActivityFullSheet`) → **"Completar campos vazios com os marcos do processo"**. A escolha fica **neste navegador** (`localStorage`, chave `atividade-completar-campos-marcos`); os campos em si (rótulo, ordem, "incluir na mensagem") continuam sendo do escritório inteiro, na tabela `activity_field_settings`.
+- **Nada foi removido**: ligado, o comportamento é exatamente o de 30/08 — inclusive a linguagem de leigo do `humanizaMarco` e a regra de que **texto digitado sempre vence** o automático.
+- **Desligado** (padrão), campo vazio não vira seção nenhuma: a mensagem sai só com o que está escrito na ficha.
+- Código: `completarCamposComMarcos` em `src/components/activities/buildActivityMessage.ts` (guarda o bloco da régua), preferência em `src/lib/completarCamposComMarcos.ts`, interruptor em `ActivityFieldSettingsDialog.tsx`, passado pelos três call sites (`ActivityFullSheet`, `ActivitiesPage`, `ProcessUpdatesBell`). Testes em `buildActivityMessage.progresso.test.ts`: "de fábrica, campo vazio continua vazio" (novo) e os dois antigos, que agora ligam a flag explicitamente.
+
 ## Prazo se cumpre, não se reagenda (31/08/2026)
 
 Três regras nascidas do caso `1017247-47.2025.4.01.3100` (prazo real 16/07 no título da atividade, deadline manual em 31/07, réplica protocolada 03/08 — e o prazo do robô criado 53 dias depois com título errado):

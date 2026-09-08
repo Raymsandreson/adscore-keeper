@@ -90,6 +90,15 @@ export interface ActivityMessageContext {
     /** Próximo marco obrigatório pendente — vira o "Próximo passo" quando o campo está vazio. */
     proximoRotulo?: string | null;
   } | null;
+  /**
+   * Completar "Como está?", "O que foi feito?" e "Próximo passo" **vazios** com
+   * os marcos da régua (ver o bloco em `regua`). **Desligado por padrão**: o
+   * texto nasce no lugar do assessor, e quem copia a mensagem para o cliente
+   * precisa saber que aquilo saiu dele, não da máquina. Quem quiser o
+   * comportamento liga em "Configurar campos → Completar campos vazios com os
+   * marcos do processo" (`completarCamposComMarcosLigado()`).
+   */
+  completarCamposComMarcos?: boolean;
   leadPreview: { board_id?: string | null } | null;
   systemOabs: any;
   currentUserId: string | null;
@@ -250,6 +259,7 @@ export function buildActivityMessage(
     formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
     formCaseTitle, formProcessId, formProcessTitle,
     fieldSettings, selectedActivity, caseProcesses, stepContext, faseProcessual, regua, leadPreview, systemOabs,
+    completarCamposComMarcos = false,
     currentUserId, resolveUserName, getTemplateForContext, inssDesfecho,
   } = ctx;
   const stripHtml = stripHtmlForMessage;
@@ -277,7 +287,12 @@ export function buildActivityMessage(
     // (movimentações e documentos reais — nada inventado). Texto digitado pelo
     // assessor sempre vence; isto só cobre o vazio (pedido do usuário, 30/08:
     // atividade automática saía sem nenhuma das três seções).
-    if (regua && regua.percentual != null) {
+    //
+    // **Só com o interruptor ligado** (`completarCamposComMarcos`, desligado de
+    // fábrica desde 08/09/2026): campo que o assessor deixou vazio aparecia
+    // escrito na mensagem copiada sem ninguém ter pedido, e quem cola no grupo
+    // do cliente não tinha como saber que aquele texto não era dele.
+    if (completarCamposComMarcos && regua && regua.percentual != null) {
       const dataBR = (d?: string | null) => (d ? format(parseISO(d.slice(0, 10)), 'dd/MM/yyyy') : '');
       const marcoAtualTxt = regua.atualRotulo
         ? `"${regua.atualRotulo}"${regua.atualData ? ` em ${dataBR(regua.atualData)}` : ''}`
