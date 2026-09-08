@@ -261,11 +261,29 @@ interface NaConversa {
   intencao: string | null;
 }
 
+/**
+ * Os processos que entraram no prompt desta resposta, pelo número.
+ *
+ * Dentro da ficha é a pergunta que o cliente faria: "essa mensagem foi sobre
+ * qual dos meus processos?". Sai do mesmo `contexto_usado` que abastece a
+ * FontesDaResposta no detalhe — aqui é só o resumo de uma linha, para não
+ * precisar abrir cada cartão para descobrir.
+ *
+ * Rascunho anterior a 07/09/2026 não tem `contexto_usado` e não ganha a linha:
+ * inventar "sem processo" ali seria afirmar o que ninguém guardou.
+ */
+function processosDoRascunho(p: Pendente): string[] {
+  return (p.contexto_usado?.processos || [])
+    .map(pr => (pr?.numero || '').trim())
+    .filter(Boolean);
+}
+
 /** Linha comum das três listas que saem de dom_respostas_pendentes. */
 function LinhaPendente({ p, onClick, rodape, marcada, onMarcar }: {
   p: Pendente; onClick?: () => void; rodape?: React.ReactNode;
   marcada?: boolean; onMarcar?: (v: boolean) => void;
 }) {
+  const processos = processosDoRascunho(p);
   return (
     <Card className={onClick ? 'cursor-pointer hover:border-primary/40' : ''} onClick={onClick}>
       <CardContent className="p-3 space-y-1">
@@ -290,13 +308,31 @@ function LinhaPendente({ p, onClick, rodape, marcada, onMarcar }: {
           <strong>{p.pergunta_autor || 'Cliente'}:</strong> {p.pergunta}
         </p>
         <p className="text-[11px] truncate">{p.resposta_final || p.resposta_sugerida}</p>
+        {processos.length > 0 && (
+          <p className="text-[10px] text-muted-foreground/80 truncate">
+            {processos.length === 1 ? 'sobre o processo ' : 'sobre os processos '}
+            {processos.join(' · ')}
+          </p>
+        )}
         {rodape}
       </CardContent>
     </Card>
   );
 }
 
-export function AtendenteVirtualPanel() {
+/**
+ * O painel inteiro, ou o mesmo painel recortado num cliente só.
+ *
+ * `leadId` ausente = a tela de operação, com os 1.149 grupos do piloto. Com
+ * `leadId`, é a aba dentro da ficha: as mesmas listas, os mesmos cartões e o
+ * mesmo detalhe lateral, só que do cliente que está aberto.
+ *
+ * É o MESMO componente de propósito. Um painel reduzido paralelo divergiria na
+ * primeira mudança — o botão novo entraria num e não no outro, e o assessor
+ * veria dentro da ficha uma ação que já não existe mais na tela de operação.
+ */
+export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
+  const noLead = !!leadId;
   const [fila, setFila] = useState<Pendente[]>([]);
   const [enviadas, setEnviadas] = useState<Pendente[]>([]);
   const [comHumano, setComHumano] = useState<Pendente[]>([]);
@@ -323,6 +359,26 @@ export function AtendenteVirtualPanel() {
   const [nasConversas, setNasConversas] = useState<NaConversa[]>([]);
   const [buscandoConversas, setBuscandoConversas] = useState(false);
   const [totalGrupos, setTotalGrupos] = useState(0);
+  /**
+   * Os grupos DESTE lead, no formato curto do jid — o recorte da aba da ficha.
+   *
+   * `null` = ainda não resolvi (não dá para carregar nada); `[]` = resolvi e a
+   * ficha não tem grupo nenhum, que é uma resposta e não um erro.
+   *
+   * Vem de duas fontes porque o vínculo mora em dois lugares — os mesmos dois
+   * degraus da `dom_contexto_processual`: a ponte explícita
+   * (`lead_whatsapp_groups`) e o cadastro da ficha (`leads.whatsapp_group_id`).
+   * Só a ponte perderia os grupos que existem apenas no cadastro (167 dentro do
+   * piloto, medidos em 07/09/2026).
+   *
+   * A NORMALIZAÇÃO não é detalhe. Medido em 08/09/2026 no banco externo, as três
+   * tabelas do Dom guardam o jid CURTO — 0 de 228 rascunhos, 0 de 779 decisões e
+   * 0 de 1.149 grupos do piloto têm '@' — enquanto as duas fontes do lead
+   * guardam misturado: 1.471 de 2.567 na ponte e 2.803 de 3.900 no cadastro.
+   * Comparar cru daria lista vazia em mais da metade das fichas, e vazio aqui se
+   * lê como "o assessor nunca falou com este cliente".
+   */
+  const [jidsDoLead, setJidsDoLead] = useState<string[] | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState<Pendente | null>(null);
   const [texto, setTexto] = useState('');
@@ -389,42 +445,99 @@ export function AtendenteVirtualPanel() {
     }
   }, [aberto, regerando]);
 
+  /**
+   * Resolve os grupos da ficha antes de qualquer lista aparecer.
+   *
+   * Roda só na aba do lead. Na tela de operação `leadId` é undefined e este
+   * efeito não faz uma consulta sequer — a tela grande continua exatamente
+   * como estava.
+   */
+  useEffect(() => {
+    if (!leadId) { setJidsDoLead(null); return; }
+    let vivo = true;
+    (async () => {
+      await ensureExternalSession();
+      const [ponte, ficha] = await Promise.all([
+        dbAny.from('lead_whatsapp_groups').select('group_jid').eq('lead_id', leadId),
+        dbAny.from('leads').select('whatsapp_group_id').eq('id', leadId).maybeSingle(),
+      ]);
+      if (!vivo) return;
+      const curto = (j: unknown) => String(j ?? '').split('@')[0].trim();
+      const todos = [
+        ...((ponte.data as { group_jid: string | null }[] | null) || []).map(g => curto(g.group_jid)),
+        curto((ficha.data as { whatsapp_group_id: string | null } | null)?.whatsapp_group_id),
+      ].filter(Boolean);
+      setJidsDoLead([...new Set(todos)]);
+    })();
+    return () => { vivo = false; };
+  }, [leadId]);
+
   const carregar = useCallback(async () => {
+    // `null` = ainda não sei quais são os grupos da ficha, e carregar agora
+    // traria a fila do escritório inteiro dentro de um cliente — o vazamento
+    // que o recorte existe para evitar.
+    if (noLead && jidsDoLead === null) return;
+    // `[]` = a ficha não tem grupo. As consultas sairiam com `in('group_jid',
+    // [])`: cinco viagens ao banco para trazer nada. As listas são zeradas
+    // porque o painel não é remontado quando a ficha aberta troca.
+    if (noLead && jidsDoLead.length === 0) {
+      setFila([]); setEnviadas([]); setComHumano([]);
+      setSilenciadas([]); setGrupos([]); setSemFicha([]); setSaiEm({});
+      return;
+    }
     setCarregando(true);
     try {
       await ensureExternalSession();
       const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, audio_velocidade, audio_estabilidade, audio_estilo, audio_pausa_ms, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, contexto_usado, dom_atendentes(nome)';
+      /**
+       * O recorte da ficha, aplicado a toda consulta que tem `group_jid`.
+       *
+       * Filtra por GRUPO e não por `lead_id`: 31 dos 228 rascunhos foram
+       * gravados sem `lead_id` (o assessor não tinha achado a ficha na hora),
+       * e são exatamente os que mais interessam a quem abre a ficha depois.
+       * Filtrar pela coluna deixaria essas 31 fora, caladas. Pelo grupo não
+       * perde nada: dos 197 com `lead_id`, os 197 batem com o grupo da ficha
+       * (medido em 08/09/2026).
+       */
+      const escopo = (q: any) => (noLead ? q.in('group_jid', jidsDoLead ?? []) : q);
+
       const [f, e, h, s, gp, sf] = await Promise.all([
         // "Na fila" é tudo que AINDA NÃO SAIU — inclusive o que alguém já
         // aprovou. Filtrar só por 'pendente' fazia a resposta aprovada sumir
         // das quatro abas: não estava mais na fila, nunca chegou em enviadas,
         // e ficava parada para sempre sem ninguém ver.
-        dbAny.from('dom_respostas_pendentes').select(sel)
-          .in('status', ['pendente', 'aprovada', 'editada']).is('atendente_id', null)
+        escopo(dbAny.from('dom_respostas_pendentes').select(sel)
+          .in('status', ['pendente', 'aprovada', 'editada']).is('atendente_id', null))
           .order('criado_em', { ascending: false }).limit(100),
-        dbAny.from('dom_respostas_pendentes').select(sel)
-          .eq('status', 'enviada')
+        escopo(dbAny.from('dom_respostas_pendentes').select(sel)
+          .eq('status', 'enviada'))
           .order('enviado_em', { ascending: false }).limit(100),
-        dbAny.from('dom_respostas_pendentes').select(sel)
-          .not('atendente_id', 'is', null)
+        escopo(dbAny.from('dom_respostas_pendentes').select(sel)
+          .not('atendente_id', 'is', null))
           .order('criado_em', { ascending: false }).limit(100),
-        dbAny.from('dom_decisoes')
+        escopo(dbAny.from('dom_decisoes')
           .select('id, group_name, group_jid, intencao, decisao, motivo, pergunta, criado_em')
-          .eq('decisao', 'silencio')
+          .eq('decisao', 'silencio'))
           .order('criado_em', { ascending: false }).limit(100),
         // Só os que RESPONDEM SOZINHOS. São mais de mil grupos no piloto:
         // desenhar mil chaves na tela não é configuração, é entulho. Quem
         // procura um grupo específico usa a busca abaixo.
-        dbAny.from('dom_grupos_piloto')
-          .select('group_jid, group_name, modo, ativo')
-          .eq('ativo', true).eq('modo', 'automatico').order('group_name'),
+        noLead
+          ? dbAny.from('dom_grupos_piloto')
+              .select('group_jid, group_name, modo, ativo')
+              .in('group_jid', jidsDoLead ?? []).order('group_name')
+          : dbAny.from('dom_grupos_piloto')
+              .select('group_jid, group_name, modo, ativo')
+              .eq('ativo', true).eq('modo', 'automatico').order('group_name'),
         // Os que o assessor atende sem saber de quem são. Ordenados pelo
         // ESTRAGO já feito — quantas respostas saíram no escuro — e não por
         // nome: a fila de conserto começa por onde já custou caro.
-        dbAny.from('vw_dom_grupo_sem_ficha')
-          .select('group_jid, group_name, situacao, fichas_no_cadastro, rascunhos_no_escuro, ultimo_rascunho_em, o_que_fazer')
-          .order('rascunhos_no_escuro', { ascending: false })
-          .order('group_name'),
+        noLead
+          ? Promise.resolve({ data: [] as unknown })
+          : dbAny.from('vw_dom_grupo_sem_ficha')
+              .select('group_jid, group_name, situacao, fichas_no_cadastro, rascunhos_no_escuro, ultimo_rascunho_em, o_que_fazer')
+              .order('rascunhos_no_escuro', { ascending: false })
+              .order('group_name'),
       ]);
       setFila((f.data as unknown as Pendente[]) || []);
       setEnviadas((e.data as unknown as Pendente[]) || []);
@@ -433,9 +546,11 @@ export function AtendenteVirtualPanel() {
       setGrupos((gp.data as unknown as GrupoPiloto[]) || []);
       setSemFicha((sf.data as unknown as SemFicha[]) || []);
 
-      const { count } = await dbAny.from('dom_grupos_piloto')
-        .select('group_jid', { count: 'exact', head: true }).eq('ativo', true);
-      setTotalGrupos(count || 0);
+      if (!noLead) {
+        const { count } = await dbAny.from('dom_grupos_piloto')
+          .select('group_jid', { count: 'exact', head: true }).eq('ativo', true);
+        setTotalGrupos(count || 0);
+      }
 
       // O ritmo é do agente, não do painel: lido aqui só para a tela contar a
       // verdade. Falhar não pode apagar a fila — cai no padrão e segue.
@@ -468,7 +583,7 @@ export function AtendenteVirtualPanel() {
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [noLead, jidsDoLead]);
 
   useEffect(() => { carregar(); }, [carregar]);
 
@@ -741,10 +856,20 @@ export function AtendenteVirtualPanel() {
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <p className="text-[11px] text-muted-foreground flex-1">
-          O que o atendente virtual fez.{' '}
-          {grupos.length === 0
-            ? `Nenhum dos ${totalGrupos} grupos responde sozinho ainda — tudo fica esperando revisão e nada sai para o cliente.`
-            : `${grupos.length} de ${totalGrupos} grupos respondem sozinhos: a resposta entra na fila e sai ${ritmo.primeira} min depois, se ninguém escrever antes.`}
+          {noLead ? (
+            jidsDoLead === null
+              ? 'Procurando o grupo deste cliente…'
+              : jidsDoLead.length === 0
+                ? 'Esta ficha não tem grupo de WhatsApp ligado — o assessor virtual não tem por onde falar com este cliente, e por isso não há nada aqui.'
+                : `O que o atendente virtual escreveu para este cliente, ${jidsDoLead.length === 1 ? 'no grupo da ficha' : `nos ${jidsDoLead.length} grupos da ficha`}.`
+          ) : (
+            <>
+              O que o atendente virtual fez.{' '}
+              {grupos.length === 0
+                ? `Nenhum dos ${totalGrupos} grupos responde sozinho ainda — tudo fica esperando revisão e nada sai para o cliente.`
+                : `${grupos.length} de ${totalGrupos} grupos respondem sozinhos: a resposta entra na fila e sai ${ritmo.primeira} min depois, se ninguém escrever antes.`}
+            </>
+          )}
         </p>
         <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={carregar} disabled={carregando}>
           {carregando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -752,30 +877,42 @@ export function AtendenteVirtualPanel() {
         </Button>
       </div>
 
-      <Card>
+      {!(noLead && jidsDoLead?.length === 0) && <Card>
         <CardContent className="p-3 space-y-2">
-          <p className="text-[11px] font-medium">Quem responde sozinho</p>
+          <p className="text-[11px] font-medium">
+            {noLead ? 'O grupo deste cliente responde sozinho?' : 'Quem responde sozinho'}
+          </p>
           <p className="text-[10px] text-muted-foreground">
             Ligado, ele responde sozinho {ritmo.primeira} min depois de o cliente escrever —
             e {ritmo.seguinte} min nas respostas seguintes, enquanto a conversa continua. A
             mensagem aparece na conversa como bolha tracejada com cronômetro — dá para tirar
             da fila ou mandar na hora. Se alguém escrever no grupo antes, ela não sai.
-            {' '}Os outros continuam trabalhando em modo rascunho: escrevem e enchem a fila,
-            sem nada chegar no cliente.
+            {noLead
+              ? ' Desligado, ele continua escrevendo: o rascunho cai na fila abaixo e nada chega ao cliente sem alguém aprovar.'
+              : ' Os outros continuam trabalhando em modo rascunho: escrevem e enchem a fila, sem nada chegar no cliente.'}
           </p>
 
           <div className="space-y-1 pt-1">
             {grupos.length === 0 && (
               <p className="text-[10px] text-muted-foreground italic py-1">
-                Nenhum grupo responde sozinho ainda.
+                {!noLead
+                  ? 'Nenhum grupo responde sozinho ainda.'
+                  : jidsDoLead === null
+                    ? 'Procurando o grupo da ficha…'
+                    : 'O grupo desta ficha não está no piloto do assessor — ele não escreve nada aqui, nem rascunho.'}
               </p>
             )}
             {grupos.map(g => (
               <div key={g.group_jid} className="flex items-center gap-2">
                 <span className="text-[11px] flex-1 truncate">{g.group_name || g.group_jid}</span>
-                <span className="text-[10px] text-emerald-700 whitespace-nowrap">responde sozinho</span>
+                {/* Na tela grande esta lista já vem filtrada em `automatico`, então
+                    o rótulo continua o mesmo. Na ficha vêm os dois modos, e dizer
+                    "responde sozinho" num grupo que só rascunha seria mentira. */}
+                <span className={`text-[10px] whitespace-nowrap ${g.modo === 'automatico' ? 'text-emerald-700' : 'text-muted-foreground'}`}>
+                  {g.modo === 'automatico' ? 'responde sozinho' : 'só rascunha'}
+                </span>
                 <Switch
-                  checked
+                  checked={g.modo === 'automatico'}
                   disabled={trocandoModo === g.group_jid}
                   onCheckedChange={(v) => trocarModo(g, v)}
                 />
@@ -783,7 +920,7 @@ export function AtendenteVirtualPanel() {
             ))}
           </div>
 
-          <div className="pt-2 border-t space-y-1">
+          {!noLead && <div className="pt-2 border-t space-y-1">
             <Input
               value={busca}
               onChange={(e) => procurar(e.target.value)}
@@ -806,9 +943,9 @@ export function AtendenteVirtualPanel() {
                 />
               </div>
             ))}
-          </div>
+          </div>}
         </CardContent>
-      </Card>
+      </Card>}
 
       <div className="space-y-1">
         <div className="flex flex-wrap items-center gap-1">
@@ -852,7 +989,11 @@ export function AtendenteVirtualPanel() {
       </div>
 
       <Tabs defaultValue="fila">
-        <TabsList className="grid w-full grid-cols-6">
+        {/* Dentro da ficha caem duas abas. "Nas conversas" procura em TODOS os
+            grupos com rascunho na fila — dentro de um cliente ela devolveria
+            conversa de outro. E "Sem ficha" é a lista de grupos órfãos: esta
+            ficha, por definição, não está lá. */}
+        <TabsList className={`grid w-full ${noLead ? 'grid-cols-4' : 'grid-cols-6'}`}>
           <TabsTrigger value="fila" className="text-xs gap-1">
             <Inbox className="h-3.5 w-3.5" />Na fila
             {filaF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filaF.length}</Badge>}
@@ -869,16 +1010,20 @@ export function AtendenteVirtualPanel() {
             <VolumeX className="h-3.5 w-3.5" />Silenciadas
             {silenciadasF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{silenciadasF.length}</Badge>}
           </TabsTrigger>
-          <TabsTrigger value="conversas" className="text-xs gap-1">
-            <Search className="h-3.5 w-3.5" />Nas conversas
-          </TabsTrigger>
+          {!noLead && (
+            <TabsTrigger value="conversas" className="text-xs gap-1">
+              <Search className="h-3.5 w-3.5" />Nas conversas
+            </TabsTrigger>
+          )}
           {/* A sexta é a que dói: grupos que ele atende sem saber de quem são. */}
-          <TabsTrigger value="semficha" className="text-xs gap-1">
-            <UserX className="h-3.5 w-3.5" />Sem ficha
-            {semFicha.length > 0 && (
-              <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{semFicha.length}</Badge>
-            )}
-          </TabsTrigger>
+          {!noLead && (
+            <TabsTrigger value="semficha" className="text-xs gap-1">
+              <UserX className="h-3.5 w-3.5" />Sem ficha
+              {semFicha.length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{semFicha.length}</Badge>
+              )}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="fila" className="space-y-2 pt-3">
@@ -932,7 +1077,7 @@ export function AtendenteVirtualPanel() {
           ))}
         </TabsContent>
 
-        <TabsContent value="conversas" className="space-y-2 pt-3">
+        {!noLead && <TabsContent value="conversas" className="space-y-2 pt-3">
           <Input
             value={buscaConversa}
             onChange={(e) => procurarNasConversas(e.target.value)}
@@ -986,7 +1131,7 @@ export function AtendenteVirtualPanel() {
               </p>
             </button>
           ))}
-        </TabsContent>
+        </TabsContent>}
 
         <TabsContent value="enviadas" className="space-y-2 pt-3">
           {enviadasF.length === 0 && vazio('Nenhuma mensagem chegou ao cliente ainda.')}
@@ -1046,7 +1191,7 @@ export function AtendenteVirtualPanel() {
             esses grupos sem UM dado do processo, e continuará respondendo até
             alguém ligar o grupo à ficha. O número de respostas já escritas no
             escuro fica visível de propósito — é o custo de adiar. */}
-        <TabsContent value="semficha" className="space-y-2 pt-3">
+        {!noLead && <TabsContent value="semficha" className="space-y-2 pt-3">
           {semFicha.length === 0
             ? vazio('Todo grupo do piloto tem ficha de cliente. Nada a consertar aqui.')
             : (
@@ -1107,7 +1252,7 @@ export function AtendenteVirtualPanel() {
               </CardContent>
             </Card>
           ))}
-        </TabsContent>
+        </TabsContent>}
       </Tabs>
 
       {/* Detalhe em painel lateral — nunca redireciona, nunca abre aba nova. */}

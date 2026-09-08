@@ -1508,37 +1508,72 @@ Deno.serve(async (req) => {
       } else if (
         msg.mediaType || (typeof msg.content === "object" && msg.content?.URL)
       ) {
+        // A ordem das fontes aqui é ordem de CONFIANÇA, e ela é o conserto.
+        //
+        // `msg.messageType` ("AudioMessage") e o mimetype de `content` falam
+        // DESTA mensagem — é o que o WhatsApp mandou. `msg.mediaType` ("ptt")
+        // é da UazAPI e às vezes chega vazio: 409 vezes em 30 dias, medido em
+        // 08/09/2026. E `wa_lastMessageType` NÃO é desta mensagem: é o tipo da
+        // última mensagem que entrou no CHAT. Quando o cliente manda um "Ok"
+        // logo depois do áudio, esse campo já virou "Conversation" e o áudio
+        // passava a ser classificado pelo vizinho — identificar o pacote pela
+        // etiqueta do pacote seguinte na esteira. Foi exatamente assim que um
+        // áudio do seu Manoel virou "[o cliente enviou um documento]" no
+        // rascunho do Dom (grupo prev 1271, 08/09/2026 18:06): mediaType vazio,
+        // wa_lastMessageType já em "Conversation", nenhum ramo casou, e o
+        // fallback jogou em `document`. Os três campos que diziam "áudio"
+        // (messageType, content.mimetype, content.PTT) estavam ali, sem ninguém
+        // olhando — inclusive porque o mimetype mora em `content.mimetype`, e o
+        // código lia `msg.mimetype`, que não existe neste payload.
+        const conteudo = (typeof msg.content === "object" && msg.content)
+          ? msg.content
+          : {};
         const uazMediaType = (msg.mediaType || "").toLowerCase();
+        const waMessageType = String(msg.messageType || "").toLowerCase();
+        const contentMime = String(conteudo.mimetype || msg.mimetype || "")
+          .toLowerCase();
         const chatLastMsgType = (body.chat?.wa_lastMessageType || "")
           .toLowerCase();
 
-        if (
-          uazMediaType.includes("audio") || uazMediaType.includes("ptt") ||
-          chatLastMsgType.includes("audio")
-        ) {
-          messageType = "audio";
-          mediaType = msg.mimetype || "audio/ogg; codecs=opus";
-        } else if (
-          uazMediaType.includes("image") || chatLastMsgType.includes("image")
-        ) {
-          messageType = "image";
-          mediaType = msg.mimetype || "image/jpeg";
-        } else if (
-          uazMediaType.includes("video") || chatLastMsgType.includes("video")
-        ) {
-          messageType = "video";
-          mediaType = msg.mimetype || "video/mp4";
-        } else if (
-          uazMediaType.includes("document") ||
-          uazMediaType.includes("sticker") ||
-          chatLastMsgType.includes("document") ||
-          chatLastMsgType.includes("sticker")
-        ) {
-          messageType = "document";
-          mediaType = msg.mimetype || null;
+        // Sticker continua indo para `document`, como sempre foi. Por isso ele
+        // é testado antes de `image`: o mimetype de sticker é image/webp.
+        const porNome = (fonte: string): string | null => {
+          if (!fonte) return null;
+          if (fonte.includes("ptt") || fonte.includes("audio")) return "audio";
+          if (fonte.includes("sticker")) return "document";
+          if (fonte.includes("image")) return "image";
+          if (fonte.includes("video")) return "video";
+          if (fonte.includes("document")) return "document";
+          return null;
+        };
+        const porMime = (mime: string): string | null => {
+          if (!mime) return null;
+          if (mime.startsWith("audio/")) return "audio";
+          if (mime.startsWith("video/")) return "video";
+          if (mime.startsWith("image/webp")) return "document";
+          if (mime.startsWith("image/")) return "image";
+          return null;
+        };
+
+        const detectado = (conteudo.PTT === true ? "audio" : null) ||
+          porNome(waMessageType) ||
+          porMime(contentMime) ||
+          porNome(uazMediaType) ||
+          porNome(chatLastMsgType);
+
+        if (detectado) {
+          messageType = detectado;
+          mediaType = contentMime ||
+            (detectado === "audio"
+              ? "audio/ogg; codecs=opus"
+              : detectado === "image"
+              ? "image/jpeg"
+              : detectado === "video"
+              ? "video/mp4"
+              : null);
         } else if (mediaUrl) {
           messageType = "document";
-          mediaType = msg.mimetype || null;
+          mediaType = contentMime || null;
         }
 
         if (!messageText && messageType !== "text") {
