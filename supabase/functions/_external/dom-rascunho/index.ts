@@ -972,10 +972,14 @@ Deno.serve(async (req) => {
         console.log(`[dom-rascunho] pendência grupo=${g.group_jid} atividade=${atvId ?? "nenhuma"}`);
       }
 
-      // 7. O cliente falou por áudio? Então a resposta nasce falada também —
-      //    mas SÓ como rascunho. Ver gerarAudioDoRascunho: nem em grupo
-      //    automático o áudio sai; quem sai é o texto, como sempre.
+      // 7. O cliente falou por áudio? Então a resposta nasce falada também — e,
+      //    desde 08/09/2026, ela SAI falada: a fila de agendamento passou a
+      //    carregar mídia (migration 20260908013000). Antes disso o áudio era
+      //    gerado, tocava no painel e morria ali; quem mandou três áudios
+      //    recebia parágrafo (Caso 09, 07/09/2026).
       const clientePorAudio = ["audio", "ptt", "voice"].includes(String(ultima.tipo || "").toLowerCase());
+      /** A fala pronta deste rascunho. Nula = a resposta sai escrita. */
+      let falaDaResposta: string | null = null;
       if (clientePorAudio && agente.reply_with_audio === true && (linhaFila as any)?.id) {
         const som = await gerarAudioDoRascunho(
           supabase,
@@ -995,6 +999,11 @@ Deno.serve(async (req) => {
           .update({ audio_url: som.url, audio_voz: som.voz, audio_erro: som.erro, audio_velocidade: som.velocidade })
           .eq("id", (linhaFila as any).id);
         if (som.erro) console.warn(`[dom-rascunho] áudio falhou grupo=${g.group_jid}: ${som.erro}`);
+        // ÁUDIO CORTADO NÃO FALA. `erro` com url preenchida quer dizer que a
+        // fala terminou antes da resposta — e áudio pela metade soa completo,
+        // que é pior que texto. Nesse caso o texto sai, e a fala fica no painel
+        // para alguém decidir.
+        falaDaResposta = som.erro ? null : som.url;
       }
 
       // 8. Modo automático: o rascunho entra na MESMA fila de agendamento que a
@@ -1022,6 +1031,11 @@ Deno.serve(async (req) => {
             contact_name: g.group_name || null,
             mensagem: resposta,
             mensagem_original: resposta,
+            // Só a nota de voz chega ao cliente; `mensagem` continua sendo o
+            // registro do que foi dito, e é o que a bolha da conversa mostra.
+            media_url: falaDaResposta,
+            media_type: falaDaResposta ? "audio/mpeg" : null,
+            media_ptt: !!falaDaResposta,
             proximo_envio_at: quando,
             repeticao: "nenhuma",
             intervalo: 1,

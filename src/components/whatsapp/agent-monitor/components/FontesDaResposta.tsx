@@ -22,7 +22,9 @@
  */
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { FileText, Mail, Search, ClipboardList, Landmark, AlertTriangle, MessagesSquare, UserX } from 'lucide-react';
+import { FileText, Mail, Search, ClipboardList, Landmark, AlertTriangle, MessagesSquare, UserX, Loader2 } from 'lucide-react';
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
+import { useAbrirPecaDosAutos } from '@/hooks/useAbrirPecaDosAutos';
 
 /** O que a dom_contexto_processual devolve e a dom-rascunho grava em contexto_usado. */
 export interface ContextoUsado {
@@ -43,7 +45,14 @@ export interface ContextoUsado {
     // antiga dizia isso e o painel lia isso — e por isso toda peça aparecia
     // como "sem título" na tela, com o nome dela guardado o tempo todo em
     // `peca`. Leem-se as duas: os rascunhos já gravados não mudam.
-    documentos?: Array<{ peca?: string | null; titulo?: string | null; data?: string | null; resumo?: string | null }> | null;
+    // `id` e `arquivo` (jm_documentos.id / storage_path) entraram em 08/09/2026
+    // para o clique abrir A peça certa em vez de a peça parecida: título + data
+    // repetem em 251 chaves do acervo, até 17 documentos na mesma chave. Falta
+    // deles = rascunho antigo, e aí a peça é procurada e só abre se for única.
+    documentos?: Array<{
+      id?: number | null; arquivo?: string | null;
+      peca?: string | null; titulo?: string | null; data?: string | null; resumo?: string | null;
+    }> | null;
   }> | null;
   requerimentos_inss?: Array<{
     numero?: string | null; servico?: string | null; status?: string | null;
@@ -153,6 +162,10 @@ function FichaNaoEncontrada({ fichas, ambiguo }: { fichas?: number | null; ambig
 }
 
 export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null | undefined }) {
+  // Antes do `return` de contexto vazio de propósito: hook não pode ficar
+  // depois de saída antecipada.
+  const { peca, carregando, erro, abrir, fechar } = useAbrirPecaDosAutos();
+
   if (!contexto) {
     return (
       <div className="rounded border border-dashed p-2">
@@ -169,8 +182,14 @@ export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null 
   const atv = contexto.ultima_atividade;
   const andamentos = processos.flatMap(p =>
     (p.andamentos ?? []).map(a => ({ ...a, processo: p.titulo || p.numero || 'processo' })));
+  // `cnj` viaja junto: é por ele que a peça é procurada no acervo quando o
+  // rascunho é antigo e não guardou o id do documento.
   const documentos = processos.flatMap(p =>
-    (p.documentos ?? []).map(d => ({ ...d, processo: p.titulo || p.numero || 'processo' })));
+    (p.documentos ?? []).map(d => ({
+      ...d,
+      processo: p.titulo || p.numero || 'processo',
+      cnj: p.numero ?? null,
+    })));
 
   const soDoEmail = andamentos.length > 0 && andamentos.every(a => a.origem === 'email_push');
 
@@ -180,6 +199,7 @@ export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null 
   const semFicha = contexto.tem_vinculo === false;
 
   return (
+    <>
     <div className="space-y-3 rounded border p-2.5 bg-muted/30">
       <p className="text-[11px] text-muted-foreground">
         O que entrou no prompt. A ligação entre cada fato e a frase da resposta é sua —
@@ -253,15 +273,42 @@ export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null 
           </Vazio>
         ) : (
           <ul className="space-y-1.5">
-            {documentos.map((d, i) => (
+            {documentos.map((d, i) => {
+              const chave = String(i);
+              return (
               <li key={i} className="text-[11px] border-l-2 border-muted-foreground/30 pl-2">
-                {/* `peca` primeiro: é a chave que a RPC emite. Lendo só `titulo`,
-                    como era antes, toda peça saía como "sem título" com o nome
-                    guardado ao lado. `titulo` fica de reserva e não custa nada. */}
-                <p className="font-medium">{dataBR(d.data) || 'sem data'} · {d.peca || d.titulo || 'sem título'}</p>
+                {/* O TÍTULO ABRE A PEÇA — o resumo é da IA, o documento é a
+                    prova. Sem isto o revisor conferia a resposta contra outro
+                    texto de máquina, que é conferir uma coisa contra ela mesma.
+                    Abre no MediaLightbox, com zoom, como na aba Documentos do
+                    processo: nada de aba nova, nada de sair da revisão.
+
+                    `peca` primeiro: é a chave que a RPC emite. Lendo só
+                    `titulo`, como era antes, toda peça saía como "sem título"
+                    com o nome guardado ao lado. `titulo` fica de reserva. */}
+                <button
+                  type="button"
+                  onClick={() => void abrir(chave, d.cnj, d)}
+                  disabled={carregando !== null}
+                  className="text-left font-medium underline decoration-dotted underline-offset-2 hover:text-primary disabled:opacity-60"
+                  title="Abrir a peça dos autos"
+                >
+                  {dataBR(d.data) || 'sem data'} · {d.peca || d.titulo || 'sem título'}
+                  {carregando === chave && <Loader2 className="ml-1 inline h-3 w-3 animate-spin" />}
+                </button>
                 {d.resumo && <p className="text-muted-foreground">{d.resumo}</p>}
+                {/* Não abriu: o motivo fica aqui, embaixo da peça em questão.
+                    Sumir com o botão ou abrir "a mais parecida" seria pior —
+                    peça errada ao lado de um resumo vira prova falsa. */}
+                {erro?.chave === chave && (
+                  <p className="mt-0.5 flex items-start gap-1 text-[10px] text-amber-700">
+                    <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                    {erro.motivo}
+                  </p>
+                )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </Secao>
@@ -315,5 +362,11 @@ export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null 
         )}
       </Secao>
     </div>
+
+    {/* Portalado para o body e com o cadeado de rolagem próprio — por isso
+        funciona empilhado por cima do Sheet do painel, sem fechá-lo: fechar a
+        peça devolve o revisor exatamente à conferência de onde ele saiu. */}
+    <MediaLightbox url={peca?.url ?? null} title={peca?.titulo ?? 'Peça dos autos'} onClose={fechar} />
+    </>
   );
 }

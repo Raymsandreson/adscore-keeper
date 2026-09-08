@@ -2297,3 +2297,213 @@ O que o painel continua **não** fazendo: escolher sozinho. As candidatas vêm d
 cadastro ou da busca que a pessoa digitou. Foi por recusar o palpite que 40
 grupos ficaram ambíguos em vez de receberem uma ficha sorteada, e o botão não
 desfaz essa recusa — só dá a ela um lugar para terminar.
+
+---
+
+## 08/09/2026 — A peça citada no painel passa a abrir
+
+### O que faltava
+
+O painel "De onde saiu (para conferir)" lista, em **Documento lido**, as peças
+que entraram no prompt com o resumo feito pela IA. Eram texto morto. Quem
+revisava conferia a resposta da máquina contra **outro texto de máquina** — o
+resumo — que é conferir uma coisa contra ela mesma. O documento, que é a prova,
+ficava a dois cliques e uma tela de distância (aba Documentos do processo).
+
+Agora o título da peça é botão: abre o PDF no `MediaLightbox`, com zoom, por
+cima do painel. Fechar devolve o revisor exatamente onde ele estava — mesmo
+visualizador e mesmo caminho da aba Documentos do processo, de propósito.
+
+### A armadilha: título + data não identificam um documento
+
+O contexto é um retrato gravado junto com o rascunho
+(`dom_rascunhos.contexto_usado`) e guardava, por peça, só título, data e resumo.
+Medido no Supabase externo em 08/09/2026, sobre os 9.151 documentos com leitura:
+
+| medida | valor |
+|---|---|
+| chaves `(processo_cnj, titulo, data_documento)` distintas | 8.630 |
+| chaves repetidas | 251 |
+| documentos dentro de chave repetida | 772, em 48 processos |
+| pior caso (mesmo título, mesma data) | **17 documentos** |
+
+Casar por título+data abriria a peça errada em cerca de **6% dos cliques**, sem
+avisar. Peça errada ao lado de um resumo é prova falsa — pior que botão nenhum,
+porque tem cara de conferência.
+
+### O conserto, na fonte
+
+`dom_contexto_processual` passou a emitir, em cada item de
+`processos[].documentos[]`, o `id` e o `arquivo` (`jm_documentos.storage_path`)
+— migration `20260908150000_a_peca_do_dom_pode_ser_aberta.sql`. Com isso o
+clique abre **a** peça, não uma parecida.
+
+Duas coisas que a mudança **não** faz:
+
+- **não mexe no prompt.** Quem monta o system prompt é a `dom-contexto`, e de
+  cada documento ela lê apenas `data`, `peca` e `resumo`. Chave nova em JSON que
+  ninguém lê não vira token.
+- **não expõe arquivo.** `arquivo` é o caminho dentro do bucket privado
+  `jm-autos`. Abrir exige sessão autenticada e a policy do bucket, que assina
+  uma URL de 10 minutos. O caminho sozinho não dá acesso a nada.
+
+Rota de fuga: `dom_contexto_processual_antes_peca_clicavel` guarda a versão
+anterior, criada pela própria migration antes de alterar. Remover só após 24h
+verdes.
+
+**Aplicada em produção em 08/09/2026** (Externo `kmedldlepwiityjsdahz`), com
+autorização do dono. Conferido contra o banco real:
+
+| conferência | resultado |
+|---|---|
+| peças do grupo `120363405106042327` | 6 de 6 com `id` e `arquivo` |
+| `arquivo` que existe em `storage.objects` (bucket `jm-autos`) | 6 de 6 |
+| 25 grupos com peça lida — chaves fora de `processos` | 0 diferenças |
+| 39 processos — tudo fora do bloco `documentos` | 0 diferenças |
+| contagem de documentos por processo | 0 mudanças |
+| 93 documentos, tirando `id` e `arquivo` | **0 diferenças** |
+| documentos sem `id` ou sem `arquivo` | 0 |
+
+A penúltima linha é a que importa para dormir tranquilo: fora as duas chaves
+novas, o contexto que vai para o prompt é byte a byte o mesmo de antes. Nenhuma
+outra chave, CTE ou ordenação mudou de comportamento.
+
+### A rota de fuga que quase não existiu
+
+Essa conferência só vale porque foi refeita. O bloco que copia a função para
+`_antes_peca_clicavel` rodou uma segunda vez **depois** da alteração e
+sobrescreveu a cópia com o corpo novo. Por alguns minutos o "rollback" era uma
+cópia da própria versão nova — nenhum rollback, com cara de rollback. E uma
+comparação contra ela, tirando `id` e `arquivo` dos **dois** lados, dá "0
+diferenças" sem ter comparado nada.
+
+Só apareceu porque a não-regressão acusou **86 de 86 documentos divergentes**:
+os dois lados emitiam `arquivo`. Número absurdo é sinal de que o teste está
+errado, não de que o mundo está — e vale sempre parar para olhar em vez de
+ajustar o teste até fechar.
+
+A cópia foi refeita aplicando o replace inverso sobre a função viva, e o tamanho
+confirma que é a versão certa: **13.066 = 13.046** (a função medida antes de
+qualquer alteração) **+ 20** do nome mais longo. Só então a tabela acima foi
+levantada.
+
+O passo 0 da migration agora tem guarda: se a função viva já emite `arquivo`, a
+cópia não é tocada. **Rota de fuga que se sobrescreve sozinha é pior que rota de
+fuga nenhuma, porque some sem avisar.**
+
+### Rascunho antigo: procura, e não chuta
+
+Rascunho gravado antes disso não tem `id` nem `arquivo` — o retrato já foi
+tirado. Nesses, o front procura a peça em `jm_documentos` por processo, título e
+data (`acharPecaDoContexto`, em `src/lib/pecaDoContexto.ts`) e:
+
+- **um** candidato com arquivo → abre;
+- **dois ou mais** → não abre, e diz quantas peças têm aquele mesmo título e
+  aquela mesma data, mandando para a aba Documentos do processo;
+- **nenhum**, ou peça sem arquivo baixado → diz qual dos dois é.
+
+Nunca some com o botão e nunca abre "a mais parecida". Nove testes em
+`src/lib/__tests__/pecaDoContexto.test.ts` seguram isso — em especial o caso de
+duas peças homônimas na mesma data, que é o que quebra se alguém "simplificar"
+o desempate para pegar o primeiro candidato.
+
+### Onde ficou
+
+| arquivo | papel |
+|---|---|
+| `src/lib/pecaDoContexto.ts` | decide qual peça é, ou por que não dá para saber |
+| `src/hooks/useAbrirPecaDosAutos.ts` | consulta sob demanda + URL assinada (10 min) |
+| `FontesDaResposta.tsx` | título vira botão; erro aparece embaixo da própria peça |
+| `20260908150000_a_peca_do_dom_pode_ser_aberta.sql` | a RPC passa a dizer qual peça é |
+
+A busca é **sob demanda, uma peça por clique**. Carregar o acervo inteiro de
+cada processo listado (140 peças no caso 88) para talvez abrir uma seria pagar
+adiantado por algo que quase sempre não acontece.
+
+---
+
+## Quem falou por áudio recebe áudio (08/09/2026)
+
+### O que acontecia
+
+No **"Caso 09 - SÓ RAIMUNDA"**, em 07/09/2026, a cliente mandou três áudios
+cobrando o dinheiro do processo. O Dom escreveu a resposta E gravou a fala dela:
+o rascunho `ef9b4f2a` tinha `audio_url` preenchido, voz Keilane, `audio_erro`
+nulo — áudio inteiro, sem corte. Às 21:38 alguém clicou em **Aprovar e enviar**;
+às 21:44 chegou no grupo **texto**, três parágrafos.
+
+Não era o áudio que falhava. Era o cano:
+
+| peça | o que ela sabia fazer |
+|---|---|
+| `dom_respostas_pendentes.audio_url` | guardar a fala pronta ✅ |
+| painel do Dom | tocar a fala para o revisor ✅ |
+| `whatsapp_mensagens_agendadas` | **só texto** — não tinha coluna de mídia |
+| `wa_agendadas_disparar()` | **só `{"message": ...}`** — sem `action` |
+
+O próprio código dizia isso em comentário: *"este áudio NÃO foi enviado e não vai
+sair sozinho — nem em grupo automático, onde quem sai é o texto"*. Era gravar o
+recado sem ter telefone.
+
+### O conserto
+
+No cano, não na tela — a `send-whatsapp` já sabia mandar nota de voz
+(`action: 'send_media'` + `ptt: true` → `type: 'ptt'` na UazAPI) desde a v23. O
+que faltava era a fila conseguir carregar isso até lá.
+
+- **Migration `20260908013000`** (Externo): a linha da fila ganha `media_url`,
+  `media_type` e `media_ptt`. Quando vêm preenchidos, o disparo chama
+  `send_media` com `ptt: true`; quando não vêm, **nada muda** — sai texto, com o
+  mesmo corpo de antes.
+- **Painel** (`AtendenteVirtualPanel`): "Aprovar e enviar" leva o áudio junto, e
+  o botão passa a dizer **"Aprovar e mandar em áudio"** quando é isso que vai
+  acontecer.
+- **`dom-rascunho`**: em grupo automático o agendamento também nasce com a fala.
+- **Bolha tracejada da conversa**: avisa *"vai como nota de voz — o cliente ouve,
+  não lê"*, porque o texto que ela mostra deixou de ser o que chega.
+
+**Sai só a nota de voz, sem o texto atrás** (decisão do Raym, 08/09/2026): mandar
+os dois é a mesma coisa dita duas vezes. O texto continua gravado em `mensagem` —
+ele é o registro do que foi dito, e é o que a bolha e o painel mostram.
+
+### As três travas, cada uma por um jeito de isto virar mentira
+
+1. **Áudio cortado não fala.** `audio_erro` com `audio_url` preenchida quer dizer
+   que a fala terminou antes da resposta. Fala pela metade soa completa e omite o
+   final — pior que mandar escrito. Nesse caso sai o texto, e a tela diz por quê.
+2. **Texto editado não sai falado.** Se alguém mexeu na resposta depois da
+   gravação, a fala já não é mais aquela resposta. Sai o texto; para mandar
+   falado, é "Refazer com o texto de agora" primeiro.
+3. **Instância `cloud_gerencia` continua em texto.** `channel=cloud` desvia o
+   envio para o Railway, que trata outro contrato. O motivo fica em
+   `ultimo_resultado` — áudio que não pode sair falado não some calado.
+
+### Onde ficou
+
+| arquivo | papel |
+|---|---|
+| `20260908013000_agendada_pode_sair_em_audio.sql` | colunas de mídia + ramo de voz no disparo |
+| `AtendenteVirtualPanel.tsx` | `porNaFilaDeEnvio` leva a fala; botão diz o que vai sair |
+| `dom-rascunho/index.ts` | grupo automático agenda com a fala (passo 7 → 8) |
+| `useMensagensAgendadas.ts` / `WhatsAppChat.tsx` | a bolha avisa que vai como voz |
+
+**Rollback (< 1 min):** `update whatsapp_mensagens_agendadas set media_url = null,
+media_type = null, media_ptt = false where media_url is not null;` — a fila volta
+a sair em texto sem tocar em código.
+
+## "Enviadas" também mostra de onde saiu a resposta (08/09/2026)
+
+A aba **Na fila** abre painel com a pergunta do cliente, a resposta, as fontes
+que a geraram (`FontesDaResposta`, com a peça clicável) e o áudio. A aba
+**Enviadas** renderizava o mesmo cartão **sem `onClick`**: era a única lista onde
+a pergunta *"em que ele se baseou?"* não tinha resposta — justamente a das
+mensagens que o cliente já leu, que são as que alguém precisa auditar.
+
+Agora o cartão de Enviadas abre o mesmo painel, **em leitura**:
+
+- o texto que saiu aparece como texto, não em campo editável (editar ali não muda
+  o que o cliente leu, só mentiria sobre o que foi dito);
+- no lugar de "Aprovar e enviar" fica o carimbo de quando chegou — o botão
+  criaria uma segunda cópia da mesma resposta na fila;
+- os botões de velocidade e "refazer o áudio" somem: fala que já saiu não muda de
+  ritmo.
