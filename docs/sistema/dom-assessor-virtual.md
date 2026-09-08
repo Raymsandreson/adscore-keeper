@@ -2685,3 +2685,71 @@ sozinho). Ali não houve aprovação, e a janela é a única proteção que exis
 **Rollback (< 1 min):** voltar `const quando` para
 `new Date(Date.now() + 5 * 60 * 1000).toISOString()`. Não há migration nem
 mudança de schema — é só código de front.
+
+---
+
+## O painel também mora dentro da ficha do cliente (08/09/2026)
+
+Até aqui o que o Dom escreveu só existia na tela de operação
+(Configurações → Atendente Virtual), misturado com os 1.149 grupos do piloto.
+Quem abria a ficha de um cliente não tinha como saber se o assessor já tinha
+falado com ele, o que ficou esperando revisão, nem o que foi silenciado.
+
+`LeadEditDialog` ganhou a aba **Atendente Virtual**, que renderiza o **mesmo**
+`AtendenteVirtualPanel` com a prop `leadId`. Não é um painel reduzido paralelo:
+um segundo componente divergiria na primeira mudança, e o assessor veria dentro
+da ficha uma ação que já não existe mais na tela de operação.
+
+### O recorte
+
+Com `leadId`, o painel primeiro resolve os grupos daquela ficha e só então
+carrega qualquer lista. As duas fontes são os mesmos dois degraus da
+`dom_contexto_processual`:
+
+1. `lead_whatsapp_groups` — a ponte explícita
+2. `leads.whatsapp_group_id` — o cadastro da ficha
+
+**A normalização do jid não é detalhe.** Medido em 08/09/2026 no banco externo:
+
+| tabela | linhas | com `@` |
+|---|---|---|
+| `dom_respostas_pendentes` | 228 | 0 |
+| `dom_decisoes` | 779 | 0 |
+| `dom_grupos_piloto` | 1.149 | 0 |
+| `lead_whatsapp_groups` | 2.567 | 1.471 |
+| `leads.whatsapp_group_id` | 3.900 | 2.803 |
+
+As três tabelas do Dom guardam o jid curto; as duas do lead guardam misturado.
+Comparar cru daria lista vazia em mais da metade das fichas — e vazio ali se lê
+como "o assessor nunca falou com este cliente".
+
+**Filtra por GRUPO, não por `lead_id`.** 31 dos 228 rascunhos foram gravados sem
+`lead_id` (o assessor não tinha achado a ficha na hora) — são justamente os que
+mais interessam a quem abre a ficha depois. Filtrar pela coluna deixaria esses
+31 calados. Pelo grupo não se perde nada: dos 197 com `lead_id`, os 197 batem
+com o grupo da ficha pela ponte.
+
+### O que muda de forma na aba
+
+- **Quatro abas em vez de seis.** "Nas conversas" procura em todos os grupos com
+  rascunho na fila (dentro de um cliente devolveria conversa de outro) e "Sem
+  ficha" é a lista dos grupos órfãos — esta ficha, por definição, não está lá.
+- **A chave "responde sozinho"** aparece para o grupo da ficha em qualquer modo,
+  não só nos que já respondem sozinhos: é onde ela precisa estar para ser ligada.
+- **Ficha sem grupo** não consulta nada e diz o porquê. Lista vazia sem
+  explicação seria a mesma armadilha do "(0)".
+- **Cada cartão diz de qual processo a resposta falava**, lendo
+  `contexto_usado.processos[].numero` (o mesmo campo da `FontesDaResposta`).
+  Rascunho anterior a 07/09/2026 não tem `contexto_usado` e não ganha a linha —
+  escrever "sem processo" ali seria afirmar o que ninguém guardou. Esta linha
+  vale nas **duas** telas, porque o cartão é o mesmo.
+
+| arquivo | o que mudou |
+|---|---|
+| `AtendenteVirtualPanel.tsx` | prop `leadId`; resolve os grupos da ficha; recorta as consultas; esconde as duas abas; a linha do processo no cartão |
+| `LeadEditDialog.tsx` | aba "Atendente Virtual", ao lado de Chat IA, com import dinâmico |
+| `__tests__/AtendenteVirtualPanel.no-lead.test.tsx` | 6 testes: as duas fontes, a normalização, o recorte em toda consulta, ficha sem grupo, as abas que somem, e que sem `leadId` nada mudou |
+
+**Rollback (< 1 min):** tirar o `TabsTrigger`/`TabsContent` de `atendente` do
+`LeadEditDialog`. O `leadId` do painel é opcional — sem chamador, ele volta a ser
+exatamente a tela de operação de antes. Não há migration nem mudança de schema.

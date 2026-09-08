@@ -125,6 +125,7 @@ import {
   Wand2,
   ChevronDown,
   ChevronUp,
+  Bot,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -136,6 +137,10 @@ const ContactDetailSheet = lazy(() => import('@/components/contacts/ContactDetai
 // botão "Grupo WA". Import dinâmico de propósito: o DashboardChatPreview importa o
 // LeadEditDialog, e um import estático fecharia o ciclo entre os dois módulos.
 const DashboardChatPreview = lazy(() => import('@/components/whatsapp/DashboardChatPreview').then(m => ({ default: m.DashboardChatPreview })));
+// O MESMO painel da tela de operação, recortado nesta ficha pelo `leadId`.
+// Dinâmico pelo mesmo motivo do de cima: o painel importa (também dinamicamente)
+// o LeadPainelPorId, que importa este arquivo — estático fecharia o ciclo.
+const AtendenteVirtualPanel = lazy(() => import('@/components/whatsapp/agent-monitor/components/AtendenteVirtualPanel').then(m => ({ default: m.AtendenteVirtualPanel })));
 import { Contact as ContactType } from '@/hooks/useContacts';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -2433,6 +2438,10 @@ ${scrapeData.content || ''}
                 <DollarSign className="h-3 w-3 mr-1" />
                 Financeiro
               </TabsTrigger>
+              <TabsTrigger value="atendente" className="text-xs py-1.5 px-2.5">
+                <Bot className="h-3 w-3 mr-1" />
+                Atendente Virtual
+              </TabsTrigger>
               <TabsTrigger value="ai_chat" className="text-xs py-1.5 px-2.5">
                 <Sparkles className="h-3 w-3 mr-1" />
                 Chat IA
@@ -3892,6 +3901,20 @@ ${scrapeData.content || ''}
                   <div className="pt-4 border-t">
                     <LeadLinkedComments leadId={lead.id} instagramUsername={instagramUsername} />
                   </div>
+                </Suspense>
+              )}
+            </TabsContent>
+
+            {/*
+              Atendente Virtual — o que o Dom escreveu PARA ESTE CLIENTE.
+              Fila, enviadas, com humano e silenciadas, recortadas pelos grupos
+              de WhatsApp da ficha. É o mesmo componente da tela de operação,
+              com `leadId`: sem formulário paralelo, sem lista reduzida própria.
+            */}
+            <TabsContent value="atendente" className="mt-0">
+              {activeTab === 'atendente' && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <AtendenteVirtualPanel leadId={lead.id} />
                 </Suspense>
               )}
             </TabsContent>
