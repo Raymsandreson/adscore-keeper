@@ -88,13 +88,21 @@ const VELOCIDADE_MAX = 1.5;
 //   stability baixo → mais variação emocional     (caloroso, expressivo)
 //   style           → exagera o jeito próprio da voz
 //
+// CUIDADO, e custou uma nota de voz gaguejada para aprender: os dois empurram
+// para o MESMO lado. A doc diz que stability baixa "can sound erratic" e style
+// alto "can reduce stability" — baixar um e subir o outro ao mesmo tempo é
+// apertar o acelerador e soltar o freio na mesma curva. Em 08/09/2026 o preset
+// de 0,45/0,45 saiu gaguejando no Caso 182, e a faixa da tela foi encolhida
+// para nunca descer abaixo destes padrões.
+//
 // Por isso a tela oferece TOM como preset nomeado (um clique) mas o banco
 // guarda os dois números: preset é rótulo e pode ser renomeado; o que a API
 // recebeu tem que ficar registrado como número, senão renomear um preset
 // amanhã reescreve o passado de todas as vozes.
 //
 // Os padrões abaixo são os valores que estavam escritos à mão no corpo da
-// chamada até 08/09/2026 — quem não escolher nada continua soando igual.
+// chamada até 08/09/2026 — e são também o único piso que rodou dias em
+// produção sem ninguém reclamar.
 const ESTABILIDADE_PADRAO = 0.6;
 const ESTILO_PADRAO = 0.3;
 const FRACAO_MIN = 0;
@@ -616,8 +624,9 @@ async function gerarAudioDoRascunho(
     if (!chave) return { url: null, voz: null, erro: "ELEVENLABS_API_KEY não configurada", velocidade, estabilidade, estilo, pausaMs };
 
     // O que se fala é diferente do que se escreve: asterisco de negrito virava
-    // "asterisco" na boca da voz, link lido em voz alta é ruído puro, e data em
-    // número vira uma sequência de "barra" que ninguém entende falada.
+    // "asterisco" na boca da voz, link lido em voz alta é ruído puro, data em
+    // número vira uma sequência de "barra" que ninguém entende falada, e cifrão
+    // com ponto e vírgula trava a fala.
     const limpo = dinheiroPorExtenso(datasPorExtenso(
       texto
         .replace(/\*([^*]+)\*/g, "$1")
