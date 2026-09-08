@@ -15,6 +15,7 @@ import {
   chaveDoAudio,
   ROTEIROS,
   textoParaFala,
+  type CategoriaAudio,
 } from './inss-audio-categoria';
 
 export * from './inss-audio-categoria';
@@ -191,10 +192,17 @@ export async function resolverAudioDaMensagem(args: {
   tipo: TipoMensagemCliente;
   fonte?: string | null;
   texto: string;
+  /**
+   * Assunto vindo de fora, quando não é o despacho que o define — hoje só
+   * `maternidade`, cujo caminho depois do indeferimento é o recurso no INSS.
+   * Vence a detecção pelo texto: o serviço do requerimento é dado de cadastro,
+   * o despacho é adivinhação por regex.
+   */
+  categoria?: CategoriaAudio | null;
 }): Promise<AudioDaMensagem | null> {
   if (!audioLigado()) return null;
 
-  const categoria = categoriaDoAudio(args.fonte);
+  const categoria = args.categoria || categoriaDoAudio(args.fonte);
   const chave = chaveDoAudio(args.tipo, categoria);
 
   const guardado = await doCatalogo(chave);
@@ -254,6 +262,8 @@ export async function mandarAudioDaMensagem(args: {
   texto: string;
   group_jid: string;
   instancia?: string | null;
+  /** Ver `resolverAudioDaMensagem`. */
+  categoria?: CategoriaAudio | null;
 }): Promise<Record<string, any>> {
   if (!audioLigado()) return {};
   try {
@@ -261,6 +271,7 @@ export async function mandarAudioDaMensagem(args: {
       tipo: args.tipo,
       fonte: args.fonte,
       texto: args.texto,
+      categoria: args.categoria,
     });
     if (!audio) return { zap_audio_status: 'sem_audio' };
 
