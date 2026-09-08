@@ -487,12 +487,28 @@ export function AtendenteVirtualPanel() {
    *
    * "Marcar como boa" só marca: um rascunho de grupo em modo Rascunho não tinha
    * NENHUM caminho para chegar ao cliente, e ficava preso no painel para sempre.
-   * Aqui ele entra na mesma fila de agendamento do resto, com os mesmos 5
-   * minutos — então ainda dá para desistir pela bolha na conversa, e quem
-   * escreveu no grupo nesse meio-tempo cancela o envio sozinho.
+   * Aqui ele entra na mesma fila de agendamento do resto.
+   *
+   * SEM OS CINCO MINUTOS DE ESPERA. Aquele atraso é a janela de revisão do modo
+   * automático: a resposta que sai sozinha precisa de um tempo em que alguém
+   * ainda possa alcançá-la. Aqui a revisão JÁ ACONTECEU — uma pessoa leu, às
+   * vezes editou, e clicou em aprovar. Segurar cinco minutos depois disso não
+   * protege de nada; só faz o cliente esperar por uma decisão já tomada.
+   *
+   * "Na hora" é o próximo tique do banco (`wa_agendadas_tick`, de minuto em
+   * minuto) — até um minuto, e a tela diz isso em voz alta. Continua sendo o
+   * disparo do banco quem envia, e não uma chamada direta daqui, pelo mesmo
+   * motivo do "enviar agora" da conversa: um segundo caminho de envio seriam
+   * duas verdades sobre a mesma mensagem, e mensagem dobrada se os dois
+   * rodassem juntos.
+   *
+   * `pular_se_responder` fica ligado: se o cliente escrever DENTRO desse
+   * minuto, a aprovada não sai. O marco da conferência é a criação do
+   * agendamento, então a mensagem que gerou o rascunho — mais velha que ele —
+   * não bloqueia nada.
    */
   const porNaFilaDeEnvio = async (p: Pendente, corpo: string) => {
-    const quando = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const quando = new Date().toISOString();
     // QUEM FALOU POR VOZ RECEBE VOZ. O áudio já estava pronto e tocava aqui do
     // lado — o que faltava era o cano: até 08/09/2026 a fila só sabia carregar
     // texto, então a resposta falada morria no painel e a cliente que mandou
@@ -531,7 +547,7 @@ export function AtendenteVirtualPanel() {
         resposta_final: corpo,
         agendamento_id: (ag as { id: string }).id,
         revisado_em: new Date().toISOString(),
-        motivo_revisao: 'aprovado à mão — sai em 5 min',
+        motivo_revisao: 'aprovado à mão — sai no próximo minuto',
       } as never)
       .eq('id', p.id);
     if (error) throw error;
@@ -542,7 +558,7 @@ export function AtendenteVirtualPanel() {
     try {
       await porNaFilaDeEnvio(p, texto);
       setAberto(null);
-      toast.success('Na fila — sai em 5 minutos, dá para cancelar pela conversa');
+      toast.success('Aprovada — sai no próximo minuto');
       carregar();
     } catch (e) {
       toast.error('Não consegui pôr na fila: ' + ((e as Error)?.message || 'erro'));
@@ -580,7 +596,7 @@ export function AtendenteVirtualPanel() {
     setMarcadas(new Set());
     if (ok) {
       toast.success(acao === 'enviar'
-        ? `${ok} na fila — saem em 5 minutos`
+        ? `${ok} aprovada(s) — saem no próximo minuto`
         : `${ok} descartada(s)`);
     }
     // Falha silenciosa em lote é o pior tipo: a pessoa acha que mandou tudo.
@@ -1302,8 +1318,8 @@ export function AtendenteVirtualPanel() {
                     onClick={() => aprovarEEnviar(aberto)}>
                     {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SendHorizonal className="h-3.5 w-3.5" />}
                     {aberto.audio_url && !aberto.audio_erro && texto === (aberto.resposta_final || aberto.resposta_sugerida)
-                      ? 'Aprovar e mandar em áudio (sai em 5 min)'
-                      : 'Aprovar e enviar (sai em 5 min)'}
+                      ? 'Aprovar e mandar em áudio (sai na hora)'
+                      : 'Aprovar e enviar (sai na hora)'}
                   </Button>
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" className="text-xs gap-1 flex-1"
@@ -1318,8 +1334,9 @@ export function AtendenteVirtualPanel() {
                   <p className="text-[10px] text-muted-foreground">
                     Esta não vai sair sozinha — ou é de antes de o grupo passar a responder
                     sozinho, ou é assunto que precisa de gente (reclamação, dinheiro, prazo), ou o
-                    próprio agente pediu revisão. <strong>Aprovar e enviar</strong> põe na fila com
-                    5 minutos de atraso, e ainda dá para cancelar pela conversa.
+                    próprio agente pediu revisão. <strong>Aprovar e enviar</strong> manda na hora:
+                    a revisão é você clicando aqui, então não há mais o que esperar. Sai no
+                    próximo minuto — sem janela para desistir depois.
                   </p>
                 </>
               )}

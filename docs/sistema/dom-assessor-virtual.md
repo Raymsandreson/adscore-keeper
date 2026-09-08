@@ -2641,3 +2641,47 @@ Agora o cartão de Enviadas abre o mesmo painel, **em leitura**:
   criaria uma segunda cópia da mesma resposta na fila;
 - os botões de velocidade e "refazer o áudio" somem: fala que já saiu não muda de
   ritmo.
+
+## Aprovada não espera os cinco minutos (08/09/2026)
+
+Quem clicava em **"Aprovar e enviar"** no painel colocava a resposta na fila com
+`proximo_envio_at = agora + 5 min` — o mesmo atraso do modo automático. Só que
+os dois casos não são o mesmo caso:
+
+| | quem decidiu | para que serve o atraso |
+|---|---|---|
+| **Modo automático** | ninguém: o agente respondeu sozinho | é a janela de revisão — alguém ainda pode alcançar a mensagem antes do cliente |
+| **Aprovar e enviar** | uma pessoa leu, às vezes editou, e clicou | **nenhuma** — a revisão é o clique |
+
+Segurar cinco minutos depois de uma aprovação humana não protegia de nada: só
+fazia o cliente esperar por uma decisão que já tinha sido tomada. Agora
+`porNaFilaDeEnvio` agenda para **agora**, e vale igual para o botão do painel e
+para **"Enviar as marcadas"** do lote.
+
+**"Na hora" é até um minuto, e a tela diz isso.** Continua sendo o tique do
+banco (`wa_agendadas_tick`, de minuto em minuto) quem envia — não uma chamada
+direta do front. É a mesma decisão do "enviar agora" da bolha
+(`useMensagensAgendadas.enviarAgora`): um segundo caminho de envio seriam duas
+verdades sobre a mesma mensagem, e mensagem dobrada se os dois rodassem juntos.
+Por isso os textos falam em *"sai no próximo minuto"*, e não em "instantâneo".
+
+**`pular_se_responder` continua ligado.** Se o cliente escrever DENTRO desse
+minuto, a aprovada não sai. O marco de `wa_agendada_deve_enviar` (migration
+`20260825190000`) é o `criado_em` do agendamento, então a mensagem que gerou o
+rascunho — mais velha que ele — não bloqueia nada.
+
+**O que sumiu junto:** a promessa de *"ainda dá para cancelar pela conversa"* no
+rodapé do painel. Com envio no próximo minuto ela virava mentira, e uma tela que
+promete uma janela que não existe é pior que uma tela sem janela. O botão passou
+a dizer **"(sai na hora)"**.
+
+**O que NÃO mudou:** os cinco minutos do modo automático (grupo que responde
+sozinho). Ali não houve aprovação, e a janela é a única proteção que existe.
+
+| arquivo | o que mudou |
+|---|---|
+| `AtendenteVirtualPanel.tsx` | `porNaFilaDeEnvio` agenda para agora; textos do botão, dos toasts, do rodapé e o `motivo_revisao` |
+
+**Rollback (< 1 min):** voltar `const quando` para
+`new Date(Date.now() + 5 * 60 * 1000).toISOString()`. Não há migration nem
+mudança de schema — é só código de front.
