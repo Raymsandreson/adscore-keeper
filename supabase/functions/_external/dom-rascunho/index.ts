@@ -53,8 +53,31 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const DOM_AGENT_ID = "d6ad8eee-d6a3-452c-b852-b94ef8dd54bf";
 
-/** A janela entre escrever e falar. É ela que faz o papel da revisão. */
-const ATRASO_MIN = 5;
+// A JANELA ENTRE ESCREVER E FALAR — E POR QUE ELA ENCOLHE
+//
+// É essa janela que faz o papel da revisão: silêncio aprova. Mas ela não é a
+// mesma o tempo todo, porque gente não é.
+//
+// Quem chega numa conversa parada demora: estava em outra coisa, precisa ler,
+// lembrar do caso. Quem JÁ ESTÁ na conversa responde rápido — o celular está na
+// mão. Um atraso fixo é relógio: cinco minutos exatos na primeira e na quinta
+// mensagem é a assinatura de uma máquina, não de uma pessoa ocupada.
+//
+// Daí dois números, e não um: a primeira resposta da conversa espera mais, as
+// seguintes espera menos. A conversa deixa de ser "a mesma" quando passa a
+// janela sem o agente falar nada ali — aí a próxima volta ao atraso de chegada.
+//
+// Os três vêm de `wjia_command_shortcuts`, editáveis na tela de configuração do
+// agente. O que está aqui é só o piso para quando a coluna vier nula.
+//
+// ATENÇÃO AO CRON. Estes minutos só valem se o `dom_rascunho_tick` for mais
+// rápido que eles: o rascunho nasce na rodada do cron, então um cron de 5 em 5
+// minutos soma de 0 a 5 minutos ANTES de o atraso começar a contar, e a
+// diferença entre 3 e 2 desaparece no ruído. Por isso o tick foi para 2 em 2
+// (migration `20260908180000`).
+const ATRASO_PRIMEIRA_PADRAO = 3;
+const ATRASO_SEGUINTE_PADRAO = 2;
+const JANELA_CONVERSA_PADRAO_MIN = 180;
 
 // VELOCIDADE DE FALA
 //
@@ -88,13 +111,21 @@ const VELOCIDADE_MAX = 1.5;
 //   stability baixo → mais variação emocional     (caloroso, expressivo)
 //   style           → exagera o jeito próprio da voz
 //
+// CUIDADO, e custou uma nota de voz gaguejada para aprender: os dois empurram
+// para o MESMO lado. A doc diz que stability baixa "can sound erratic" e style
+// alto "can reduce stability" — baixar um e subir o outro ao mesmo tempo é
+// apertar o acelerador e soltar o freio na mesma curva. Em 08/09/2026 o preset
+// de 0,45/0,45 saiu gaguejando no Caso 182, e a faixa da tela foi encolhida
+// para nunca descer abaixo destes padrões.
+//
 // Por isso a tela oferece TOM como preset nomeado (um clique) mas o banco
 // guarda os dois números: preset é rótulo e pode ser renomeado; o que a API
 // recebeu tem que ficar registrado como número, senão renomear um preset
 // amanhã reescreve o passado de todas as vozes.
 //
 // Os padrões abaixo são os valores que estavam escritos à mão no corpo da
-// chamada até 08/09/2026 — quem não escolher nada continua soando igual.
+// chamada até 08/09/2026 — e são também o único piso que rodou dias em
+// produção sem ninguém reclamar.
 const ESTABILIDADE_PADRAO = 0.6;
 const ESTILO_PADRAO = 0.3;
 const FRACAO_MIN = 0;
@@ -153,14 +184,164 @@ function datasPorExtenso(texto: string): string {
     });
 }
 
+// DINHEIRO FALADO NÃO É DINHEIRO ESCRITO — a mesma lição da data
+//
+// "R$ 2.000.000,00" no papel é claro. Na boca da voz é uma travada: o modelo
+// tropeça no cifrão seguido de pontos e vírgula, e foi exatamente isso que
+// apareceu na nota de voz do Caso 182 em 08/09/2026.
+//
+// E tem um segundo estrago, pior que o primeiro. O Dom escreve o valor DUAS
+// vezes, em dígito e em palavra:
+//
+//     "R$ 2.000.000,00 (dois milhões de reais)"
+//
+// No escrito isso é bom — confere. Falado, o cliente ouve o valor duas vezes
+// seguidas, e é aí que a mensagem passa de informação para enrolação.
+//
+// A conversão acontece SÓ no áudio, junto da data e da limpeza de asterisco: a
+// mensagem escrita continua com o valor em números.
+const UNIDADES = [
+  "zero", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito",
+  "nove", "dez", "onze", "doze", "treze", "quatorze", "quinze", "dezesseis",
+  "dezessete", "dezoito", "dezenove",
+];
+const DEZENAS = ["", "", "vinte", "trinta", "quarenta", "cinquenta",
+                 "sessenta", "setenta", "oitenta", "noventa"];
+const CENTENAS = ["", "cento", "duzentos", "trezentos", "quatrocentos",
+                  "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"];
+
+/** 0..999. "cem" sozinho, "cento e um" acompanhado — não são a mesma palavra. */
+function ate999(n: number): string {
+  if (n === 0) return "";
+  if (n === 100) return "cem";
+  const c = Math.floor(n / 100), r = n % 100;
+  const p: string[] = [];
+  if (c) p.push(CENTENAS[c]);
+  if (r > 0 && r < 20) p.push(UNIDADES[r]);
+  else if (r >= 20) {
+    const d = Math.floor(r / 10), u = r % 10;
+    p.push(u ? `${DEZENAS[d]} e ${UNIDADES[u]}` : DEZENAS[d]);
+  }
+  return p.join(" e ");
+}
+
+/**
+ * Inteiro por extenso, até bilhões.
+ *
+ * O "e" entre grupos é a parte que erra fácil, e a regra é: ele entra antes do
+ * ÚLTIMO grupo quando esse grupo é redondo (múltiplo de 100) ou menor que 100.
+ * É o que separa "um milhão E quinhentos mil" de "novecentos e noventa e nove
+ * mil novecentos e noventa e nove" — sem isso o primeiro sai emendado.
+ */
+function inteiroPorExtenso(n: number): string {
+  if (n === 0) return "zero";
+  const escala = [
+    { v: 1e9, s: "bilhão", p: "bilhões" },
+    { v: 1e6, s: "milhão", p: "milhões" },
+    { v: 1e3, s: "mil", p: "mil" },
+  ];
+  const partes: { txt: string; val: number }[] = [];
+  let resto = n;
+  for (const g of escala) {
+    const q = Math.floor(resto / g.v);
+    if (q) {
+      partes.push({
+        txt: g.v === 1e3 ? (q === 1 ? "mil" : `${ate999(q)} mil`)
+                         : `${ate999(q)} ${q === 1 ? g.s : g.p}`,
+        val: q * g.v,
+      });
+      resto %= g.v;
+    }
+  }
+  if (resto) partes.push({ txt: ate999(resto), val: resto });
+  if (partes.length === 1) return partes[0].txt;
+  const ult = partes[partes.length - 1];
+  const ligacao = (ult.val < 100 || ult.val % 100 === 0) ? " e " : " ";
+  return partes.slice(0, -1).map((x) => x.txt).join(" ") + ligacao + ult.txt;
+}
+
+/**
+ * "2.000.000,00" → "dois milhões de reais". Nulo quando não dá para converter
+ * — e nulo aqui quer dizer "deixa o texto como estava", nunca "inventa".
+ *
+ * O "de" antes de "reais" só entra em milhão/bilhão EXATO: "dois milhões de
+ * reais", mas "dois milhões e quinhentos mil reais" (sem "de"). Acima de um
+ * trilhão devolve nulo em vez de arriscar uma escala que ninguém revisou.
+ *
+ * VERIFICADO caso a caso em 08/09/2026:
+ *   2.000.000,00 → dois milhões de reais
+ *     882.000,00 → oitocentos e oitenta e dois mil reais
+ *   1.500.000,00 → um milhão e quinhentos mil reais
+ *       1.234,56 → mil duzentos e trinta e quatro reais e cinquenta e seis centavos
+ *       1.100,00 → mil e cem reais
+ *         101,00 → cento e um reais
+ *         100,00 → cem reais
+ *           1,00 → um real
+ *           0,50 → cinquenta centavos
+ */
+function valorPorExtenso(bruto: string): string | null {
+  const limpo = String(bruto).replace(/\./g, "");
+  const [i, c] = limpo.split(",");
+  const inteiro = Number(i || 0);
+  const centavos = Number((c || "0").padEnd(2, "0").slice(0, 2));
+  if (!Number.isFinite(inteiro) || !Number.isFinite(centavos) || inteiro >= 1e12) return null;
+  const p: string[] = [];
+  if (inteiro > 0) {
+    const redondo = inteiro >= 1e6 && inteiro % 1e6 === 0;
+    p.push(`${inteiroPorExtenso(inteiro)}${redondo ? " de" : ""} ${inteiro === 1 ? "real" : "reais"}`);
+  }
+  if (centavos > 0) {
+    p.push(`${inteiroPorExtenso(centavos)} ${centavos === 1 ? "centavo" : "centavos"}`);
+  }
+  return p.length ? p.join(" e ") : "zero reais";
+}
+
+/**
+ * Tira o cifrão do caminho da voz.
+ *
+ * A ORDEM DAS DUAS TROCAS IMPORTA. O caso com parêntese vem primeiro porque é
+ * o que o Dom escreve na prática, e ele resolve os dois problemas de uma vez:
+ * some o token difícil E some a repetição. Se a troca do valor solto viesse
+ * antes, "R$ 2.000.000,00 (dois milhões de reais)" viraria "dois milhões de
+ * reais (dois milhões de reais)" — o dobro do defeito original.
+ */
+function dinheiroPorExtenso(texto: string): string {
+  return texto
+    .replace(/R\$\s*[\d.]+(?:,\d{2})?\s*\(\s*([^)]*(?:reais|centavos)[^)]*)\)/gi, "$1")
+    .replace(/R\$\s*([\d.]+(?:,\d{2})?)/g, (todo, n) => valorPorExtenso(n) ?? todo);
+}
+
 /**
  * Nunca deixa um valor torto do banco virar `speed: NaN` na chamada da API.
  *
- * Genérico porque agora são quatro ajustes e não um: repetir a mesma guarda
- * quatro vezes é como quatro chaves diferentes para a mesma porta — na hora de
- * trocar a fechadura alguém esquece uma.
+ * Genérico porque são quatro ajustes e não um: repetir a mesma guarda quatro
+ * vezes é como quatro chaves diferentes para a mesma porta — na hora de trocar
+ * a fechadura alguém esquece uma.
+ *
+ * AUSENTE VEM ANTES DE INVÁLIDO, e a ordem destas duas linhas é o conserto de
+ * 08/09/2026. Antes só existia a checagem de `Number.isFinite`, e ela NÃO pega
+ * o caso mais comum de todos:
+ *
+ *     Number(null)      === 0    ← e 0 é finito
+ *     Number(undefined) === NaN
+ *     Number("")        === 0    ← idem
+ *
+ * Então `null` (o que o banco devolve em coluna não preenchida) passava pela
+ * guarda como se fosse o número zero e caía no `Math.max(0, min)` — grampeado
+ * no PISO da faixa, não no padrão. É um termostato que, sem leitura do sensor,
+ * em vez de ir para o ajuste de fábrica vai para o fundo da escala.
+ *
+ * O estrago, medido em produção: todo áudio do cron entre 12:50 e 19:20 de
+ * 08/09/2026 saiu com `stability: 0` — o extremo "máxima variação emocional" da
+ * ElevenLabs — em vez de 0,60. É a gagueira que apareceu nas notas de voz. E a
+ * mesma falha estava aqui desde 07/09/2026 na velocidade: voz sem
+ * `velocidade_fala` gravado falava a 0,5x, METADE do ritmo, em vez de 1,1x.
+ * Ficou escondida porque a Keilane tinha 0,95 gravado, que sobrescrevia o 0,5.
+ *
+ * Por isso ausência é testada por IDENTIDADE, antes de qualquer conversão.
  */
 const numeroValido = (v: unknown, padrao: number, min: number, max: number): number => {
+  if (v === null || v === undefined || v === "") return padrao;
   const n = Number(v);
   if (!Number.isFinite(n)) return padrao;
   return Math.min(Math.max(n, min), max);
@@ -552,15 +733,16 @@ async function gerarAudioDoRascunho(
     if (!chave) return { url: null, voz: null, erro: "ELEVENLABS_API_KEY não configurada", velocidade, estabilidade, estilo, pausaMs };
 
     // O que se fala é diferente do que se escreve: asterisco de negrito virava
-    // "asterisco" na boca da voz, link lido em voz alta é ruído puro, e data em
-    // número vira uma sequência de "barra" que ninguém entende falada.
-    const limpo = datasPorExtenso(
+    // "asterisco" na boca da voz, link lido em voz alta é ruído puro, data em
+    // número vira uma sequência de "barra" que ninguém entende falada, e cifrão
+    // com ponto e vírgula trava a fala.
+    const limpo = dinheiroPorExtenso(datasPorExtenso(
       texto
         .replace(/\*([^*]+)\*/g, "$1")
         .replace(/_([^_]+)_/g, "$1")
         .replace(/https?:\/\/\S+/g, "")
         .replace(/\n{3,}/g, "\n\n"),
-    ).trim();
+    )).trim();
     if (limpo.length < 5) return { url: null, voz: null, erro: "texto curto demais para virar áudio", velocidade, estabilidade, estilo, pausaMs };
 
     // Mesma cascata de resolução do whatsapp-ai-agent-reply, para a voz do
@@ -838,7 +1020,7 @@ Deno.serve(async (req) => {
     // Prompt vem da TABELA, não da view: é lido mesmo com is_active = false.
     const { data: agente } = await supabase
       .from("wjia_command_shortcuts")
-      .select("prompt_instructions, base_prompt, temperature, max_tokens, history_limit, model, reply_with_audio, reply_voice_id, max_tts_chars, genero_voz")
+      .select("prompt_instructions, base_prompt, temperature, max_tokens, history_limit, model, reply_with_audio, reply_voice_id, max_tts_chars, genero_voz, auto_delay_first_minutes, auto_delay_next_minutes, auto_conversation_window_minutes")
       .eq("id", DOM_AGENT_ID)
       .maybeSingle();
     if (!agente) return json({ error: "agente Dom não encontrado" }, 500);
@@ -1019,6 +1201,52 @@ Deno.serve(async (req) => {
       grupos = data ?? [];
     }
 
+    // OS TRÊS NÚMEROS DO RITMO, com piso e teto.
+    //
+    // Teto de 60 min porque atraso maior que isso não é "parecer ocupado", é
+    // abandono — e a janela de revisão vira longa demais para o `pular_se_
+    // responder` proteger de alguma coisa. Piso de 1 porque zero seria o agente
+    // respondendo no mesmo segundo, que é o defeito que estes números existem
+    // para consertar.
+    const nosLimites = (v: unknown, padrao: number) =>
+      Math.min(Math.max(Number(v) > 0 ? Number(v) : padrao, 1), 60);
+    const atrasoPrimeira = nosLimites(agente.auto_delay_first_minutes, ATRASO_PRIMEIRA_PADRAO);
+    const atrasoSeguinte = nosLimites(agente.auto_delay_next_minutes, ATRASO_SEGUINTE_PADRAO);
+    const janelaConversaMin = Math.min(
+      Math.max(Number(agente.auto_conversation_window_minutes) > 0
+        ? Number(agente.auto_conversation_window_minutes)
+        : JANELA_CONVERSA_PADRAO_MIN, 1),
+      60 * 24 * 7,
+    );
+
+    // QUAIS CONVERSAS AINDA ESTÃO QUENTES — uma consulta só, antes do laço.
+    //
+    // Perguntar grupo a grupo dentro do laço seria N+1: uma ida ao banco por
+    // grupo só para descobrir um booleano. Aqui é um `in` com os jids que
+    // interessam, coberto por `idx_wa_agendadas_conversa (phone, ...)`.
+    //
+    // A pergunta é "o agente falou aqui dentro da janela?", e não "alguém falou
+    // aqui?": mensagem do cliente não engatilha nada — o que faz a conversa
+    // estar em andamento é o agente já ter entrado nela. Mensagem de humano
+    // também não, porque quando um colega responde vale a pausa de
+    // `human_reply_pause_minutes`, que é outra regra.
+    const jidsAuto = (grupos ?? [])
+      .filter((g: any) => g.modo === "automatico")
+      .map((g: any) => g.group_jid);
+    const conversaQuente = new Set<string>();
+    if (jidsAuto.length) {
+      const desde = new Date(Date.now() - janelaConversaMin * 60 * 1000).toISOString();
+      const { data: falas } = await supabase
+        .from("whatsapp_mensagens_agendadas")
+        .select("phone")
+        .in("phone", jidsAuto)
+        // Pega o automático ("Atendente virtual") e o aprovado no painel
+        // ("Atendente virtual (aprovado à mão)"): os dois são o agente falando.
+        .like("criado_por_nome", "Atendente virtual%")
+        .gte("ultimo_envio_at", desde);
+      for (const f of falas ?? []) conversaQuente.add(String((f as any).phone));
+    }
+
     const pulados: any[] = [];
     let rascunhos = 0;
 
@@ -1033,17 +1261,39 @@ Deno.serve(async (req) => {
 
       // 1. Deduplica pelo id da mensagem no WhatsApp — a mesma mensagem chega
       //    uma vez por número nosso que está no grupo.
-      const vistos = new Set<string>();
+      const vistos = new Map<string, any>();
       const lista: any[] = [];
       for (const m of brutas ?? []) {
         const msg = (m.metadata as any)?.message ?? {};
         const mid = String(msg.messageid || msg.id || `${m.created_at}|${m.message_text}`);
-        if (vistos.has(mid)) continue;
-        vistos.add(mid);
+        const texto = (m.message_text || "").trim();
+        const tipo = m.message_type || "text";
+
+        // As cópias da mesma mensagem NÃO são iguais, e ficar com a primeira
+        // (a mais recente, porque a busca vem em ordem decrescente) é sorteio.
+        // A instância que transcreveu o áudio traz o texto; a que não
+        // transcreveu traz vazio. A que recebeu `mediaType` vazio da UazAPI
+        // traz o tipo errado. Medido em 08/09/2026: dos áudios que tinham uma
+        // cópia boa e uma pobre em 7 dias, o sorteio deu a pobre em 4 de 4 —
+        // um deles o áudio do seu Manoel que virou "[o cliente enviou um
+        // documento]". Agora a cópia que tem conteúdo ganha da que chegou por
+        // último.
+        const jaVista = vistos.get(mid);
+        if (jaVista) {
+          if (!jaVista.texto && texto) {
+            jaVista.texto = texto;
+            jaVista.tipo = tipo;
+          } else if (!jaVista.texto && jaVista.tipo === "document" && tipo !== "document") {
+            // Sem texto de nenhum lado, vale o tipo mais específico: `document`
+            // é para onde o webhook joga o que não reconheceu.
+            jaVista.tipo = tipo;
+          }
+          continue;
+        }
         const remetente = so(msg.sender_pn || msg.sender);
-        lista.push({
-          texto: (m.message_text || "").trim(),
-          tipo: m.message_type || "text",
+        const linha = {
+          texto,
+          tipo,
           instancia: m.instance_name,
           criado: m.created_at,
           autor: msg.senderName || m.contact_name || null,
@@ -1051,7 +1301,9 @@ Deno.serve(async (req) => {
           //    Quem não está na lista é tratado como cliente — errar respondendo
           //    um colega é visível; errar ignorando cliente é silencioso.
           daEquipe: msg.fromMe === true || (remetente !== "" && equipe.has(remetente)),
-        });
+        };
+        vistos.set(mid, linha);
+        lista.push(linha);
       }
       lista.reverse();
 
@@ -1315,10 +1567,15 @@ Deno.serve(async (req) => {
       //    conversa, o "tirar da fila" e o "enviar agora" — nada disso precisou
       //    ser escrito de novo.
       //
-      //    A janela de 5 minutos É a revisão: silêncio aprova. E `pular_se_
-      //    responder` garante o resto — se o cliente OU um colega escrever no
-      //    grupo dentro da janela, a resposta não sai. Rascunho velho não fala,
-      //    e o tique seguinte redesenha em cima do que foi dito.
+      //    A janela É a revisão: silêncio aprova. E `pular_se_responder` garante
+      //    o resto — se o cliente OU um colega escrever no grupo dentro da
+      //    janela, a resposta não sai. Rascunho velho não fala, e o tique
+      //    seguinte redesenha em cima do que foi dito.
+      //
+      //    A janela encolhe quando a conversa já está em andamento (ver o bloco
+      //    dos três números lá em cima). Encolher é seguro: o que protege é o
+      //    `pular_se_responder`, não o tamanho da espera — e numa conversa
+      //    quente a chance de alguém escrever por cima é maior, não menor.
       //
       //    Fica de fora, de propósito: grupo de reclamação (já foi para uma
       //    pessoa) e resposta que o próprio modelo marcou com [REVISAR] — nesses
@@ -1326,7 +1583,8 @@ Deno.serve(async (req) => {
       const pendenteId = (linhaFila as any)?.id ?? null;
       let agendadoPara: string | null = null;
       if (g.modo === "automatico" && !atendenteId && !motivo) {
-        const quando = new Date(Date.now() + ATRASO_MIN * 60 * 1000).toISOString();
+        const atrasoMin = conversaQuente.has(g.group_jid) ? atrasoSeguinte : atrasoPrimeira;
+        const quando = new Date(Date.now() + atrasoMin * 60 * 1000).toISOString();
         const { data: ag, error: errAg } = await supabase
           .from("whatsapp_mensagens_agendadas").insert({
             phone: g.group_jid,
@@ -1357,7 +1615,7 @@ Deno.serve(async (req) => {
           await supabase.from("dom_respostas_pendentes")
             .update({
               agendamento_id: (ag as any).id,
-              motivo_revisao: `sai sozinho em ${ATRASO_MIN} min — some se alguém escrever antes`,
+              motivo_revisao: `sai sozinho em ${atrasoMin} min — some se alguém escrever antes`,
             })
             .eq("id", pendenteId);
         }

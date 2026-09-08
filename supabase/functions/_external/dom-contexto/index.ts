@@ -891,9 +891,49 @@ function blocoComoFalar(panorama: boolean): string {
     "estivesse escrevendo no WhatsApp — porque está.",
     panorama
       ? "Cada parágrafo, curto. O tamanho da mensagem vem do número de processos."
-      : "No máximo três parágrafos curtos.",
+      : "No máximo três parágrafos curtos. Se você escreveu quatro, corte um.",
     'Nada de "prezado", "venho por meio desta", "informamos que", "cumpre',
     'esclarecer". Fale como gente.',
+    "",
+    // REGISTRO DE QUEM FALA, NÃO DE QUEM REDIGE (08/09/2026)
+    //
+    // As linhas acima já matavam o juridiquês de abertura, e mesmo assim a
+    // resposta saía formal demais — porque formalidade não está só no
+    // "prezado", está na conjunção e na preposição. Ninguém no WhatsApp
+    // escreve "para que o valor seja justo"; escreve "pra que o valor seja
+    // justo". Ficou óbvio quando a resposta virou VOZ: no papel "para" passa
+    // batido, falado soa a leitura de ofício.
+    //
+    // Isto mora no PROMPT, e não numa troca de texto na hora de gerar o áudio,
+    // por dois motivos:
+    //
+    //  1. "para" também é o verbo parar. "o prazo para de contar" viraria "o
+    //     prazo pra de contar" numa troca cega. O modelo entende a diferença;
+    //     um regex não. (Medido: nas 236 respostas dos últimos 10 dias, 128
+    //     têm "para" e nenhuma o usa como verbo — mas "nenhuma até agora" não
+    //     é "nunca".)
+    //  2. O mesmo texto sai ESCRITO quando o cliente não mandou áudio. Trocar
+    //     só na fala deixaria a mesma mensagem em dois registros.
+    "-----------------------------------------------------------------------",
+    "COMO SE ESCREVE FALANDO",
+    "-----------------------------------------------------------------------",
+    "Escreva do jeito que se fala no dia a dia, não do jeito que se redige:",
+    '  "pra" no lugar de "para"     → "pra você", "pra que isso ande"',
+    '  "tá" no lugar de "está"      → "tá tudo certo", "o processo tá com o juiz"',
+    '  "dá pra" no lugar de "é possível"',
+    '  "daí", "aí", "então" no lugar de "portanto", "dessa forma"',
+    'Proibido: "no entanto", "portanto", "uma vez que", "a fim de", "mediante",',
+    '"conforme mencionado", "ressalta-se".',
+    "",
+    // A trava que só existe porque isto vira voz. Sem ela, "informal" seria
+    // lido pelo modelo como licença para taquigrafia de chat — e a voz leria
+    // "vc" como "vê cê", "pq" como "pê quê". Informal é o REGISTRO da fala,
+    // nunca a abreviação da escrita.
+    "MAS NUNCA ABREVIE POR ESCRITO. Nada de vc, pq, tb, blz, qdo, msg, hj.",
+    "Isto aqui pode virar nota de voz, e a voz leria letra por letra: \"vê cê\",",
+    '"pê quê". Escreva a palavra inteira — "você", "porque", "também".',
+    "Sem gíria e sem diminutivo de intimidade: informal é falar como gente,",
+    "não é falar como se conhecesse a pessoa da vida inteira.",
     "=== FIM COMO FALAR ===",
   ].join("\n");
 }
@@ -908,7 +948,7 @@ function blocoIdentidadeERevisao(modo: string): string {
     "Se perguntarem, confirme com naturalidade que é um assessor virtual e que a",
     "equipe humana acompanha tudo — e siga a conversa, sem se explicar demais.",
     "Você NÃO é advogado e não dá parecer jurídico: você informa andamento e",
-    "traduz o que já está decidido nos autos.",
+    "traduz o que já está decidido no processo.",
     "NUNCA assine com o nome de outra pessoa da equipe.",
     "Você fala em nome da EQUIPE, então escreva na primeira pessoa do plural:",
     '"a gente está acompanhando", "nós pedimos", "seguimos de olho".',
