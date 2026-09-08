@@ -2216,6 +2216,56 @@ enviado à cliente. `decisao = 'respondeu'` é gravada **quando o rascunho nasce
    existe. Sem número não há Escavador nem peça — mas o silêncio total também
    não é a resposta certa.
 
+### Os 166 do contorno viraram vínculo, e os 156 ganharam tela (08/09/2026)
+
+A correção acima deixou 166 grupos funcionando por **contorno**: a RPC lia
+`leads.whatsapp_group_id` na hora, porque a ponte não existia. Funciona, mas é
+frágil — bastaria uma segunda ficha apontar para um deles e o grupo apagaria de
+novo, corretamente (a regra se recusa a sortear de quem é o processo).
+
+**Parte 1 — os 166 viraram ponte** (`20260908010000_onde_vejo_os_grupos_sem_ficha.sql`).
+Não é heurística de nome: o `useAutoLinkGroupByName` casa por NOME e erra (815
+vínculos criados assim, 101 com número de caso divergente, ~12%). Aqui só se
+materializa o que o **próprio cadastro** já afirma, e só quando há **uma única**
+ficha viva. Conferido antes: 166 grupos → 166 fichas distintas, zero colisão,
+zero lead_id nulo. Marcados `auto_linked = true`, o que torna o rollback uma
+linha.
+
+Depois de aplicar: grupos do piloto com ponte **827 → 993**; "só no cadastro"
+caiu a **0**.
+
+**Parte 2 — os 156 restantes ganharam lugar.** Ambíguo (40) e sem ficha (116)
+não têm conserto automático: exigem uma pessoa dizendo de quem é o grupo. Sem
+um lugar na tela ficariam como estavam — o assessor respondendo no escuro e
+ninguém sabendo.
+
+- `vw_dom_grupo_sem_ficha` classifica e traz `o_que_fazer` em português e
+  `rascunhos_no_escuro` (quantas respostas já saíram sem contexto por causa
+  daquele grupo). O segundo é de propósito: é **o custo de adiar**, e sem ele a
+  lista vira só mais uma lista.
+- A aba **"Sem ficha"** do `AtendenteVirtualPanel` consome a view, ordenada pelo
+  estrago já feito e não por nome — a fila de conserto começa por onde já custou
+  caro.
+
+Grupo com ponte não entra na view: se está resolvido, misturá-lo com o pendente
+faria a lista deixar de ser fila de trabalho.
+
+#### Um achado que contraria a primeira leitura
+
+41 dos 116 sem-ficha têm `group_jid` que **não** parece jid de grupo (não casa
+`^1203[0-9]{14}$`) — parecem telefone+timestamp. A tentação é descartar como
+lixo de cadastro antigo. **Não são:** somam **8.744 mensagens**, a mais recente
+de 07/09/2026 às 10:58. São grupos ativos em formato antigo de jid, com clientes
+falando neles agora. Precisam de cadastro como qualquer outro.
+
+#### O tamanho real da fila suja, que era menor do que parecia
+
+Dos 99 rascunhos pendentes, só **17** nasceram sem ficha — não os 166 que a
+conta de grupos sugeria. Destes 17, **11** o conserto já resolve (basta um
+rascunho novo) e **6** seguem dependendo de gente. Rascunho já gravado não é
+reescrito: `contexto_usado` é fotografia. Mas os seis mostram o aviso âmbar ao
+revisor, então nenhum deles vai ser aprovado achando que o processo está parado.
+
 ---
 
 ## 08/09/2026 — A peça citada no painel passa a abrir
