@@ -2265,3 +2265,35 @@ conta de grupos sugeria. Destes 17, **11** o conserto já resolve (basta um
 rascunho novo) e **6** seguem dependendo de gente. Rascunho já gravado não é
 reescrito: `contexto_usado` é fotografia. Mas os seis mostram o aviso âmbar ao
 revisor, então nenhum deles vai ser aprovado achando que o processo está parado.
+
+### Da aba dá para consertar, não só ver (08/09/2026)
+
+A aba "Sem ficha" mostrava o problema e não tinha o que clicar — a pessoa lia
+"ligue o grupo à ficha certa" e ia procurar onde, em outra tela. Cada cartão
+agora traz o botão do conserto:
+
+- **ambíguo** → "Escolher a ficha";
+- **sem ficha** → "Ligar a uma ficha".
+
+`VincularFichaSheet` abre em aba lateral, por cima, e trata os dois casos como
+os problemas diferentes que são:
+
+| situação | o que o painel oferece |
+| --- | --- |
+| ambíguo (2+ fichas) | as candidatas do cadastro, **com o número de processos de cada uma** — é o que costuma desempatar |
+| sem ficha (0) | busca por nome, porque a ficha em geral existe e só não sabe do grupo |
+
+Escolhida a ficha, grava-se a linha em `lead_whatsapp_groups` com
+`auto_linked = **false**`. A distinção importa e não é decorativa: os 166 de
+hoje entraram como automação e o rollback deles é `delete ... where auto_linked`
+— vínculo decidido por uma pessoa não pode cair junto.
+
+Em seguida o painel abre o `LeadPainelPorId` empilhado, que é o `LeadEditDialog`
+de sempre: dali se chega ao caso e aos processos. **Não** há segunda versão do
+formulário do lead aqui — o seletor escolhe o vínculo e entrega a ficha para
+quem já sabe editá-la.
+
+O que o painel continua **não** fazendo: escolher sozinho. As candidatas vêm do
+cadastro ou da busca que a pessoa digitou. Foi por recusar o palpite que 40
+grupos ficaram ambíguos em vez de receberem uma ficha sorteada, e o botão não
+desfaz essa recusa — só dá a ela um lugar para terminar.

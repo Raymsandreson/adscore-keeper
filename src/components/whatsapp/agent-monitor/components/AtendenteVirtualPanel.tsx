@@ -15,12 +15,13 @@
  * A última existe porque um atendente que nunca fala parece estar funcionando.
  * Sem ver o silêncio, não dá para saber se ele está calando demais ou de menos.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, lazy, Suspense } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { db, ensureExternalSession, externalFunctionUrl } from '@/integrations/supabase';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { FontesDaResposta, type ContextoUsado } from './FontesDaResposta';
+import { VincularFichaSheet, type GrupoSemFicha } from './VincularFichaSheet';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -30,11 +31,15 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2, Search, AlertTriangle, UserX } from 'lucide-react';
+import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2, Search, AlertTriangle, UserX, Link2 } from 'lucide-react';
 import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 import { ContagemAteEnvio } from '@/components/whatsapp/ContagemAteEnvio';
 
 const dbAny = db as unknown as SupabaseClient;
+
+/** O formulario unico do lead, por id. Lazy: ele arrasta o LeadEditDialog e o
+ *  useLeads junto, e ninguem precisa disso ate clicar em vincular. */
+const LeadPainelPorId = lazy(() => import('@/components/leads/LeadPainelPorId'));
 
 interface Pendente {
   id: string; group_jid: string; instance_name: string | null; agendamento_id: string | null;
@@ -182,6 +187,8 @@ export function AtendenteVirtualPanel() {
   const [silenciadas, setSilenciadas] = useState<Decisao[]>([]);
   const [grupos, setGrupos] = useState<GrupoPiloto[]>([]);
   const [semFicha, setSemFicha] = useState<SemFicha[]>([]);
+  const [vinculando, setVinculando] = useState<GrupoSemFicha | null>(null);
+  const [leadAberto, setLeadAberto] = useState<string | null>(null);
   const [trocandoModo, setTrocandoModo] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [familia, setFamilia] = useState('todas');
@@ -843,6 +850,22 @@ export function AtendenteVirtualPanel() {
                     <MessagesSquare className="h-3.5 w-3.5" />
                   </Button>
                 </div>
+                {/* O conserto fica no mesmo cartão do diagnóstico. Ler o problema
+                    e ter que procurar onde resolver em outra tela é como o painel
+                    ficou nove meses: informação sem saída. */}
+                <Button
+                  size="sm" variant="outline"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => setVinculando({
+                    group_jid: g.group_jid,
+                    group_name: g.group_name,
+                    situacao: g.situacao,
+                    fichas_no_cadastro: g.fichas_no_cadastro,
+                  })}
+                >
+                  <Link2 className="h-3 w-3" />
+                  {g.situacao === 'ambiguo' ? 'Escolher a ficha' : 'Ligar a uma ficha'}
+                </Button>
                 {g.o_que_fazer && (
                   <p className="text-[11px] text-muted-foreground">{g.o_que_fazer}</p>
                 )}
@@ -1021,6 +1044,30 @@ export function AtendenteVirtualPanel() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Escolher a ficha do grupo. Irmão do Sheet acima, não filho — é o
+          arranjo que o ProtocolosListaSheet já usa para empilhar painel sobre
+          painel sem que um vire filho do outro e feche junto. */}
+      <VincularFichaSheet
+        grupo={vinculando}
+        onOpenChange={o => { if (!o) setVinculando(null); }}
+        onVinculado={leadId => {
+          // Fecha o seletor e abre a ficha por cima: ligar o grupo é metade do
+          // caminho, e quem acabou de ligar quase sempre quer conferir o caso e
+          // os processos em seguida — que é onde esta história começou.
+          setVinculando(null);
+          setLeadAberto(leadId);
+          void carregar();
+        }}
+      />
+
+      {/* A ficha do cliente: lead, caso e processos. É o LeadEditDialog de
+          sempre, por id — nada de segunda versão do formulário do lead. */}
+      {leadAberto && (
+        <Suspense fallback={null}>
+          <LeadPainelPorId leadId={leadAberto} onClose={() => setLeadAberto(null)} />
+        </Suspense>
+      )}
     </div>
   );
 }
