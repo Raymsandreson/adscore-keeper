@@ -38,10 +38,12 @@
 //                            cron (equipe falou por último, já
 //                            rascunhado, já decidido, silêncio).
 //   POST { limite }        → teto de grupos por rodada (padrão 8)
-//   POST { regerar_audio: <id>, velocidade? }
+//   POST { regerar_audio: <id>, velocidade?, estabilidade?, estilo?, pausa_ms? }
 //                          → refaz o áudio de um rascunho que já existe,
 //                            falando o texto EDITADO se alguém editou.
-//                            `velocidade` também vira o padrão da voz.
+//                            Todo ajuste que vier também vira o padrão
+//                            DA VOZ — é isso que os torna configuração e
+//                            não um teste que se perde no próximo áudio.
 //   →     { grupos, rascunhos, pulados: [{ grupo, motivo }] }
 //
 // SEGURANÇA: nada de texto de cliente nos logs. Só JID, intenção e contagem.
@@ -70,6 +72,53 @@ const VELOCIDADE_PADRAO = 1.1;
 // tem que mudar junto.
 const VELOCIDADE_MIN = 0.5;
 const VELOCIDADE_MAX = 1.5;
+
+// TOM DA FALA — e por que ele são DOIS números, não um
+//
+// "Deixa o tom mais grave" é o pedido natural e é impossível: a API da
+// ElevenLabs não tem `pitch`. Os campos de `voice_settings` são exatamente
+// cinco — stability, similarity_boost, style, speed, use_speaker_boost (fonte:
+// elevenlabs/skills, text-to-speech/references/voice-settings.md, a mesma
+// citada na migration da velocidade). A altura da voz vem da GRAVAÇÃO que
+// clonou ela e só muda regravando.
+//
+// O que dá para mudar é a EXPRESSIVIDADE, e ela mora em dois campos que puxam
+// para lados diferentes:
+//   stability alto  → fala firme, pouca variação  (sério, formal)
+//   stability baixo → mais variação emocional     (caloroso, expressivo)
+//   style           → exagera o jeito próprio da voz
+//
+// Por isso a tela oferece TOM como preset nomeado (um clique) mas o banco
+// guarda os dois números: preset é rótulo e pode ser renomeado; o que a API
+// recebeu tem que ficar registrado como número, senão renomear um preset
+// amanhã reescreve o passado de todas as vozes.
+//
+// Os padrões abaixo são os valores que estavam escritos à mão no corpo da
+// chamada até 08/09/2026 — quem não escolher nada continua soando igual.
+const ESTABILIDADE_PADRAO = 0.6;
+const ESTILO_PADRAO = 0.3;
+const FRACAO_MIN = 0;
+const FRACAO_MAX = 1;
+
+// PAUSA — a única das três que NÃO é parâmetro da API
+//
+// Não existe campo de pausa em `voice_settings`. Pausa se faz com a tag
+// `<break time="0.6s" />` dentro do próprio texto, com teto documentado de 3s.
+//
+// AVISO, escrito aqui porque é o jeito de isto dar errado: esta parte veio de
+// FONTE SECUNDÁRIA. A doc oficial (elevenlabs.io, help.elevenlabs.io) estava
+// bloqueada por egress no ambiente onde isto foi escrito, e o repositório
+// oficial de skills não cobre pausas. Se o modelo NÃO interpretar a tag, ele a
+// lê em voz alta e o cliente ouve "break time zero vírgula seis s".
+//
+// Duas travas contra isso, e é por elas que dá para subir mesmo sem a doc:
+//   1. O padrão é 0 = nenhuma tag é inserida, o texto sai idêntico ao de hoje.
+//      Nada muda para voz nenhuma sem alguém escolher na tela.
+//   2. Isto é rascunho. O áudio toca no painel e só sai com aprovação humana —
+//      a primeira escuta com pausa ligada confirma ou derruba a hipótese.
+const PAUSA_PADRAO_MS = 0;
+const PAUSA_MIN_MS = 0;
+const PAUSA_MAX_MS = 3000;
 
 // DATA FALADA NÃO É DATA ESCRITA
 //
@@ -104,12 +153,54 @@ function datasPorExtenso(texto: string): string {
     });
 }
 
-/** Nunca deixa um valor torto do banco virar `speed: NaN` na chamada da API. */
-const velocidadeValida = (v: unknown, padrao: number): number => {
+/**
+ * Nunca deixa um valor torto do banco virar `speed: NaN` na chamada da API.
+ *
+ * Genérico porque agora são quatro ajustes e não um: repetir a mesma guarda
+ * quatro vezes é como quatro chaves diferentes para a mesma porta — na hora de
+ * trocar a fechadura alguém esquece uma.
+ */
+const numeroValido = (v: unknown, padrao: number, min: number, max: number): number => {
   const n = Number(v);
   if (!Number.isFinite(n)) return padrao;
-  return Math.min(Math.max(n, VELOCIDADE_MIN), VELOCIDADE_MAX);
+  return Math.min(Math.max(n, min), max);
 };
+
+const velocidadeValida = (v: unknown, padrao: number): number =>
+  numeroValido(v, padrao, VELOCIDADE_MIN, VELOCIDADE_MAX);
+
+const fracaoValida = (v: unknown, padrao: number): number =>
+  numeroValido(v, padrao, FRACAO_MIN, FRACAO_MAX);
+
+const pausaValida = (v: unknown, padrao: number): number =>
+  Math.round(numeroValido(v, padrao, PAUSA_MIN_MS, PAUSA_MAX_MS));
+
+/**
+ * Põe um respiro em cada quebra de linha da resposta.
+ *
+ * ONDE, e por quê exatamente aí: na quebra de linha que quem escreveu já
+ * colocou. Não é a máquina adivinhando prosódia — é ela respeitando a pontuação
+ * de quem redigiu. Adivinhar onde uma frase "pede" pausa seria inventar ritmo
+ * em cima de um texto sobre o processo de alguém; a quebra de linha é intenção
+ * declarada, e já está lá.
+ *
+ * O que NÃO leva pausa: o fim do texto (silêncio depois do último ponto já é o
+ * fim do arquivo — a tag ali só faria o cliente esperar por nada) e sequências
+ * de quebras, que viram UMA pausa só e não duas empilhadas.
+ *
+ * `ms <= 0` devolve o texto intocado, byte por byte. É essa igualdade que
+ * garante que ninguém que não escolheu pausa tenha o texto mexido.
+ */
+function pausasNasQuebras(texto: string, ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return texto;
+  // A tag é documentada em segundos. 600ms → "0.6s"; 1000ms → "1s".
+  const segundos = String(Number((ms / 1000).toFixed(2)));
+  // As quebras das PONTAS saem antes da troca. Sem isto, um texto terminado em
+  // "\n" ganhava uma tag pendurada no fim e o áudio acabava com um silêncio
+  // esperando por nada — medido, não suposto. `trim()` sozinho não resolve:
+  // depois da troca a tag já não é espaço em branco.
+  return texto.replace(/^\n+|\n+$/g, "").replace(/\n+/g, ` <break time="${segundos}s" /> `).trim();
+}
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -330,21 +421,49 @@ function instrucaoDaIntencao(cod: string, panorama = false): string {
  *
  * Falha de áudio NUNCA derruba o rascunho de texto: devolve o motivo e segue.
  *
- * `velocidadeForcada` é para o botão de regerar: a pessoa está experimentando
- * um ritmo e quer ouvir AGORA. Nulo = usa a velocidade da voz.
+ * `forcado` é para os botões de regerar: a pessoa está experimentando um ritmo,
+ * um tom ou uma pausa e quer ouvir AGORA. Campo nulo = usa o que a voz tem
+ * guardado; voz sem nada guardado = o padrão do sistema. Essa cascata de três
+ * degraus é a mesma para os quatro ajustes, de propósito — um ajuste que se
+ * resolvesse diferente dos outros seria uma exceção para alguém tropeçar.
  */
+type AjustesDeFala = {
+  velocidade?: number | null;
+  estabilidade?: number | null;
+  estilo?: number | null;
+  pausaMs?: number | null;
+};
+
+type FalaGerada = {
+  url: string | null;
+  voz: string | null;
+  erro: string | null;
+  velocidade: number;
+  estabilidade: number;
+  estilo: number;
+  pausaMs: number;
+};
+
 async function gerarAudioDoRascunho(
   supabase: any,
   texto: string,
   vozConfigurada: string | null,
   instanceName: string | null,
   maxChars: number,
-  velocidadeForcada: number | null = null,
-): Promise<{ url: string | null; voz: string | null; erro: string | null; velocidade: number }> {
-  let velocidade = velocidadeValida(velocidadeForcada, VELOCIDADE_PADRAO);
+  forcado: AjustesDeFala = {},
+): Promise<FalaGerada> {
+  const vel = forcado.velocidade ?? null;
+  const est = forcado.estabilidade ?? null;
+  const sty = forcado.estilo ?? null;
+  const pau = forcado.pausaMs ?? null;
+
+  let velocidade = velocidadeValida(vel, VELOCIDADE_PADRAO);
+  let estabilidade = fracaoValida(est, ESTABILIDADE_PADRAO);
+  let estilo = fracaoValida(sty, ESTILO_PADRAO);
+  let pausaMs = pausaValida(pau, PAUSA_PADRAO_MS);
   try {
     const chave = Deno.env.get("ELEVENLABS_API_KEY");
-    if (!chave) return { url: null, voz: null, erro: "ELEVENLABS_API_KEY não configurada", velocidade };
+    if (!chave) return { url: null, voz: null, erro: "ELEVENLABS_API_KEY não configurada", velocidade, estabilidade, estilo, pausaMs };
 
     // O que se fala é diferente do que se escreve: asterisco de negrito virava
     // "asterisco" na boca da voz, link lido em voz alta é ruído puro, e data em
@@ -356,7 +475,7 @@ async function gerarAudioDoRascunho(
         .replace(/https?:\/\/\S+/g, "")
         .replace(/\n{3,}/g, "\n\n"),
     ).trim();
-    if (limpo.length < 5) return { url: null, voz: null, erro: "texto curto demais para virar áudio", velocidade };
+    if (limpo.length < 5) return { url: null, voz: null, erro: "texto curto demais para virar áudio", velocidade, estabilidade, estilo, pausaMs };
 
     // Mesma cascata de resolução do whatsapp-ai-agent-reply, para a voz do
     // atendente virtual ser a MESMA em qualquer caminho.
@@ -369,14 +488,20 @@ async function gerarAudioDoRascunho(
     }
     if (voiceId.length === 36 && voiceId.includes("-")) {
       const { data: vozCustom } = await supabase.from("custom_voices")
-        .select("name, elevenlabs_voice_id, velocidade_fala").eq("id", voiceId).eq("status", "ready").maybeSingle();
+        .select("name, elevenlabs_voice_id, velocidade_fala, estabilidade_fala, estilo_fala, pausa_fala_ms")
+        .eq("id", voiceId).eq("status", "ready").maybeSingle();
       nomeDaVoz = vozCustom?.name ?? null;
       voiceId = vozCustom?.elevenlabs_voice_id || "FGY2WhTYpPnrIDTdsKH5";
-      // A velocidade da voz só vale se ninguém pediu uma na mão. Ordem:
-      // o que a pessoa está experimentando > o que a voz tem guardado > o padrão.
-      if (velocidadeForcada === null && vozCustom?.velocidade_fala !== null && vozCustom?.velocidade_fala !== undefined) {
-        velocidade = velocidadeValida(vozCustom.velocidade_fala, VELOCIDADE_PADRAO);
-      }
+      // O ajuste da voz só vale se ninguém pediu um na mão. Ordem, igual para
+      // os quatro: o que a pessoa está experimentando > o que a voz tem
+      // guardado > o padrão do sistema.
+      const daVoz = <T,>(forcado: unknown, guardado: unknown, atual: T, valida: (v: unknown, p: T) => T): T =>
+        forcado === null && guardado !== null && guardado !== undefined ? valida(guardado, atual) : atual;
+
+      velocidade = daVoz(vel, vozCustom?.velocidade_fala, velocidade, velocidadeValida);
+      estabilidade = daVoz(est, vozCustom?.estabilidade_fala, estabilidade, fracaoValida);
+      estilo = daVoz(sty, vozCustom?.estilo_fala, estilo, fracaoValida);
+      pausaMs = daVoz(pau, vozCustom?.pausa_fala_ms, pausaMs, pausaValida);
     }
 
     // CORTE, QUANDO PRECISA, NO FIM DE UMA FRASE — e nunca em silêncio.
@@ -412,15 +537,34 @@ async function gerarAudioDoRascunho(
         `áudio cortado: a resposta tem ${limpo.length} caracteres e o teto de fala é ${maxChars}. ` +
         `Foram falados ${trecho.length}. O final NÃO está no áudio — confira antes de mandar.`;
     }
+    // A PAUSA ENTRA DEPOIS DO CORTE, e a ordem importa.
+    //
+    // `maxChars` é o teto de RESPOSTA falada, e é isso que a tela diz quando
+    // avisa "a resposta tem N caracteres e o teto de fala é M". Se as tags de
+    // pausa entrassem antes, elas comeriam esse orçamento: uma resposta com 10
+    // quebras de linha perderia ~220 caracteres de conteúdo para marcação
+    // invisível, e o aviso de corte passaria a mentir sobre o motivo.
+    //
+    // Cortar primeiro e marcar depois mantém o teto significando o que ele
+    // sempre significou. As tags ainda vão para a API (que cobra por caractere
+    // e tem limite de 10.000 no eleven_multilingual_v2), mas 3.000 de texto
+    // mais algumas dezenas de tags fica longe do limite.
+    const falado = pausasNasQuebras(trecho, pausaMs);
+
     const resp = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
       {
         method: "POST",
         headers: { "xi-api-key": chave, "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: trecho,
+          text: falado,
           model_id: "eleven_multilingual_v2",
-          voice_settings: { stability: 0.6, similarity_boost: 0.75, style: 0.3, speed: velocidade },
+          voice_settings: {
+            stability: estabilidade,
+            similarity_boost: 0.75,
+            style: estilo,
+            speed: velocidade,
+          },
         }),
       },
     );
@@ -429,8 +573,12 @@ async function gerarAudioDoRascunho(
       // velocidade fora do que ela aceita vira um "HTTP 422" mudo na tela.
       const detalhe = await resp.text().catch(() => "");
       return {
-        url: null, voz: nomeDaVoz, velocidade,
-        erro: `ElevenLabs HTTP ${resp.status}${detalhe ? `: ${detalhe.slice(0, 200)}` : ""} (velocidade ${velocidade})`,
+        url: null, voz: nomeDaVoz, velocidade, estabilidade, estilo, pausaMs,
+        // Os quatro ajustes vão junto no motivo. Com só a velocidade ali, um
+        // 422 causado pelo tom ou pela pausa apontaria para o parâmetro errado
+        // — e quem lê a tela iria mexer justo no que não era o problema.
+        erro: `ElevenLabs HTTP ${resp.status}${detalhe ? `: ${detalhe.slice(0, 200)}` : ""}`
+            + ` (velocidade ${velocidade}, estabilidade ${estabilidade}, estilo ${estilo}, pausa ${pausaMs}ms)`,
       };
     }
 
@@ -438,14 +586,14 @@ async function gerarAudioDoRascunho(
     const arquivo = `tts/dom-rascunho-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
     const { error: errUp } = await supabase.storage.from("whatsapp-media")
       .upload(arquivo, new Uint8Array(audio), { contentType: "audio/mpeg", upsert: false });
-    if (errUp) return { url: null, voz: nomeDaVoz, erro: `storage: ${errUp.message}`, velocidade };
+    if (errUp) return { url: null, voz: nomeDaVoz, erro: `storage: ${errUp.message}`, velocidade, estabilidade, estilo, pausaMs };
 
     const { data: pub } = supabase.storage.from("whatsapp-media").getPublicUrl(arquivo);
     // `erro` carrega o aviso de corte mesmo com o áudio pronto: a tela mostra os
     // dois. Áudio que existe e está incompleto precisa dizer isso.
-    return { url: pub?.publicUrl ?? null, voz: nomeDaVoz, erro: avisoCorte, velocidade };
+    return { url: pub?.publicUrl ?? null, voz: nomeDaVoz, erro: avisoCorte, velocidade, estabilidade, estilo, pausaMs };
   } catch (e) {
-    return { url: null, voz: null, erro: (e as Error)?.message ?? "erro", velocidade };
+    return { url: null, voz: null, erro: (e as Error)?.message ?? "erro", velocidade, estabilidade, estilo, pausaMs };
   }
 }
 
@@ -633,24 +781,69 @@ Deno.serve(async (req) => {
       const texto = String((linha as any).resposta_final || (linha as any).resposta_sugerida || "").trim();
       if (!texto) return json({ error: "esta linha não tem texto para falar" }, 400);
 
-      // A velocidade que vier fica guardada NA VOZ: é isso que a torna
-      // configuração, e não um ajuste que se perde no próximo áudio.
-      let velocidadeNova: number | null = null;
+      // O AJUSTE QUE VIER FICA GUARDADO NA VOZ
+      //
+      // É isso que separa configuração de teste: sem gravar, cada clique seria
+      // um experimento que morre no próximo áudio, e ninguém conseguiria
+      // "acertar o jeito da Keilane falar" — só acertar UM áudio de cada vez.
+      //
+      // A recusa é dura de propósito (400, e nada é gerado): um valor fora da
+      // faixa aceito com um "arredondei para você" produziria um áudio que não
+      // é o que a pessoa pediu, e ela escutaria achando que era.
+      //
+      // `undefined` = a tela não mandou este ajuste, então ele não muda. Só
+      // sobe para o banco o que veio no corpo — é por isso que dá para mexer no
+      // tom sem reescrever a velocidade que já estava boa.
+      const ajustes: AjustesDeFala = {};
+      const naVoz: Record<string, unknown> = {};
+
+      /** Estabilidade e estilo são o mesmo tipo de número (0 a 1) e a mesma
+       *  guarda. Devolve a mensagem de erro, ou nulo quando está tudo certo. */
+      const lerFracao = (campo: "estabilidade" | "estilo", coluna: string): string | null => {
+        if (corpo?.[campo] === undefined || corpo?.[campo] === null) return null;
+        const n = Number(corpo[campo]);
+        if (!Number.isFinite(n) || n < FRACAO_MIN || n > FRACAO_MAX) {
+          return `${campo} precisa ser um número entre ${FRACAO_MIN} e ${FRACAO_MAX}`;
+        }
+        const arredondado = Math.round(n * 100) / 100;
+        ajustes[campo] = arredondado;
+        naVoz[coluna] = arredondado;
+        return null;
+      };
+
       if (corpo?.velocidade !== undefined && corpo?.velocidade !== null) {
         const v = Number(corpo.velocidade);
         if (!Number.isFinite(v) || v < VELOCIDADE_MIN || v > VELOCIDADE_MAX) {
           return json({ error: `velocidade precisa ser um número entre ${VELOCIDADE_MIN} e ${VELOCIDADE_MAX}` }, 400);
         }
-        velocidadeNova = Math.round(v * 100) / 100;
+        ajustes.velocidade = Math.round(v * 100) / 100;
+        naVoz.velocidade_fala = ajustes.velocidade;
+      }
+
+      const erroEstabilidade = lerFracao("estabilidade", "estabilidade_fala");
+      if (erroEstabilidade) return json({ error: erroEstabilidade }, 400);
+      const erroEstilo = lerFracao("estilo", "estilo_fala");
+      if (erroEstilo) return json({ error: erroEstilo }, 400);
+
+      if (corpo?.pausa_ms !== undefined && corpo?.pausa_ms !== null) {
+        const p = Number(corpo.pausa_ms);
+        if (!Number.isFinite(p) || p < PAUSA_MIN_MS || p > PAUSA_MAX_MS) {
+          return json({ error: `pausa_ms precisa ser um número entre ${PAUSA_MIN_MS} e ${PAUSA_MAX_MS}` }, 400);
+        }
+        ajustes.pausaMs = Math.round(p);
+        naVoz.pausa_fala_ms = ajustes.pausaMs;
+      }
+
+      if (Object.keys(naVoz).length > 0) {
         const vozId = String(agente.reply_voice_id || "");
         // Só voz clonada tem onde guardar. Voz embutida da ElevenLabs não é
-        // nossa para configurar — nesse caso a velocidade vale só desta geração
-        // e some depois, o que é honesto: não existe lugar para ela morar.
+        // nossa para configurar — nesse caso o ajuste vale só desta geração e
+        // some depois, o que é honesto: não existe lugar para ele morar.
         if (vozId.length === 36 && vozId.includes("-")) {
           const { error: errVoz } = await supabase.from("custom_voices")
-            .update({ velocidade_fala: velocidadeNova, updated_at: new Date().toISOString() })
+            .update({ ...naVoz, updated_at: new Date().toISOString() })
             .eq("id", vozId);
-          if (errVoz) return json({ error: `não consegui salvar a velocidade na voz: ${errVoz.message}` }, 500);
+          if (errVoz) return json({ error: `não consegui salvar o ajuste na voz: ${errVoz.message}` }, 500);
         }
       }
 
@@ -662,15 +855,22 @@ Deno.serve(async (req) => {
         agente.reply_voice_id ?? null,
         (linha as any).instance_name,
         Math.min(Math.max(agente.max_tts_chars || 3000, 100), 5000),
-        velocidadeNova,
+        ajustes,
       );
 
       const { error: errGrava } = await supabase.from("dom_respostas_pendentes")
-        .update({ audio_url: som.url, audio_voz: som.voz, audio_erro: som.erro, audio_velocidade: som.velocidade })
+        .update({
+          audio_url: som.url, audio_voz: som.voz, audio_erro: som.erro,
+          audio_velocidade: som.velocidade, audio_estabilidade: som.estabilidade,
+          audio_estilo: som.estilo, audio_pausa_ms: som.pausaMs,
+        })
         .eq("id", idPendente);
       if (errGrava) return json({ error: `áudio gerado mas não consegui gravar: ${errGrava.message}` }, 500);
 
-      console.log(`[dom-rascunho] regerou áudio pendente=${idPendente} velocidade=${som.velocidade} ok=${!!som.url}`);
+      console.log(
+        `[dom-rascunho] regerou áudio pendente=${idPendente} velocidade=${som.velocidade} ` +
+        `estabilidade=${som.estabilidade} estilo=${som.estilo} pausa=${som.pausaMs}ms ok=${!!som.url}`,
+      );
       return json({
         regerado: true,
         id: idPendente,
@@ -678,6 +878,9 @@ Deno.serve(async (req) => {
         audio_voz: som.voz,
         audio_erro: som.erro,
         velocidade: som.velocidade,
+        estabilidade: som.estabilidade,
+        estilo: som.estilo,
+        pausa_ms: som.pausaMs,
         caracteres: texto.length,
       });
     }
@@ -996,7 +1199,11 @@ Deno.serve(async (req) => {
           Math.min(Math.max(agente.max_tts_chars || 3000, 100), 5000),
         );
         await supabase.from("dom_respostas_pendentes")
-          .update({ audio_url: som.url, audio_voz: som.voz, audio_erro: som.erro, audio_velocidade: som.velocidade })
+          .update({
+            audio_url: som.url, audio_voz: som.voz, audio_erro: som.erro,
+            audio_velocidade: som.velocidade, audio_estabilidade: som.estabilidade,
+            audio_estilo: som.estilo, audio_pausa_ms: som.pausaMs,
+          })
           .eq("id", (linhaFila as any).id);
         if (som.erro) console.warn(`[dom-rascunho] áudio falhou grupo=${g.group_jid}: ${som.erro}`);
         // ÁUDIO CORTADO NÃO FALA. `erro` com url preenchida quer dizer que a
