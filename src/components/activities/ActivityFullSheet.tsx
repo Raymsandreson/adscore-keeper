@@ -62,6 +62,7 @@ import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
 import { loadActivityMessageOrigin, type ActivityMessageOrigin } from '@/lib/whatsappMessageActivities';
 import { carregarConversaDaNotaDaAtividade } from '@/lib/whatsappActivityNotes';
 import { MessageSquare } from 'lucide-react';
+import { completarCamposComMarcosLigado } from '@/lib/completarCamposComMarcos';
 
 // Conversa do WhatsApp em painel de baixo pra cima — mesmo componente que a
 // caixa de pendências usa pra não tirar a pessoa da tela.
@@ -1396,6 +1397,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       formCaseTitle, formProcessId, formProcessTitle,
       fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
       regua: resumirRegua(reguaDoProcesso.marcos),
+      // Só completa os campos vazios com os marcos se a pessoa tiver ligado —
+      // de fábrica a mensagem sai com o que está escrito na ficha, e só.
+      completarCamposComMarcos: completarCamposComMarcosLigado(),
       currentUserId: user?.id || null, resolveUserName, getTemplateForContext, inssDesfecho,
     }, audience);
 

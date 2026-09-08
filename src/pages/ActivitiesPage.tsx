@@ -114,6 +114,7 @@ import { summarizeActivityConversation, type SuggestedActivity } from '@/lib/act
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
+import { completarCamposComMarcosLigado } from '@/lib/completarCamposComMarcos';
 
 // IMPORTANTE: lazy() precisa ficar no escopo do módulo. Se ficar dentro do
 // render, cada re-render (ex.: tick do cronômetro ativo) cria um componente
@@ -3659,6 +3660,9 @@ const ActivitiesPage = () => {
       fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
       // Andamento pela régua de marcos — a mesma medida da ficha do processo.
       regua: resumirRegua(reguaDoProcesso.marcos),
+      // Só completa os campos vazios com os marcos se a pessoa tiver ligado —
+      // de fábrica a mensagem sai com o que está escrito na ficha, e só.
+      completarCamposComMarcos: completarCamposComMarcosLigado(),
       currentUserId: user?.id || null, resolveUserName, getTemplateForContext, inssDesfecho,
     }, audience);
 
