@@ -19,6 +19,7 @@ import { loadCurrentLabelNames, filterByLabelName, checkLabelName } from '../lib
 import { uploadImageThumb } from '../lib/imageThumb';
 import { notifyNewWhatsAppMessage } from '../lib/whatsapp-push';
 import { triggerProactiveFirstMessage } from '../lib/proactive-first-message';
+import { handler as whatsappGroupExit, isGroupParticipantEvent } from './whatsapp-group-exit';
 
 // A 1ª mensagem proativa mora em lib/proactive-first-message (dois gatilhos: etiqueta e tela).
 
@@ -778,6 +779,31 @@ export const handler: RequestHandler = async (req, res) => {
     const skippableEvents = ['messages_update', 'presence', 'chats_update', 'chats_delete', 'contacts_update', 'message_ack', 'chats'];
     if (skippableEvents.includes(eventType) && !isCallEvent) {
       return res.json({ success: true, skipped: true, reason: `EventType ${eventType} filtered` });
+    }
+
+    // ========== EVENTO DE GRUPO — cliente que saiu ou foi tirado ==========
+    //
+    // A UazAPI chama UMA URL por instância, e é esta. O endpoint dedicado
+    // /webhooks/uazapi-group-exit existe desde antes e nunca recebeu nada:
+    // ninguém tinha como cadastrar uma segunda URL, então o evento `groups`
+    // chegava aqui e morria mais abaixo, no "SKIPPING non-message, non-call".
+    // Medido em 08/09/2026: `whatsapp_group_exits` com ZERO linhas desde a
+    // criação, com 28 instâncias ativas na mesma base.
+    //
+    // O tratamento inteiro já existe em whatsapp-group-exit (parsing das três
+    // formas de payload, lookup de contato e lead, gravação). O que faltava era
+    // só o caminho até ele. Nada de parsing novo aqui.
+    if (isGroupParticipantEvent(eventType, body)) {
+      // Log SEM telefone e SEM nome: se depois de subir isto nada aparecer em
+      // `whatsapp_group_exits`, a linha abaixo é o que diz se o evento sequer
+      // chega — a diferença entre "ninguém saiu" e "a UazAPI não manda o
+      // evento", que hoje são indistinguíveis na tela.
+      console.log('[whatsapp-webhook] evento de grupo recebido, delegando ao group-exit:',
+        'EventType=', eventType || body?.EventType || 'sem rótulo',
+        'instance=', webhookInstanceName);
+      req.body = { ...body, instance_name: body.instance_name || webhookInstanceName };
+      await whatsappGroupExit(req as any, res as any);
+      return;
     }
 
     // ========== LABEL EVENT — dispara fluxo de procuração automática ==========
