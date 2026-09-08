@@ -316,4 +316,84 @@ function MovementItem({ event }: { event: ActivityHistoryEvent }) {
   );
 }
 
+/**
+ * Resumo dos repasses para o RODAPÉ da ficha — ao lado de "Criado por" e
+ * "Última atualização por".
+ *
+ * Existe porque o histórico completo mora numa aba: quem está lendo a ficha vê
+ * quem criou e quem mexeu por último, e a pergunta seguinte ("e de quem era
+ * antes?") exigia trocar de aba. Aqui só a cadeia de responsáveis, na mesma
+ * tipografia do rodapé. Sem repasse gravado o componente não desenha nada —
+ * linha vazia dizendo "nenhum repasse" seria ruído em toda atividade.
+ */
+export function ActivityHandoffSummary({
+  activityId,
+  resolveUserName,
+  className,
+}: {
+  activityId: string | null | undefined;
+  resolveUserName?: NameResolver;
+  className?: string;
+}) {
+  const { rows, loading } = useActivityAuditTrail(activityId);
+  const externalNames = useExternalTeamNames();
+
+  const resolve = useCallback<NameResolver>(
+    (uuid) => {
+      if (!uuid) return null;
+      return externalNames.get(uuid) || resolveUserName?.(uuid) || null;
+    },
+    [externalNames, resolveUserName],
+  );
+
+  const handoffs = useMemo(
+    () => buildActivityHistory(rows, resolve).filter((e) => e.kind === 'handoff'),
+    [rows, resolve],
+  );
+
+  if (loading || handoffs.length === 0) return null;
+
+  return (
+    <div className={className}>
+      <p>
+        {handoffs.length === 1 ? 'Repassada 1 vez:' : `Repassada ${handoffs.length} vezes:`}
+      </p>
+      <ul className="mt-0.5 space-y-0.5 pl-3">
+        {handoffs.map((h) => {
+          const situacao = statusLabel(h.status);
+          return (
+            <li key={h.id} className="flex flex-wrap items-center gap-x-1">
+              <ArrowRightLeft className="h-3 w-3 shrink-0 text-blue-600 dark:text-blue-400" />
+              <span>{h.from || 'sem responsável'}</span>
+              <span aria-hidden>→</span>
+              <span className="font-medium text-foreground">{h.to || 'sem responsável'}</span>
+              <span aria-hidden>·</span>
+              <span>{fmt(h.at)}</span>
+              <span aria-hidden>·</span>
+              <span
+                className={h.actor ? '' : 'italic'}
+                title={
+                  h.actor
+                    ? undefined
+                    : h.actorKind === 'routine'
+                      ? 'Repasse feito por rotina do servidor, que roda sem usuário logado'
+                      : 'Repasse feito pelo app sem usuário identificado na sessão'
+                }
+              >
+                por {actorText(h.actor, h.actorKind)}
+              </span>
+              {situacao && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span>{situacao}</span>
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 export default ActivityMovementsPanel;
