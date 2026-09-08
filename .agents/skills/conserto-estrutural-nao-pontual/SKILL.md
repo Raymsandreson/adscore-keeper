@@ -101,3 +101,10 @@ outliers, o total é..."). Todos são a mesma falha.
 A regra é sobre dado, não sobre valor monetário. Data absurda, contagem
 impossível, duplicata, prazo negativo, cliente sem CPF: mostra como está, detecta,
 roteia para quem corrige na origem. Nunca maquia na renderização.
+
+## O espelho desta regra
+
+Esta skill trata de valor que ESTÁ no banco e não pode ser escondido da tela.
+O caso oposto — valor que NÃO está no banco e não pode SAIR para o cliente numa
+resposta de agente de IA — está na skill `valor-sem-lastro-nao-sai`
+(incidente do Imposto de Renda inventado, 08/09/2026).
