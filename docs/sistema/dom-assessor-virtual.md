@@ -2266,6 +2266,38 @@ rascunho novo) e **6** seguem dependendo de gente. Rascunho já gravado não é
 reescrito: `contexto_usado` é fotografia. Mas os seis mostram o aviso âmbar ao
 revisor, então nenhum deles vai ser aprovado achando que o processo está parado.
 
+### Da aba dá para consertar, não só ver (08/09/2026)
+
+A aba "Sem ficha" mostrava o problema e não tinha o que clicar — a pessoa lia
+"ligue o grupo à ficha certa" e ia procurar onde, em outra tela. Cada cartão
+agora traz o botão do conserto:
+
+- **ambíguo** → "Escolher a ficha";
+- **sem ficha** → "Ligar a uma ficha".
+
+`VincularFichaSheet` abre em aba lateral, por cima, e trata os dois casos como
+os problemas diferentes que são:
+
+| situação | o que o painel oferece |
+| --- | --- |
+| ambíguo (2+ fichas) | as candidatas do cadastro, **com o número de processos de cada uma** — é o que costuma desempatar |
+| sem ficha (0) | busca por nome, porque a ficha em geral existe e só não sabe do grupo |
+
+Escolhida a ficha, grava-se a linha em `lead_whatsapp_groups` com
+`auto_linked = **false**`. A distinção importa e não é decorativa: os 166 de
+hoje entraram como automação e o rollback deles é `delete ... where auto_linked`
+— vínculo decidido por uma pessoa não pode cair junto.
+
+Em seguida o painel abre o `LeadPainelPorId` empilhado, que é o `LeadEditDialog`
+de sempre: dali se chega ao caso e aos processos. **Não** há segunda versão do
+formulário do lead aqui — o seletor escolhe o vínculo e entrega a ficha para
+quem já sabe editá-la.
+
+O que o painel continua **não** fazendo: escolher sozinho. As candidatas vêm do
+cadastro ou da busca que a pessoa digitou. Foi por recusar o palpite que 40
+grupos ficaram ambíguos em vez de receberem uma ficha sorteada, e o botão não
+desfaz essa recusa — só dá a ela um lugar para terminar.
+
 ---
 
 ## 08/09/2026 — A peça citada no painel passa a abrir
@@ -2320,18 +2352,44 @@ anterior, criada pela própria migration antes de alterar. Remover só após 24h
 verdes.
 
 **Aplicada em produção em 08/09/2026** (Externo `kmedldlepwiityjsdahz`), com
-autorização do dono. Conferido logo depois, contra o banco real:
+autorização do dono. Conferido contra o banco real:
 
 | conferência | resultado |
 |---|---|
 | peças do grupo `120363405106042327` | 6 de 6 com `id` e `arquivo` |
 | `arquivo` que existe em `storage.objects` (bucket `jm-autos`) | 6 de 6 |
-| 20 grupos com peça lida, 84 peças | 0 sem `id` ou `arquivo` |
-| contexto novo vs. `..._antes_peca_clicavel`, tirando `id` e `arquivo` | **0 diferenças** nos 20 grupos |
+| 25 grupos com peça lida — chaves fora de `processos` | 0 diferenças |
+| 39 processos — tudo fora do bloco `documentos` | 0 diferenças |
+| contagem de documentos por processo | 0 mudanças |
+| 93 documentos, tirando `id` e `arquivo` | **0 diferenças** |
+| documentos sem `id` ou sem `arquivo` | 0 |
 
-A última linha é a que importa para dormir tranquilo: fora as duas chaves novas,
-o contexto que vai para o prompt é byte a byte o mesmo de antes. Nenhuma outra
-chave, CTE ou ordenação mudou de comportamento.
+A penúltima linha é a que importa para dormir tranquilo: fora as duas chaves
+novas, o contexto que vai para o prompt é byte a byte o mesmo de antes. Nenhuma
+outra chave, CTE ou ordenação mudou de comportamento.
+
+### A rota de fuga que quase não existiu
+
+Essa conferência só vale porque foi refeita. O bloco que copia a função para
+`_antes_peca_clicavel` rodou uma segunda vez **depois** da alteração e
+sobrescreveu a cópia com o corpo novo. Por alguns minutos o "rollback" era uma
+cópia da própria versão nova — nenhum rollback, com cara de rollback. E uma
+comparação contra ela, tirando `id` e `arquivo` dos **dois** lados, dá "0
+diferenças" sem ter comparado nada.
+
+Só apareceu porque a não-regressão acusou **86 de 86 documentos divergentes**:
+os dois lados emitiam `arquivo`. Número absurdo é sinal de que o teste está
+errado, não de que o mundo está — e vale sempre parar para olhar em vez de
+ajustar o teste até fechar.
+
+A cópia foi refeita aplicando o replace inverso sobre a função viva, e o tamanho
+confirma que é a versão certa: **13.066 = 13.046** (a função medida antes de
+qualquer alteração) **+ 20** do nome mais longo. Só então a tabela acima foi
+levantada.
+
+O passo 0 da migration agora tem guarda: se a função viva já emite `arquivo`, a
+cópia não é tocada. **Rota de fuga que se sobrescreve sozinha é pior que rota de
+fuga nenhuma, porque some sem avisar.**
 
 ### Rascunho antigo: procura, e não chuta
 
