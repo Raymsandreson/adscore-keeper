@@ -2319,6 +2319,30 @@ Rota de fuga: `dom_contexto_processual_antes_peca_clicavel` guarda a versão
 anterior, criada pela própria migration antes de alterar. Remover só após 24h
 verdes.
 
+**Aplicada em 08/09/2026.** Conferido nos 25 primeiros grupos do piloto com peça
+lida, contra a cópia anterior: 0 diferenças fora de `processos`, 0 diferenças
+nos 39 processos fora do bloco `documentos`, 0 mudanças na contagem de
+documentos, e nos 93 documentos nada mudou depois de tirar `id` e `arquivo` —
+que vieram preenchidos em todos.
+
+### A rota de fuga que quase não existiu
+
+O bloco que copia a função para `_antes_peca_clicavel` rodou uma segunda vez
+**depois** da alteração e sobrescreveu a cópia com o corpo novo. Por alguns
+minutos o "rollback" era uma cópia da própria versão nova — nenhum rollback,
+com cara de rollback.
+
+Só apareceu porque a conferência de não-regressão acusou **86 de 86 documentos
+divergentes**: os dois lados emitiam `arquivo`. Um número absurdo é sinal de que
+o teste está errado, não de que o mundo está. A cópia foi refeita aplicando o
+replace inverso sobre a função viva, e o tamanho confirma que é a versão certa —
+13.066 = 13.046 (a função medida antes de qualquer alteração) + 20 do nome mais
+longo.
+
+O passo 0 da migration agora tem guarda: se a função viva já emite `arquivo`, a
+cópia não é tocada. **Rota de fuga que se sobrescreve sozinha é pior que rota de
+fuga nenhuma, porque some sem avisar.**
+
 ### Rascunho antigo: procura, e não chuta
 
 Rascunho gravado antes disso não tem `id` nem `arquivo` — o retrato já foi

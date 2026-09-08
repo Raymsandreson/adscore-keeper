@@ -47,6 +47,16 @@
 -- =============================================================================
 
 -- ── 0. Rota de fuga, antes de mexer ──────────────────────────────────────────
+--
+-- A GUARDA `emite_arquivo` NÃO É ENFEITE, e aprendi isso do jeito ruim: na
+-- aplicação de 08/09/2026 este bloco rodou uma segunda vez DEPOIS do bloco 1 e
+-- sobrescreveu a cópia com o corpo NOVO. Resultado: por alguns minutos a
+-- "rota de fuga" era uma cópia da própria versão nova — rollback nenhum, com
+-- cara de rollback. Descobri porque a conferência de não-regressão acusou 86
+-- de 86 documentos "divergentes": os dois lados emitiam `arquivo`.
+--
+-- Rota de fuga que se sobrescreve sozinha é pior que rota de fuga nenhuma,
+-- porque some sem avisar. Com a guarda, rodar este arquivo de novo é inócuo.
 do $mig$
 declare def text; copia text;
 begin
@@ -54,6 +64,13 @@ begin
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'dom_contexto_processual';
   if def is null then raise exception 'dom_contexto_processual não existe'; end if;
+
+  -- A função viva já é a nova? Então a cópia (se existir) é a antiga e não pode
+  -- ser tocada; e se não existir, copiar a nova não guardaria nada.
+  if position('''arquivo''' in def) > 0 then
+    raise notice 'a função viva já é a versão nova — a rota de fuga não será sobrescrita';
+    return;
+  end if;
 
   copia := replace(def,
                    'FUNCTION public.dom_contexto_processual(',
@@ -110,3 +127,14 @@ end $mig$;
 --        jsonb_array_elements(p -> 'documentos') d;
 --   Esperado: `id` e `arquivo` preenchidos em toda peça; `arquivo` apontando
 --   para um objeto existente no bucket jm-autos.
+--
+-- APLICADA em 08/09/2026. Conferido nos 25 primeiros grupos do piloto com peça
+-- lida, contra dom_contexto_processual_antes_peca_clicavel:
+--     tudo fora de `processos` .................... 0 diferenças
+--     39 processos, fora de `documentos` .......... 0 diferenças
+--     contagem de documentos por processo ......... 0 mudanças
+--     93 documentos, tirando `id` e `arquivo` ..... 0 diferenças
+--     documentos sem `id` ou sem `arquivo` ........ 0
+-- Ou seja: as duas chaves novas entraram e nada mais mudou.
+-- Tamanho da cópia de fuga: 13.066 = 13.046 (a função medida antes de qualquer
+-- alteração) + 20 do nome mais longo.
