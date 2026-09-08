@@ -5612,6 +5612,15 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       )}
                     </p>
                     <p className="whitespace-pre-wrap break-words text-foreground/80">{item.mensagem}</p>
+                    {/* Com áudio, o que o cliente recebe é a VOZ — o texto acima
+                        é o registro do que foi dito, não o que vai chegar. Sem
+                        este aviso, quem lê a bolha jura que sai escrito. */}
+                    {item.media_url && (
+                      <p className="mt-1 flex items-center gap-1 text-[10px] font-medium text-green-700 dark:text-green-400">
+                        <Mic className="h-3 w-3 shrink-0" />
+                        vai como nota de voz — o cliente ouve, não lê
+                      </p>
+                    )}
                     {item.pular_se_responder && (
                       <p className="mt-1 text-[10px] text-muted-foreground">
                         Não sai se ele responder antes
