@@ -60,6 +60,18 @@
 --
 -- ROTA DE FUGA: tabela zz_caso398_bkp_20260908 guarda toda linha tocada
 -- (antes). O bloco de rollback está no fim, comentado. Desfaz em < 1 min.
+--
+-- APLICADO em 08/09/2026 com aval do Raym ("pode rodar"). Nenhuma trava
+-- disparou. Backup gravado: 82 linhas em 8 tabelas. Conferido depois:
+--   A  "Charles Mendes da Silva": 1 caso, 5 processos, 35 atividades,
+--      30 movimentações, 3 contatos, 1 audiência, telefone e CPF preenchidos.
+--   B  "Charles vieira dos santos Junior": 0 casos, 0 processos, 0 atividades
+--      — voltou a ser só o lead da Planilha BPC.
+--   CASO 398 → ficha A, 5 processos, 32 atividades. CASO-934 fora de cena.
+--   dom_contexto_processual(grupo): tem_vinculo true, fonte ponte,
+--      4 processos (o "TRCT E VERBAS" sem número fica de fora, como sempre),
+--      0016611-91: 8 andamentos, 1 peça lida, fase Ajuizamento, parado 22 d;
+--      0811547-57: 1 andamento, parado 6 d.
 -- =============================================================================
 
 begin;
