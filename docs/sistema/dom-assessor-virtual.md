@@ -2100,3 +2100,118 @@ comentário podem diferir do arquivo do repositório. Reconciliar quando o
 `SUPABASE_PAT` existir — a raiz é a mesma: **quatro transcrições manuais da
 mesma função num único dia**, cada uma com risco de erro, que o deploy
 automático elimina.
+
+---
+
+## O Dom não achava a ficha do cliente — e dizia "(0)" (07-08/09/2026)
+
+### O que foi visto
+
+No grupo "Caso 09 - SÓ RAIMUNDA" o painel de conferência mostrou
+`Movimentação (0)`, `Documento lido (0)` e "Nenhuma atividade anterior".
+Não era verdade. O processo `0000369-39.2018.8.10.0121` tinha, naquele
+momento, 3 linhas em `process_updates`, 53 peças em `jm_documentos` (18 com
+resumo lido), 4 decisões em `jm_decisoes`, e o lead tinha 36 atividades.
+
+`dom_contexto_processual('120363405106042327@g.us')` devolvia
+`tem_vinculo: false`. Não era o processo que estava parado — era o **cliente**
+que não tinha sido encontrado.
+
+### A causa: o vínculo grupo→ficha mora em dois lugares
+
+| onde | quem usava |
+| --- | --- |
+| `lead_whatsapp_groups` (a ponte) | **só isto** a `dom_contexto_processual` olhava |
+| `leads.whatsapp_group_id` (o cadastro) | é onde o Caso 09 tinha o grupo |
+
+Não era caso isolado. Medido em 07/09/2026 sobre `dom_grupos_piloto` ativo:
+1.149 grupos, 826 com ponte, 167 sem ponte mas com **uma única** ficha viva,
+40 sem ponte e ambíguos, 116 sem ficha nenhuma. **323 grupos — 28% do piloto —
+geravam rascunho sem um dado do processo, e o painel não avisava.**
+
+### O que mudou
+
+**1. A CTE `g` ganhou um segundo degrau** (migration
+`20260907230000_o_dom_nao_achava_a_ficha_do_grupo.sql`):
+
+1. `lead_whatsapp_groups` — a ponte explícita, continua mandando;
+2. `leads.whatsapp_group_id` — **e só quando existe EXATAMENTE UMA ficha viva**
+   apontando para aquele grupo.
+
+O "exatamente uma" é a trava do vazamento, e não é teórica: **904 jids do
+cadastro apontam para mais de uma ficha** (um chega a 18). Escolher "a mais
+recente" ali seria contar a um cliente a movimentação de outro. Onde é ambíguo,
+a resposta certa continua sendo não saber.
+
+**2. O jsonb passou a devolver `vinculo`** — `fonte`
+(`ponte` | `cadastro_do_lead` | `null`), `fichas_no_grupo`, `ambiguo`. Sem isso
+o "(0)" respondia duas perguntas opostas com o mesmo número: "o processo não
+andou" e "não sei de quem é este grupo".
+
+**3. O painel (`FontesDaResposta.tsx`)** ganhou o aviso de ficha não encontrada,
+que diz o conserto de cada caso. E um segundo bug foi corrigido junto: o painel
+lia `d.titulo`, a RPC emite `d.peca` — **toda peça aparecia como "sem título"**
+com o nome guardado ao lado.
+
+### Efeito medido, 08/09/2026
+
+| | antes | depois |
+| --- | --- | --- |
+| grupos do piloto com vínculo | 827 | **993** |
+| pela ponte | 827 | 827 |
+| pelo cadastro (novo) | — | 166 |
+| ambíguo, agora avisa | 40 (calado) | 40 (avisando) |
+| sem ficha, agora avisa | 116 (calado) | 116 (avisando) |
+
+No Caso 09, depois de regenerar o rascunho: `vinculo.fonte: ponte`,
+1 processo, 3 andamentos, 6 peças, 4 decisões, atividade "Manifestar sobre o
+não pagamento da pensão".
+
+Não-regressão: 15 grupos com ponte comparados contra
+`dom_contexto_processual_antes_vinculo_por_cadastro` — zero diferença em
+`lead_id`, `processos` e `ultima_atividade`.
+
+### A armadilha do índice, que custou uma rodada
+
+`dom_jid_curto(leads.whatsapp_group_id)` não tinha índice: 18,064 ms varrendo
+19.865 das 23.984 linhas, duas vezes por chamada. Criamos
+`idx_leads_jid_curto_do_grupo` com `CONCURRENTLY`, ele ficou **válido** — e o
+planner **continuou varrendo**.
+
+O índice é PARCIAL (`where whatsapp_group_id is not null and deleted_at is
+null`) e a consulta não afirmava esse predicado; `dom_jid_curto(x) = 'algo'`
+não prova `x is not null` para o planner. Com `and l.whatsapp_group_id is not
+null` acrescentado às duas consultas: **0,145 ms, 3 buffers**. 124x.
+
+⚠️ Essas duas linhas parecem redundantes. Quem as "limpar" devolve a varredura
+sem perceber — o resultado continua certo, só fica 124x mais lento.
+
+### O contexto é uma fotografia, não uma consulta ao vivo
+
+`dom-rascunho` grava `contexto_usado` **no momento em que cria o rascunho**.
+Consertar a RPC não reescreve rascunho já gravado: o painel continua mostrando
+fielmente o que entrou naquele prompt — que era nada. Para ver o efeito é
+preciso um rascunho **novo**, e o cron tem duas travas que impedem refazer o
+mesmo: a linha em `dom_respostas_pendentes` ("já rascunhado") e a decisão final
+em `dom_decisoes` ("já decidido antes").
+
+No Caso 09 as duas foram apagadas à mão, com autorização, depois de conferir
+que o rascunho estava `status: pendente` / `enviado_em: null` — nada havia sido
+enviado à cliente. `decisao = 'respondeu'` é gravada **quando o rascunho nasce**
+(dom-rascunho, linha 1050), não quando a mensagem sai; o nome engana.
+
+### Dívidas conhecidas, deixadas de propósito
+
+1. **`process_updates` é mais pobre que o retrato do Escavador.** O Dom lê
+   `process_updates`; a tela "Movimentações" lê `lead_processes.movimentacoes`.
+   Em 80 processos com jsonb não vazio: **1.384 movimentos no jsonb contra 708
+   em process_updates**, e em **38 dos 80 o process_updates vê ZERO**. Atenção
+   ao mexer: a escolha de `process_updates` para a **data** (`feed_em`,
+   `parado_dias`) é deliberada — veja
+   `20260907220000_quanto_tempo_o_processo_esta_parado.sql`. Fonte do feed e
+   fonte da data são decisões separadas.
+2. **Processo sem número some inteiro.** A RPC filtra `process_number is not
+   null`. No Caso 09 o processo "Indenização" está com número nulo: a ficha
+   mostra 2 processos e o contexto traz 1, sem o assessor saber que o outro
+   existe. Sem número não há Escavador nem peça — mas o silêncio total também
+   não é a resposta certa.
