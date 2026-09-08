@@ -727,8 +727,14 @@ export function AtendenteVirtualPanel() {
 
         <TabsContent value="enviadas" className="space-y-2 pt-3">
           {enviadasF.length === 0 && vazio('Nenhuma mensagem chegou ao cliente ainda.')}
+          {/* Clicável como na fila, e pelo mesmo motivo: conferir de onde saiu a
+              resposta só vale se der para conferir DEPOIS que ela saiu. Sem
+              isto, a única aba onde a pergunta "em que ele se baseou?" aparece
+              de verdade — a das mensagens que o cliente já leu — era a única
+              que não respondia. O painel abre em leitura: o que saiu, saiu. */}
           {enviadasF.map(p => (
             <LinhaPendente key={p.id} p={p}
+              onClick={() => { setAberto(p); setTexto(p.resposta_final || p.resposta_sugerida); }}
               rodape={<p className="text-[10px] text-emerald-700">
                 Enviada em {p.enviado_em ? quando(p.enviado_em) : '—'}
               </p>} />
@@ -793,8 +799,21 @@ export function AtendenteVirtualPanel() {
                 </div>
               )}
               <div className="space-y-1">
-                <Label className="text-xs">Resposta sugerida (dá para editar)</Label>
-                <Textarea className="text-xs min-h-[180px]" value={texto} onChange={e => setTexto(e.target.value)} />
+                {aberto.status === 'enviada' ? (
+                  <>
+                    {/* Já chegou ao cliente: editar aqui não muda o que ele leu,
+                        só mentiria sobre o que foi dito. */}
+                    <Label className="text-xs">O que foi enviado</Label>
+                    <p className="text-xs bg-muted rounded p-2 whitespace-pre-wrap">
+                      {aberto.resposta_final || aberto.resposta_sugerida}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Label className="text-xs">Resposta sugerida (dá para editar)</Label>
+                    <Textarea className="text-xs min-h-[180px]" value={texto} onChange={e => setTexto(e.target.value)} />
+                  </>
+                )}
               </div>
 
               {/* As fontes que geraram a resposta. Vêm DEPOIS dela de propósito:
@@ -835,6 +854,9 @@ export function AtendenteVirtualPanel() {
                       próximos áudios desta voz, não só para este. Voz diferente
                       pede ritmo diferente: quem fala pausado na gravação
                       original soa arrastado a 0,90x. */}
+                  {/* Refazer a fala só faz sentido antes de sair: a resposta
+                      que já chegou ao cliente não muda de voz nem de ritmo. */}
+                  {aberto.status !== 'enviada' && (
                   <div className="space-y-1 border-t pt-2">
                     <Label className="text-[11px] text-muted-foreground">
                       Velocidade da fala
@@ -875,6 +897,7 @@ export function AtendenteVirtualPanel() {
                       desta voz{aberto.audio_voz ? ` (${aberto.audio_voz})` : ''}.
                     </p>
                   </div>
+                  )}
                   <p className="text-[10px] text-muted-foreground">
                     Este áudio <strong>não foi enviado</strong> e não vai sair sozinho — nem em grupo
                     que responde sozinho, onde quem sai é o texto. Ele existe para você ouvir antes
@@ -886,7 +909,19 @@ export function AtendenteVirtualPanel() {
                 onClick={() => abrirConversa(aberto.group_jid, aberto.instance_name, aberto.group_name)}>
                 <MessagesSquare className="h-3.5 w-3.5" />Abrir a conversa do grupo
               </Button>
-              {aberto.agendamento_id && saiEm[aberto.agendamento_id] ? (
+              {aberto.status === 'enviada' ? (
+                // Não há decisão a tomar sobre o que já foi lido. Mostrar
+                // "Aprovar e enviar" aqui criaria uma segunda cópia da mesma
+                // resposta na fila — o botão certo é nenhum.
+                <div className="rounded border border-emerald-600/40 bg-emerald-600/5 p-2 text-center">
+                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                    Já chegou ao cliente{aberto.enviado_em ? ` em ${quando(aberto.enviado_em)}` : ''}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Esta tela é só para conferir o que foi dito e de onde saiu.
+                  </p>
+                </div>
+              ) : aberto.agendamento_id && saiEm[aberto.agendamento_id] ? (
                 // Já está indo. Mostrar "aprovar" aqui seria mentira — e pior,
                 // faria a pessoa achar que a mensagem depende dela.
                 <>
