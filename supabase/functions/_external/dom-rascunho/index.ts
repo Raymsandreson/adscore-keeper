@@ -367,7 +367,12 @@ function instrucaoDaIntencao(cod: string, panorama = false): string {
       "O cliente pediu o PANORAMA: ele quer saber de todos os casos dele, não de",
       "um. Siga a regra O CLIENTE PEDIU O PANORAMA, acima, à risca.",
       "Um parágrafo curto para CADA processo, sem pular nenhum, com o nome do",
-      "caso, como está hoje e o que mudou por último — com a data.",
+      // "e há quantos dias" estava SÓ na função no ar (v16), editada direto no
+      // dashboard e nunca devolvida ao git. Voltou para cá em 08/09/2026, antes
+      // do deploy seguinte — que teria apagado a frase sem ninguém perceber.
+      // Data sozinha obriga o cliente a fazer a conta; o que ele quer saber é
+      // se está parado há uma semana ou há quatro meses.
+      "caso, como está hoje e o que mudou por último — com a data e há quantos dias.",
       "Processo sem movimentação nova também entra: diga que não teve novidade.",
       "Deixar um de fora é o erro aqui.",
       "=== FIM ===",
