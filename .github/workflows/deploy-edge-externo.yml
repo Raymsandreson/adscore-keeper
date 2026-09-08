@@ -9,6 +9,20 @@
 #
 # Este workflow fecha isso: merge em `main` que toque `_external/` deploya só as
 # funções que o diff mudou.
+#
+# Duas coisas que ele PRECISA para funcionar, as duas descobertas quebradas em
+# 08/09/2026:
+#
+# 1. O secret `SUPABASE_PAT`. Sem ele o job falha na primeira linha — foi o que
+#    aconteceu em todos os runs até aqui (8, 9, 10). O código ia para `main` e
+#    a função seguia com a versão antiga no ar: exatamente a divergência que
+#    este arquivo foi escrito para acabar.
+#
+# 2. A base do diff. Era `HEAD~1`, que num merge commit é o primeiro pai — ou
+#    seja, a ponta da branch que está entrando, não o `main` de antes. O diff
+#    saía vazio e o deploy dizia "nada a fazer" mesmo com a função mudada.
+#    `github.event.before` é o `main` que estava publicado antes deste push, que
+#    é a pergunta certa: o que entrou em produção agora.
 name: Deploy edge functions do Externo
 
 on:
@@ -28,8 +42,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Precisa do commit anterior para saber o que o push mudou.
-          fetch-depth: 2
+          # Histórico inteiro: `github.event.before` pode estar a vários commits
+          # de distância num merge, e `fetch-depth: 2` deixava o diff sem base.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -48,5 +63,5 @@ jobs:
           if [ -n "${{ inputs.slugs }}" ]; then
             node scripts/deploy-edge-externo.mjs ${{ inputs.slugs }}
           else
-            node scripts/deploy-edge-externo.mjs --mudadas-desde HEAD~1
+            node scripts/deploy-edge-externo.mjs --mudadas-desde ${{ github.event.before }}
           fi
