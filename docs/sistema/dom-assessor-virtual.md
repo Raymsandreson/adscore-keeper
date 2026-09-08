@@ -2215,3 +2215,149 @@ enviado à cliente. `decisao = 'respondeu'` é gravada **quando o rascunho nasce
    mostra 2 processos e o contexto traz 1, sem o assessor saber que o outro
    existe. Sem número não há Escavador nem peça — mas o silêncio total também
    não é a resposta certa.
+
+### Os 166 do contorno viraram vínculo, e os 156 ganharam tela (08/09/2026)
+
+A correção acima deixou 166 grupos funcionando por **contorno**: a RPC lia
+`leads.whatsapp_group_id` na hora, porque a ponte não existia. Funciona, mas é
+frágil — bastaria uma segunda ficha apontar para um deles e o grupo apagaria de
+novo, corretamente (a regra se recusa a sortear de quem é o processo).
+
+**Parte 1 — os 166 viraram ponte** (`20260908010000_onde_vejo_os_grupos_sem_ficha.sql`).
+Não é heurística de nome: o `useAutoLinkGroupByName` casa por NOME e erra (815
+vínculos criados assim, 101 com número de caso divergente, ~12%). Aqui só se
+materializa o que o **próprio cadastro** já afirma, e só quando há **uma única**
+ficha viva. Conferido antes: 166 grupos → 166 fichas distintas, zero colisão,
+zero lead_id nulo. Marcados `auto_linked = true`, o que torna o rollback uma
+linha.
+
+Depois de aplicar: grupos do piloto com ponte **827 → 993**; "só no cadastro"
+caiu a **0**.
+
+**Parte 2 — os 156 restantes ganharam lugar.** Ambíguo (40) e sem ficha (116)
+não têm conserto automático: exigem uma pessoa dizendo de quem é o grupo. Sem
+um lugar na tela ficariam como estavam — o assessor respondendo no escuro e
+ninguém sabendo.
+
+- `vw_dom_grupo_sem_ficha` classifica e traz `o_que_fazer` em português e
+  `rascunhos_no_escuro` (quantas respostas já saíram sem contexto por causa
+  daquele grupo). O segundo é de propósito: é **o custo de adiar**, e sem ele a
+  lista vira só mais uma lista.
+- A aba **"Sem ficha"** do `AtendenteVirtualPanel` consome a view, ordenada pelo
+  estrago já feito e não por nome — a fila de conserto começa por onde já custou
+  caro.
+
+Grupo com ponte não entra na view: se está resolvido, misturá-lo com o pendente
+faria a lista deixar de ser fila de trabalho.
+
+#### Um achado que contraria a primeira leitura
+
+41 dos 116 sem-ficha têm `group_jid` que **não** parece jid de grupo (não casa
+`^1203[0-9]{14}$`) — parecem telefone+timestamp. A tentação é descartar como
+lixo de cadastro antigo. **Não são:** somam **8.744 mensagens**, a mais recente
+de 07/09/2026 às 10:58. São grupos ativos em formato antigo de jid, com clientes
+falando neles agora. Precisam de cadastro como qualquer outro.
+
+#### O tamanho real da fila suja, que era menor do que parecia
+
+Dos 99 rascunhos pendentes, só **17** nasceram sem ficha — não os 166 que a
+conta de grupos sugeria. Destes 17, **11** o conserto já resolve (basta um
+rascunho novo) e **6** seguem dependendo de gente. Rascunho já gravado não é
+reescrito: `contexto_usado` é fotografia. Mas os seis mostram o aviso âmbar ao
+revisor, então nenhum deles vai ser aprovado achando que o processo está parado.
+
+---
+
+## 08/09/2026 — A peça citada no painel passa a abrir
+
+### O que faltava
+
+O painel "De onde saiu (para conferir)" lista, em **Documento lido**, as peças
+que entraram no prompt com o resumo feito pela IA. Eram texto morto. Quem
+revisava conferia a resposta da máquina contra **outro texto de máquina** — o
+resumo — que é conferir uma coisa contra ela mesma. O documento, que é a prova,
+ficava a dois cliques e uma tela de distância (aba Documentos do processo).
+
+Agora o título da peça é botão: abre o PDF no `MediaLightbox`, com zoom, por
+cima do painel. Fechar devolve o revisor exatamente onde ele estava — mesmo
+visualizador e mesmo caminho da aba Documentos do processo, de propósito.
+
+### A armadilha: título + data não identificam um documento
+
+O contexto é um retrato gravado junto com o rascunho
+(`dom_rascunhos.contexto_usado`) e guardava, por peça, só título, data e resumo.
+Medido no Supabase externo em 08/09/2026, sobre os 9.151 documentos com leitura:
+
+| medida | valor |
+|---|---|
+| chaves `(processo_cnj, titulo, data_documento)` distintas | 8.630 |
+| chaves repetidas | 251 |
+| documentos dentro de chave repetida | 772, em 48 processos |
+| pior caso (mesmo título, mesma data) | **17 documentos** |
+
+Casar por título+data abriria a peça errada em cerca de **6% dos cliques**, sem
+avisar. Peça errada ao lado de um resumo é prova falsa — pior que botão nenhum,
+porque tem cara de conferência.
+
+### O conserto, na fonte
+
+`dom_contexto_processual` passou a emitir, em cada item de
+`processos[].documentos[]`, o `id` e o `arquivo` (`jm_documentos.storage_path`)
+— migration `20260908150000_a_peca_do_dom_pode_ser_aberta.sql`. Com isso o
+clique abre **a** peça, não uma parecida.
+
+Duas coisas que a mudança **não** faz:
+
+- **não mexe no prompt.** Quem monta o system prompt é a `dom-contexto`, e de
+  cada documento ela lê apenas `data`, `peca` e `resumo`. Chave nova em JSON que
+  ninguém lê não vira token.
+- **não expõe arquivo.** `arquivo` é o caminho dentro do bucket privado
+  `jm-autos`. Abrir exige sessão autenticada e a policy do bucket, que assina
+  uma URL de 10 minutos. O caminho sozinho não dá acesso a nada.
+
+Rota de fuga: `dom_contexto_processual_antes_peca_clicavel` guarda a versão
+anterior, criada pela própria migration antes de alterar. Remover só após 24h
+verdes.
+
+**Aplicada em produção em 08/09/2026** (Externo `kmedldlepwiityjsdahz`), com
+autorização do dono. Conferido logo depois, contra o banco real:
+
+| conferência | resultado |
+|---|---|
+| peças do grupo `120363405106042327` | 6 de 6 com `id` e `arquivo` |
+| `arquivo` que existe em `storage.objects` (bucket `jm-autos`) | 6 de 6 |
+| 20 grupos com peça lida, 84 peças | 0 sem `id` ou `arquivo` |
+| contexto novo vs. `..._antes_peca_clicavel`, tirando `id` e `arquivo` | **0 diferenças** nos 20 grupos |
+
+A última linha é a que importa para dormir tranquilo: fora as duas chaves novas,
+o contexto que vai para o prompt é byte a byte o mesmo de antes. Nenhuma outra
+chave, CTE ou ordenação mudou de comportamento.
+
+### Rascunho antigo: procura, e não chuta
+
+Rascunho gravado antes disso não tem `id` nem `arquivo` — o retrato já foi
+tirado. Nesses, o front procura a peça em `jm_documentos` por processo, título e
+data (`acharPecaDoContexto`, em `src/lib/pecaDoContexto.ts`) e:
+
+- **um** candidato com arquivo → abre;
+- **dois ou mais** → não abre, e diz quantas peças têm aquele mesmo título e
+  aquela mesma data, mandando para a aba Documentos do processo;
+- **nenhum**, ou peça sem arquivo baixado → diz qual dos dois é.
+
+Nunca some com o botão e nunca abre "a mais parecida". Nove testes em
+`src/lib/__tests__/pecaDoContexto.test.ts` seguram isso — em especial o caso de
+duas peças homônimas na mesma data, que é o que quebra se alguém "simplificar"
+o desempate para pegar o primeiro candidato.
+
+### Onde ficou
+
+| arquivo | papel |
+|---|---|
+| `src/lib/pecaDoContexto.ts` | decide qual peça é, ou por que não dá para saber |
+| `src/hooks/useAbrirPecaDosAutos.ts` | consulta sob demanda + URL assinada (10 min) |
+| `FontesDaResposta.tsx` | título vira botão; erro aparece embaixo da própria peça |
+| `20260908150000_a_peca_do_dom_pode_ser_aberta.sql` | a RPC passa a dizer qual peça é |
+
+A busca é **sob demanda, uma peça por clique**. Carregar o acervo inteiro de
+cada processo listado (140 peças no caso 88) para talvez abrir uma seria pagar
+adiantado por algo que quase sempre não acontece.
