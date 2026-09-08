@@ -14,6 +14,7 @@ import { ContactsDistributionDonuts } from './ContactsDistributionDonuts';
 import { ContactsCreationTrendBars, type CreationPeriodSelection } from './ContactsCreationTrendBars';
 import { ClassificationFilterSelect, type ClassificationFilterMode } from './ClassificationFilterSelect';
 import { ClassificationContactsSheet } from './ClassificationContactsSheet';
+import { FilaProcessosCitadosSheet } from './FilaProcessosCitadosSheet';
 import { useContactsPendencies } from '@/hooks/useContactsPendencies';
 import { useContactsActivities } from '@/hooks/useContactsActivities';
 import { useContactsLinks, EMPTY_CONTACT_LINKS } from '@/hooks/useContactsLinks';
@@ -432,6 +433,9 @@ export function ContactsListPage() {
   const [auditOnlyMismatch, setAuditOnlyMismatch] = useState(false);
   /** Só os grupos cujo processo existe na jurimetria e ainda não tem ficha. */
   const [auditOnlySemFicha, setAuditOnlySemFicha] = useState(false);
+  /** A fila dos processos citados que o vinculador não resolveu (vw_grupo_processo_desalinhado). */
+  const [filaAberta, setFilaAberta] = useState(false);
+  const [filaCitacoes, setFilaCitacoes] = useState(0);
   const [leadStatusFilter, setLeadStatusFilter] = useState<Set<string>>(new Set());
   const [leadLinkFilter, setLeadLinkFilter] = useState<'all' | 'with' | 'without'>('all');
   const [boardFilter, setBoardFilter] = useState<Set<string>>(new Set());
@@ -484,6 +488,24 @@ export function ContactsListPage() {
     })();
     return () => { cancelado = true; };
   }, [activeTab, grupoProcesso.size]);
+
+  // Quantas citações esperam decisão. Só a contagem — a lista mora no Sheet.
+  useEffect(() => {
+    if (activeTab !== 'groups') return;
+    let cancelado = false;
+    (async () => {
+      try {
+        await ensureExternalSession();
+        const { count } = await (db as any)
+          .from('vw_grupo_processo_desalinhado')
+          .select('cnj', { count: 'exact', head: true });
+        if (!cancelado) setFilaCitacoes(count || 0);
+      } catch {
+        // Sem contagem o botão simplesmente não aparece.
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [activeTab]);
 
   /**
    * Cadastra a ficha em `lead_processes` a partir do processo da jurimetria.
@@ -2743,6 +2765,20 @@ export function ContactsListPage() {
                           {semFicha} sem ficha de processo
                         </button>
                       )}
+                      {/* Processos que a equipe citou no grupo e o vinculador não
+                          resolveu sozinho: número do caso não bate, ou não tem
+                          como comparar. Abre a fila com "É deste grupo" / "Não é". */}
+                      {filaCitacoes > 0 && (
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
+                          onClick={() => setFilaAberta(true)}
+                          title="Processos citados pela equipe no grupo cujo número de caso não bateu com o do lead dono. Decida: é deste grupo ou não é."
+                        >
+                          <Scale className="h-3.5 w-3.5 text-sky-600" />
+                          {filaCitacoes} processo(s) citado(s) a conferir
+                        </button>
+                      )}
                       <div className="flex items-center gap-2 ml-auto">
                         <span className="text-[11px]">Criado por:</span>
                         <Select value={creatorFilter} onValueChange={setCreatorFilter}>
@@ -3386,6 +3422,11 @@ export function ContactsListPage() {
         </DialogContent>
       </Dialog>
 
+      <FilaProcessosCitadosSheet
+        open={filaAberta}
+        onOpenChange={setFilaAberta}
+        onResolvido={() => setFilaCitacoes(n => Math.max(0, n - 1))}
+      />
       <ContactDetailSheet
         contact={detailContact}
         open={!!detailContact}

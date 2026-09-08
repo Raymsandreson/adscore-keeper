@@ -2928,3 +2928,28 @@ têm `auto_linked = true` e log com `source`; `update grupo_processo_detectado
 set status = 'eco_da_casa' where status = 'processo_do_grupo'`; `delete from
 dom_grupos_piloto where so_varredura`. Migrations:
 `20260908183000`, `20260908233000`, `20260909010000`.
+
+### A fila dos processos citados, com 1 clique (08/09/2026)
+
+O que o vinculador não resolve (número do caso não bate, sem número, processo
+não cadastrado, grupo sem lead) fica na `vw_grupo_processo_desalinhado`. Até
+aqui era só leitura. Agora: Contatos → Grupos → Auditoria → **"N processo(s)
+citado(s) a conferir"** abre a `FilaProcessosCitadosSheet` (aba lateral). Cada
+linha diz o grupo, o lead do grupo, o processo citado, em qual lead ele está e
+o tipo da divergência, com dois botões.
+
+A escrita é uma RPC só, `resolver_processo_citado(grupo, cnj, decisao)`:
+
+| decisão | o que faz |
+|---|---|
+| **Não é** | `status = nao_e_do_grupo`; sai da fila e a re-varredura não traz de volta |
+| **É deste grupo**, processo já em outro lead | `processo_do_grupo`; o Dom passa a ler |
+| **É deste grupo**, processo não cadastrado | cadastra em `lead_processes` no lead do grupo (título da jurimetria se houver; senão "Citado no grupo …"); "Atualizar Escavador" completa |
+| **É deste grupo**, processo órfão (`lead_id` nulo) | o lead do grupo adota |
+| **É deste grupo**, grupo sem lead, processo com **um** dono | cria a ponte (`auto_linked = false`, log `source = fila_processos_citados`) |
+| **É deste grupo**, grupo sem lead, processo em **2+** leads | **recusa**: "escolha o lead do grupo primeiro (Vincular)" — sortear não |
+
+Testes: `src/components/contacts/__tests__/FilaProcessosCitadosSheet.test.tsx`
+(4). Migration `20260909020000`. Rollback: status de volta a `eco_da_casa`;
+pontes pelo log; processos cadastrados aqui têm título "Citado no grupo …"
+quando não vieram da jurimetria.
