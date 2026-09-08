@@ -22,7 +22,7 @@
  */
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { FileText, Mail, Search, ClipboardList, Landmark, AlertTriangle, MessagesSquare, UserX, Loader2 } from 'lucide-react';
+import { FileText, Mail, Search, ClipboardList, Landmark, AlertTriangle, MessagesSquare, UserX, Users, Loader2 } from 'lucide-react';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { useAbrirPecaDosAutos } from '@/hooks/useAbrirPecaDosAutos';
 
@@ -73,8 +73,16 @@ export interface ContextoUsado {
    * existiam no banco naquele momento.
    */
   vinculo?: {
-    fonte?: 'ponte' | 'cadastro_do_lead' | null;
+    fonte?: 'ponte' | 'cadastro_do_lead' | 'fichas_do_mesmo_processo' | null;
     fichas_no_grupo?: number | null;
+    /**
+     * Quantas das fichas do grupo entraram de fato. Só difere de
+     * `fichas_no_grupo` no degrau `fichas_do_mesmo_processo`, e é justamente
+     * aí que o revisor precisa saber: "2 fichas apontam para este grupo, 1
+     * tem processo, usei essa" é uma frase que ele pode conferir. "Resolvido"
+     * sozinho esconde a duplicidade que causou o problema.
+     */
+    fichas_usadas?: number | null;
     ambiguo?: boolean | null;
   } | null;
 }
@@ -161,6 +169,41 @@ function FichaNaoEncontrada({ fichas, ambiguo }: { fichas?: number | null; ambig
   );
 }
 
+/**
+ * O GRUPO TINHA DUAS FICHAS E UM PROCESSO SÓ — resolveu, e diz como.
+ *
+ * Por que aparece (08/09/2026, Caso 335): o grupo tem duas fichas do mesmo
+ * Eduardo, as duas apontando para 0001723-93.2025.5.17.0191. A RPC contava
+ * FICHAS, via "2", e parava por ambiguidade — sendo que processo só há um.
+ * Agora resolve. Mas resolver calado seria trocar um erro por outro: quem
+ * revisa precisa saber que a ficha está duplicada, senão a duplicidade nunca
+ * é consertada e volta a morder em outro lugar.
+ *
+ * Não é alarme (não impediu nada de entrar no prompt) — é etiqueta de origem.
+ */
+function FichasDoMesmoProcesso({ noGrupo, usadas }: { noGrupo?: number | null; usadas?: number | null }) {
+  const n = typeof noGrupo === 'number' ? noGrupo : null;
+  const u = typeof usadas === 'number' ? usadas : null;
+  if (!n || n < 2) return null;
+  return (
+    <div className="rounded border border-sky-200 bg-sky-50 p-2 space-y-1">
+      <p className="text-[11px] font-medium text-sky-900 flex items-start gap-1.5">
+        <Users className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+        {n} fichas apontam para este grupo — e todas caem no mesmo processo.
+      </p>
+      <p className="text-[10px] text-sky-800">
+        {u === n
+          ? `Por isso não houve sorteio: usei as ${n}. O que entrou abaixo é o processo delas.`
+          : `Não havia o que sortear — só existe um processo aqui. ${u ?? 0} de ${n} ficha${n > 2 ? 's' : ''} tem processo, e foi ${u === 1 ? 'ela que entrou' : 'nelas que fui buscar'}; o resto da ficha duplicada ficou de fora.`}
+      </p>
+      <p className="text-[10px] text-sky-800">
+        A ficha duplicada continua duplicada. Vale juntar as duas na ficha certa —
+        enquanto houver duas, atividade e histórico ficam partidos entre elas.
+      </p>
+    </div>
+  );
+}
+
 export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null | undefined }) {
   // Antes do `return` de contexto vazio de propósito: hook não pode ficar
   // depois de saída antecipada.
@@ -210,6 +253,12 @@ export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null 
         <FichaNaoEncontrada
           fichas={contexto.vinculo?.fichas_no_grupo}
           ambiguo={contexto.vinculo?.ambiguo}
+        />
+      )}
+      {!semFicha && contexto.vinculo?.fonte === 'fichas_do_mesmo_processo' && (
+        <FichasDoMesmoProcesso
+          noGrupo={contexto.vinculo?.fichas_no_grupo}
+          usadas={contexto.vinculo?.fichas_usadas}
         />
       )}
       {/* A conversa do grupo TAMBÉM entra no prompt, e de propósito não é copiada

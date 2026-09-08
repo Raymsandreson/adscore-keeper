@@ -552,7 +552,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
         const links = (groupLinks as any[]) || [];
         const named = links.find((g) => g.group_name);
         if (named?.group_name) setGroupName(named.group_name);
-        setGroupLeadCount(new Set(links.map((g) => g.lead_id).filter(Boolean)).size);
 
         const linkWithLead = links.find((g) => g.lead_id);
         if (linkWithLead) {
@@ -560,15 +559,34 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
           if (ld) leadData = ld;
         }
 
-        if (!leadData) {
-          const { data: ld } = await externalSupabase
-            .from('leads')
-            .select('*')
-            .in('whatsapp_group_id', groupJids)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          if (ld) leadData = ld;
+        // As fichas que apontam para o grupo pelo CADASTRO. Vêm todas, não só a
+        // primeira, porque é a contagem delas que decide se o cabeçalho pode
+        // afirmar de quem é o grupo.
+        const { data: porCadastro } = await externalSupabase
+          .from('leads')
+          .select('*')
+          .in('whatsapp_group_id', groupJids)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false });
+        const fichasDoCadastro = (porCadastro as any[]) || [];
+
+        // O AVISO "N leads no grupo" contava SÓ a ponte — e era por isso que o
+        // Caso 335 aparecia como um grupo tranquilamente vinculado enquanto o
+        // Dom dizia "não sei de quem é este grupo" (08/09/2026). O grupo tem
+        // duas fichas do mesmo Eduardo, nenhuma na ponte: a ponte via zero, o
+        // aviso não aparecia, e o cabeçalho mostrava a ficha MAIS RECENTE como
+        // se fosse fato. Duas telas discordando sobre o mesmo grupo, e a que
+        // parecia mais segura era a que estava chutando.
+        setGroupLeadCount(new Set([
+          ...links.map((g) => g.lead_id),
+          ...fichasDoCadastro.map((l) => l.id),
+        ].filter(Boolean)).size);
+
+        // Sem ponte, o cabeçalho ainda mostra a ficha mais recente — mas agora
+        // o selo "⚠ N leads no grupo" ao lado avisa que há mais de uma. Só é
+        // silêncio quando há uma ficha só, que é quando não há o que escolher.
+        if (!leadData && fichasDoCadastro.length > 0) {
+          leadData = fichasDoCadastro[0];
         }
 
         // Nome atual do grupo no WhatsApp: o cache é sincronizado da UazAPI e é
