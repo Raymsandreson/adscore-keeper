@@ -44,7 +44,14 @@ const LeadPainelPorId = lazy(() => import('@/components/leads/LeadPainelPorId'))
 interface Pendente {
   id: string; group_jid: string; instance_name: string | null; agendamento_id: string | null;
   audio_url: string | null; audio_voz: string | null; audio_erro: string | null;
+  /** Com que ajustes ESTE áudio foi gravado. Nulos nos áudios anteriores a
+   *  08/09/2026, que saíram nas constantes antigas (1,10x / 0,60 / 0,30 / sem
+   *  pausa). Sem isto, mexer nos ajustes da voz reescreveria o passado: o áudio
+   *  velho continuaria soando igual e a tela diria os valores novos. */
   audio_velocidade: number | null;
+  audio_estabilidade: number | null;
+  audio_estilo: number | null;
+  audio_pausa_ms: number | null;
   group_name: string | null; pergunta: string | null; pergunta_autor: string | null;
   resposta_sugerida: string; resposta_final: string | null; intencao: string | null;
   motivo_revisao: string | null; status: string; criado_em: string; enviado_em: string | null;
@@ -62,6 +69,79 @@ interface Pendente {
 interface GrupoPiloto {
   group_jid: string; group_name: string | null; modo: string; ativo: boolean;
 }
+
+/**
+ * OS TRÊS AJUSTES DA FALA — e por que "tom" não é o que todo mundo pensa
+ *
+ * A API da ElevenLabs NÃO tem pitch. Os campos de `voice_settings` são cinco
+ * (stability, similarity_boost, style, speed, use_speaker_boost — fonte:
+ * elevenlabs/skills, text-to-speech/references/voice-settings.md). Então "deixa
+ * a voz mais grave" é impossível: a altura vem da gravação que clonou a voz.
+ *
+ * O que dá para mudar é a EXPRESSIVIDADE, e ela é a combinação de dois campos.
+ * Por isso a tela oferece TOM como nome ("Sério", "Caloroso") e não como dois
+ * sliders soltos: ninguém revisando resposta de cliente sabe o que 0,45 de
+ * `style` faz, mas todo mundo sabe se quer soar sério ou caloroso.
+ *
+ * O banco guarda os NÚMEROS, não o nome. Renomear "Caloroso" amanhã não pode
+ * reescrever o que já foi gravado.
+ *
+ * Estes valores estão duplicados na dom-rascunho (ESTABILIDADE_PADRAO,
+ * ESTILO_PADRAO) e no CHECK da migration 20260908170000. Se um mudar, os
+ * outros têm que mudar junto — mesma regra já vale para a velocidade.
+ */
+type AjusteDeFala = {
+  velocidade?: number;
+  estabilidade?: number;
+  estilo?: number;
+  pausa_ms?: number;
+};
+
+const VELOCIDADES = [0.85, 0.9, 0.95, 1.0, 1.05, 1.1];
+
+const TONS: { nome: string; estabilidade: number; estilo: number; ajuda: string }[] = [
+  { nome: 'Sério',       estabilidade: 0.80, estilo: 0.00, ajuda: 'firme e uniforme — para prazo, exigência, notícia ruim' },
+  { nome: 'Equilibrado', estabilidade: 0.60, estilo: 0.30, ajuda: 'o padrão de hoje — serve para quase tudo' },
+  { nome: 'Caloroso',    estabilidade: 0.45, estilo: 0.45, ajuda: 'mais variação — para acolher quem está ansioso' },
+  { nome: 'Expressivo',  estabilidade: 0.30, estilo: 0.65, ajuda: 'bem solto — o que mais escorrega para teatral' },
+];
+
+/** O tom em que este áudio saiu. Nulo = gerado antes de 08/09/2026, nas
+ *  constantes antigas — que são exatamente o "Equilibrado". */
+const nomeDoTom = (estabilidade: unknown, estilo: unknown): string => {
+  const e = Number(estabilidade), y = Number(estilo);
+  const achado = TONS.find(t => t.estabilidade === e && t.estilo === y);
+  if (achado) return achado.nome;
+  if (!Number.isFinite(e) || !Number.isFinite(y)) return 'Equilibrado';
+  // Voz configurada por fora da tela (SQL na mão, por exemplo). Mostrar o
+  // número cru é melhor que rotular errado com o preset mais próximo.
+  return `estabilidade ${e.toFixed(2)} · estilo ${y.toFixed(2)}`;
+};
+
+/**
+ * PAUSA — a única das três que não é parâmetro, e sim tag `<break time>` no
+ * texto. Entra em cada quebra de linha da resposta, que é onde quem escreveu
+ * já quis um respiro.
+ *
+ * ATENÇÃO: a doc oficial da ElevenLabs sobre a tag não pôde ser lida de
+ * primeira mão quando isto foi escrito (egress bloqueado). Se o modelo não
+ * interpretar a tag, ele a LÊ em voz alta. Por isso "Sem pausa" é o padrão e
+ * nada muda para ninguém sem um clique — e por isso a primeira escuta com
+ * pausa ligada confirma ou derruba a hipótese antes de qualquer envio.
+ */
+const PAUSAS = [
+  { ms: 0,    rotulo: 'Sem pausa' },
+  { ms: 400,  rotulo: 'Curta' },
+  { ms: 700,  rotulo: 'Média' },
+  { ms: 1000, rotulo: 'Longa' },
+];
+
+const rotuloDaPausa = (ms: unknown): string => {
+  const n = Number(ms);
+  if (!Number.isFinite(n) || n <= 0) return 'sem pausa';
+  const achado = PAUSAS.find(p => p.ms === n);
+  return achado ? `pausa ${achado.rotulo.toLowerCase()}` : `pausa de ${n}ms`;
+};
 /**
  * Grupo do piloto cuja FICHA DE CLIENTE não foi encontrada — a view
  * `vw_dom_grupo_sem_ficha` no Externo.
@@ -235,18 +315,21 @@ export function AtendenteVirtualPanel() {
   const [regerando, setRegerando] = useState(false);
 
   /**
-   * Refaz o áudio deste rascunho — e, quando vem velocidade, guarda ela na voz.
+   * Refaz o áudio deste rascunho — e o ajuste que vier fica guardado na voz.
    *
    * Por que passa pela edge function em vez de escrever direto na tabela: a
    * RLS de `custom_voices` só deixa o DONO da voz mexer, e a sessão do painel
-   * no banco externo é anônima. Quem tem permissão para gravar a velocidade é
+   * no banco externo é anônima. Quem tem permissão para gravar os ajustes é
    * a função, com a chave de serviço — e ela é o único lugar que fala com a
    * ElevenLabs de qualquer jeito.
    *
-   * O áudio antigo NÃO é apagado do storage de propósito: se a velocidade nova
+   * Manda SÓ o que mudou: mexer no tom não pode reescrever a velocidade que já
+   * estava boa. Campo ausente no corpo = a função não toca nele.
+   *
+   * O áudio antigo NÃO é apagado do storage de propósito: se o ajuste novo
    * ficar pior, o arquivo anterior ainda existe para comparar.
    */
-  const regerarAudio = useCallback(async (velocidade?: number) => {
+  const regerarAudio = useCallback(async (ajuste: AjusteDeFala = {}) => {
     if (!aberto || regerando) return;
     setRegerando(true);
     try {
@@ -256,7 +339,7 @@ export function AtendenteVirtualPanel() {
       const r = await fetch(externalFunctionUrl('dom-rascunho'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ regerar_audio: aberto.id, ...(velocidade !== undefined ? { velocidade } : {}) }),
+        body: JSON.stringify({ regerar_audio: aberto.id, ...ajuste }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok || !j?.regerado) throw new Error(j?.error || `falhou (HTTP ${r.status})`);
@@ -270,12 +353,20 @@ export function AtendenteVirtualPanel() {
         audio_voz: j.audio_voz ?? null,
         audio_erro: j.audio_erro ?? null,
         audio_velocidade: typeof j.velocidade === 'number' ? j.velocidade : null,
+        audio_estabilidade: typeof j.estabilidade === 'number' ? j.estabilidade : null,
+        audio_estilo: typeof j.estilo === 'number' ? j.estilo : null,
+        audio_pausa_ms: typeof j.pausa_ms === 'number' ? j.pausa_ms : null,
       };
       setAberto(novo);
       const trocar = (lista: Pendente[]) => lista.map(x => (x.id === novo.id ? novo : x));
       setFila(trocar); setEnviadas(trocar); setComHumano(trocar);
 
-      if (j.audio_url) toast.success(`Áudio refeito a ${Number(j.velocidade).toFixed(2)}x`);
+      if (j.audio_url) {
+        toast.success(
+          `Áudio refeito · ${Number(j.velocidade).toFixed(2)}x · tom ${nomeDoTom(j.estabilidade, j.estilo)}`
+          + ` · ${rotuloDaPausa(j.pausa_ms)}`,
+        );
+      }
       else toast.error(`Não consegui gerar: ${j.audio_erro ?? 'sem motivo'}`);
     } catch (e) {
       toast.error(`Não consegui refazer o áudio: ${(e as Error).message}`);
@@ -288,7 +379,7 @@ export function AtendenteVirtualPanel() {
     setCarregando(true);
     try {
       await ensureExternalSession();
-      const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, audio_velocidade, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, contexto_usado, dom_atendentes(nome)';
+      const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, audio_velocidade, audio_estabilidade, audio_estilo, audio_pausa_ms, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, contexto_usado, dom_atendentes(nome)';
       const [f, e, h, s, gp, sf] = await Promise.all([
         // "Na fila" é tudo que AINDA NÃO SAIU — inclusive o que alguém já
         // aprovou. Filtrar só por 'pendente' fazia a resposta aprovada sumir
@@ -1053,31 +1144,96 @@ export function AtendenteVirtualPanel() {
                   {/* Refazer a fala só faz sentido antes de sair: a resposta
                       que já chegou ao cliente não muda de voz nem de ritmo. */}
                   {aberto.status !== 'enviada' && (
-                  <div className="space-y-1 border-t pt-2">
-                    <Label className="text-[11px] text-muted-foreground">
-                      Velocidade da fala
-                      {aberto.audio_velocidade != null && (
-                        <span className="ml-1 font-normal">
-                          · este áudio saiu a <strong>{Number(aberto.audio_velocidade).toFixed(2)}x</strong>
-                        </span>
-                      )}
-                      {aberto.audio_velocidade == null && aberto.audio_url && (
-                        <span className="ml-1 font-normal">· gerado antes deste ajuste (1,10x)</span>
-                      )}
-                    </Label>
-                    <div className="flex flex-wrap gap-1">
-                      {[0.85, 0.9, 0.95, 1.0, 1.05, 1.1].map(v => (
-                        <Button
-                          key={v}
-                          size="sm"
-                          variant={Number(aberto.audio_velocidade) === v ? 'default' : 'outline'}
-                          className="h-7 px-2 text-[11px] tabular-nums"
-                          disabled={regerando}
-                          onClick={() => regerarAudio(v)}>
-                          {v.toFixed(2).replace('.', ',')}x
-                        </Button>
-                      ))}
+                  <div className="space-y-2.5 border-t pt-2">
+
+                    {/* VELOCIDADE — o ritmo. Já existia desde 07/09/2026. */}
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-muted-foreground">
+                        Velocidade da fala
+                        {aberto.audio_velocidade != null && (
+                          <span className="ml-1 font-normal">
+                            · este áudio saiu a <strong>{Number(aberto.audio_velocidade).toFixed(2)}x</strong>
+                          </span>
+                        )}
+                        {aberto.audio_velocidade == null && aberto.audio_url && (
+                          <span className="ml-1 font-normal">· gerado antes deste ajuste (1,10x)</span>
+                        )}
+                      </Label>
+                      <div className="flex flex-wrap gap-1">
+                        {VELOCIDADES.map(v => (
+                          <Button
+                            key={v}
+                            size="sm"
+                            variant={Number(aberto.audio_velocidade) === v ? 'default' : 'outline'}
+                            className="h-7 px-2 text-[11px] tabular-nums"
+                            disabled={regerando}
+                            onClick={() => regerarAudio({ velocidade: v })}>
+                            {v.toFixed(2).replace('.', ',')}x
+                          </Button>
+                        ))}
+                      </div>
                     </div>
+
+                    {/* TOM — a expressividade, NÃO a altura da voz.
+                        Grave/agudo não existe na API da ElevenLabs; isso vem da
+                        gravação que clonou a voz e só muda regravando. O que
+                        muda aqui é o quanto a voz varia ao falar. */}
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-muted-foreground">
+                        Tom da fala
+                        <span className="ml-1 font-normal">
+                          · este áudio saiu <strong>{nomeDoTom(aberto.audio_estabilidade, aberto.audio_estilo)}</strong>
+                          {aberto.audio_estabilidade == null && aberto.audio_url && ' (gerado antes deste ajuste)'}
+                        </span>
+                      </Label>
+                      <div className="flex flex-wrap gap-1">
+                        {TONS.map(t => (
+                          <Button
+                            key={t.nome}
+                            size="sm"
+                            title={t.ajuda}
+                            variant={nomeDoTom(aberto.audio_estabilidade, aberto.audio_estilo) === t.nome ? 'default' : 'outline'}
+                            className="h-7 px-2 text-[11px]"
+                            disabled={regerando}
+                            onClick={() => regerarAudio({ estabilidade: t.estabilidade, estilo: t.estilo })}>
+                            {t.nome}
+                          </Button>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Tom aqui é o quanto a voz <strong>varia</strong>, não grave ou agudo — a altura
+                        da voz vem da gravação que clonou ela e não tem ajuste.
+                      </p>
+                    </div>
+
+                    {/* PAUSA — respiro em cada quebra de linha da resposta. */}
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-muted-foreground">
+                        Pausa entre as linhas
+                        <span className="ml-1 font-normal">
+                          · este áudio saiu <strong>{rotuloDaPausa(aberto.audio_pausa_ms)}</strong>
+                        </span>
+                      </Label>
+                      <div className="flex flex-wrap gap-1">
+                        {PAUSAS.map(p => (
+                          <Button
+                            key={p.ms}
+                            size="sm"
+                            variant={Number(aberto.audio_pausa_ms ?? 0) === p.ms ? 'default' : 'outline'}
+                            className="h-7 px-2 text-[11px]"
+                            disabled={regerando}
+                            onClick={() => regerarAudio({ pausa_ms: p.ms })}>
+                            {p.rotulo}
+                          </Button>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        A pausa entra em <strong>cada quebra de linha</strong> da resposta — é onde quem
+                        escreveu já quis um respiro. Esta é nova: escute uma vez com pausa ligada
+                        antes de confiar nela.
+                      </p>
+                    </div>
+
                     <Button
                       size="sm" variant="outline" className="w-full h-7 text-[11px] gap-1"
                       disabled={regerando}
@@ -1089,8 +1245,8 @@ export function AtendenteVirtualPanel() {
                     <p className="text-[10px] text-muted-foreground">
                       O botão de cima refaz falando o texto que está no campo <strong>já salvo</strong> —
                       se você editou a resposta e ainda não salvou, o áudio sai com o texto antigo.
-                      Escolher uma velocidade passa a valer para todos os próximos áudios
-                      desta voz{aberto.audio_voz ? ` (${aberto.audio_voz})` : ''}.
+                      Qualquer ajuste escolhido aqui passa a valer para todos os próximos áudios
+                      desta voz{aberto.audio_voz ? ` (${aberto.audio_voz})` : ''}, não só para este.
                     </p>
                   </div>
                   )}
