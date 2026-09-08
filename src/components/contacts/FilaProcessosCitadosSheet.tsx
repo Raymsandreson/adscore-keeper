@@ -43,6 +43,8 @@ export interface CitacaoNaFila {
   ultima_em: string | null;
   classe: 'processo_orfao' | 'grupo_sem_cliente' | 'a_conferir' | 'ficha_paralela' | 'caso_diferente' | string;
   o_que_fazer: string | null;
+  /** 'cnj' = processo judicial; 'inss' = requerimento/benefício do INSS (08/09/2026). */
+  tipo?: 'cnj' | 'inss' | null;
 }
 
 const CLASSES: Record<string, { rotulo: string; explica: string }> = {
@@ -86,7 +88,7 @@ export function FilaProcessosCitadosSheet({
     try {
       await ensureExternalSession();
       const { data, error } = await dbAny.from('vw_grupo_processo_desalinhado')
-        .select('group_jid, group_name, processo, cnj, dono_do_processo, leads_donos, ocorrencias, ultima_em, classe, o_que_fazer')
+        .select('group_jid, group_name, processo, cnj, dono_do_processo, leads_donos, ocorrencias, ultima_em, classe, o_que_fazer, tipo')
         .order('ocorrencias', { ascending: false });
       if (error) throw error;
       const rows = (data as CitacaoNaFila[]) || [];
@@ -221,13 +223,13 @@ export function FilaProcessosCitadosSheet({
                     </Badge>
                   </div>
                   <p className="text-[11px]">
-                    cita o processo <span className="font-mono">{l.processo || l.cnj}</span>
+                    cita {l.tipo === 'inss' ? 'o requerimento INSS' : 'o processo'} <span className="font-mono">{l.processo || l.cnj}</span>
                     {typeof l.ocorrencias === 'number' && ` · ${l.ocorrencias}×`}
                     {l.ultima_em && ` · última em ${dataBR(l.ultima_em)}`}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
                     {l.classe === 'processo_orfao'
-                      ? 'processo não cadastrado em nenhum lead'
+                      ? (l.tipo === 'inss' ? 'requerimento não cadastrado em nenhum lead' : 'processo não cadastrado em nenhum lead')
                       : <>processo está no lead: <span className="font-medium">{l.dono_do_processo || '—'}</span></>}
                   </p>
                   {l.classe === 'caso_diferente' && (
