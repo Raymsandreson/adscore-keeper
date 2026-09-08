@@ -1,4 +1,11 @@
-// send-whatsapp v28 (projeto externo kmedldlepwiityjsdahz)
+// send-whatsapp v29 (projeto externo kmedldlepwiityjsdahz)
+//
+// v29: NOTA DE VOZ NÃO LEVA LEGENDA. A guarda de caption em send_media era
+// `sb.type !== 'audio'` — mas nota de voz tem type 'ptt', então passava. Quem
+// mandasse caption com ptt entregaria a voz E o texto, os dois. Nenhum caller
+// fazia isso hoje (a fila de áudio omite caption de propósito), então isto é
+// fechar a porta antes de alguém entrar por ela.
+// ROLLBACK: index.v28.rollback.ts (espelho fiel da v28 deployada).
 //
 // v28: AUTORIA DO ENVIO. Cada mensagem que sai daqui grava em
 // `whatsapp_message_authors` (externo) quem da equipe mandou. Antes, a única
@@ -619,7 +626,11 @@ Deno.serve(async (req)=>{
         sb.type = 'document';
         mtype = 'document';
       }
-      if (body.caption && sb.type !== 'audio') sb.caption = body.caption;
+      // v29: 'ptt' TAMBÉM não leva legenda. A guarda antiga só barrava 'audio'
+      // e deixava a nota de voz passar — quem mandasse caption junto entregaria
+      // a voz E o texto ao cliente, que é exatamente o que a fila de áudio do
+      // atendente virtual existe para evitar (a mesma coisa dita duas vezes).
+      if (body.caption && sb.type !== 'audio' && sb.type !== 'ptt') sb.caption = body.caption;
       // v24: mídia também pode sair citando uma mensagem.
       if (typeof body.replyid === 'string' && body.replyid.trim()) sb.replyid = body.replyid.trim();
       const ur = await fetch(`${base}/send/media`, {

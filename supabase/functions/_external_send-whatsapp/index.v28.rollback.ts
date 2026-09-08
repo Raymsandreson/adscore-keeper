@@ -1,16 +1,37 @@
-// ⚠️ CÓPIA OBSOLETA — NÃO DEPLOYAR ESTE ARQUIVO. ⚠️
+// send-whatsapp v28 (projeto externo kmedldlepwiityjsdahz)
 //
-// A fonte real da send-whatsapp mora em `supabase/functions/_external_send-
-// whatsapp/index.ts` (diretório com UNDERSCORE, não com barra) e está na v29.
-// Este arquivo parou na v25. Deployar a partir daqui APAGA de produção:
-//   · v26 — gate de opt-out (quem pediu para não receber voltaria a receber;
-//           é obrigação de LGPD, não conveniência);
-//   · v27 — send_contact e send_poll;
-//   · v28 — autoria do envio (whatsapp_message_authors);
-//   · v29 — nota de voz sem legenda.
-// Descoberto em 08/09/2026, quando os dois diretórios foram confundidos.
+// v28: AUTORIA DO ENVIO. Cada mensagem que sai daqui grava em
+// `whatsapp_message_authors` (externo) quem da equipe mandou. Antes, a única
+// pista de autor era o prefixo `*Nome:*` colado no TEXTO pelo client — áudio e
+// mídia saíam sem assinatura nenhuma e ninguém sabia quem tinha gravado o áudio
+// que o cliente ouviu.
+// O autor NÃO vem do body: vem do JWT do header Authorization, validado contra
+// o Supabase Cloud (`auth.getUser`). Ninguém assina no lugar de outro, e envio
+// automático (agente de IA, robô do INSS — que chamam com service/anon key)
+// fica corretamente SEM autor.
+// Grava em tabela própria, e não numa coluna de `whatsapp_messages`, porque a
+// linha da mensagem é disputada: o webhook da UazAPI insere a mesma mensagem e
+// venceu em 97,7% dos casos medidos (3.544/3.628 outbound em 48h) — a coluna
+// seria apagada pela corrida. Ver o comentário da migration
+// 20260904120000_whatsapp_message_authors.sql.
+// A gravação é best-effort e nunca derruba um envio: falha vira log.
+// ROLLBACK: index.v27.rollback.ts (espelho fiel da v27 deployada).
 //
-// send-whatsapp v25 (projeto externo kmedldlepwiityjsdahz)
+// v27: actions send_contact (UazAPI /send/contact, vCard clicável) e send_poll
+// (UazAPI /send/menu type=poll — não existe /send/poll). As duas entram no
+// gate de opt-out e gravam com storagePhone, como as demais. Alimentam os
+// itens "Contato" e "Enquete" do menu de anexo dos chats.
+// ROLLBACK: index.v26.rollback.ts (espelho fiel da v26 deployada).
+//
+// v26: GATE DE OPT-OUT. Envio 1:1 para número com opt-out ativo em
+// `whatsapp_optouts` é recusado com error_code RECIPIENT_OPTED_OUT (não
+// retryable), em vez de sair. É a primeira vez que "não me manda mais" vale
+// alguma coisa no sistema: `leads.is_blocked` existia e estava em 0 de 21.439
+// leads porque nenhuma das ~40 chamadas de envio consultava. Grupos e links de
+// convite não passam pelo gate; `ignore_optout: true` no body pula (aviso
+// processual a cliente ativo) e fica no log.
+// ROLLBACK: apagar o bloco marcado "v26: GATE DE OPT-OUT" e redeployar — o
+// resto da função fica idêntico à v25.
 //
 // v25: `phone` gravado em whatsapp_messages sempre em dígitos (`storagePhone`),
 // mesmo quando o envio vai para o JID do grupo. Antes gravava o JID cru e a
@@ -87,6 +108,21 @@ function storagePhone(t) {
 }
 function getTarget(p, c) {
   return typeof c === 'string' && c.trim() ? c.trim() : typeof p === 'string' && p.trim() ? p.trim() : '';
+}
+/**
+ * v26: chave canônica do telefone para o gate de opt-out — 55 + DDD + 8 últimos
+ * dígitos. Espelha `public.wa_optout_key(text)` e a edge whatsapp-optout;
+ * mudar aqui exige mudar nos dois. Existe porque o mesmo número aparece nas
+ * duas formas no banco (1.372 números com 12 dígitos e 729 com 13 nos últimos
+ * 30 dias) — sem normalizar, quem pediu para sair por uma forma continuaria
+ * recebendo pela outra.
+ */
+function optoutKey(raw) {
+  let v = String(raw ?? '').replace(/@.*$/, '').replace(/\D/g, '');
+  if (!v) return null;
+  if (v.length >= 10 && v.length <= 11) v = '55' + v;
+  if (v.startsWith('55') && v.length === 13 && v[4] === '9') v = v.slice(0, 4) + v.slice(5);
+  return v || null;
 }
 function jsonResp(p, s = 200) {
   return new Response(JSON.stringify(p), {
@@ -236,6 +272,99 @@ async function resolveGroupLink(inst, link) {
     groupName: d?.Name || d?.name || d?.subject || ''
   };
 }
+/**
+ * v28: cache user_id -> nome, vivo enquanto o isolate viver. Evita uma consulta
+ * a `profiles` por mensagem enviada num atendimento inteiro.
+ */
+const nomeDoAutorCache = new Map();
+/**
+ * v28: token -> autor já validado. Um disparo em lote (lista de transmissão,
+ * cobrança de pendências) usa o MESMO token em N mensagens; sem este cache
+ * seriam N validações de JWT + N consultas a `profiles`.
+ * O token da sessão expira em ~1h, então a entrada envelhece sozinha.
+ */
+const autorPorTokenCache = new Map();
+/**
+ * v28: quem está mandando, segundo o JWT — nunca segundo o body.
+ *
+ * O client chama o proxy do Cloud com o `Authorization` da sessão do usuário e
+ * o proxy repassa o header pra cá. `auth.getUser(token)` valida o token contra
+ * o próprio Cloud: token forjado ou expirado devolve null, e envio de robô
+ * (service/anon key, sem usuário) também devolve null — que é o certo.
+ */
+async function identificarAutor(req, cloudClient) {
+  const raw = req.headers.get('authorization') || '';
+  const token = raw.replace(/^Bearer\s+/i, '').trim();
+  if (!token || token.split('.').length !== 3) return null;
+  if (autorPorTokenCache.has(token)) return autorPorTokenCache.get(token);
+  try {
+    const { data, error } = await cloudClient.auth.getUser(token);
+    const u = data?.user;
+    if (error || !u?.id) {
+      // Também memoriza o "não é usuário" (anon/service key do robô), senão
+      // todo envio automático paga a validação de novo.
+      if (autorPorTokenCache.size < 200) autorPorTokenCache.set(token, null);
+      return null;
+    }
+    if (!nomeDoAutorCache.has(u.id)) {
+      const { data: p } = await cloudClient.from('profiles').select('full_name').eq('user_id', u.id).maybeSingle();
+      nomeDoAutorCache.set(u.id, p?.full_name || u.email || null);
+    }
+    const autor = {
+      user_id: u.id,
+      name: nomeDoAutorCache.get(u.id) || null
+    };
+    if (autorPorTokenCache.size < 200) autorPorTokenCache.set(token, autor);
+    return autor;
+  } catch (e) {
+    console.warn('[send-whatsapp] identificarAutor falhou:', e?.message);
+    return null;
+  }
+}
+/**
+ * v28: grava a autoria da mensagem recém-enviada.
+ *
+ * `ignoreDuplicates` porque o mesmo external_message_id nunca muda de dono —
+ * se já existe linha, a primeira é a boa. Sem eid (ex.: send_location, que não
+ * devolve id) não há como amarrar a autoria: pula em silêncio.
+ */
+async function registrarAutoria(cloudClient, extClient, req, dados) {
+  if (!dados?.eid) return;
+  try {
+    const autor = await identificarAutor(req, cloudClient);
+    if (!autor) return;
+    const { error } = await extClient.from('whatsapp_message_authors').upsert({
+      external_message_id: dados.eid,
+      phone: dados.phone || null,
+      instance_name: dados.instance_name || null,
+      sent_by_user_id: autor.user_id,
+      sent_by_name: autor.name
+    }, {
+      onConflict: 'external_message_id',
+      ignoreDuplicates: true
+    });
+    if (error) console.warn('[send-whatsapp] autoria não gravada:', error.code, error.message);
+  } catch (e) {
+    console.warn('[send-whatsapp] autoria não gravada:', e?.message);
+  }
+}
+/**
+ * v28: roda a gravação da autoria FORA do caminho da resposta quando o runtime
+ * permite (`EdgeRuntime.waitUntil`). Sem isso, o atendente esperaria dois
+ * requests extras (validar JWT + gravar) pra ver a própria bolha aparecer.
+ */
+function semSegurarResposta(p) {
+  // @ts-ignore — EdgeRuntime é global do runtime do Supabase, não do Deno padrão.
+  const rt = globalThis.EdgeRuntime;
+  if (rt && typeof rt.waitUntil === 'function') {
+    try {
+      rt.waitUntil(p);
+      return null;
+    } catch  {
+    /* cai no await abaixo */ }
+  }
+  return p;
+}
 Deno.serve(async (req)=>{
   if (req.method === 'OPTIONS') return new Response(null, {
     headers: cors
@@ -255,6 +384,10 @@ Deno.serve(async (req)=>{
         'Content-Type': 'application/json'
       };
       if (RAILWAY_API_KEY) headers['x-api-key'] = RAILWAY_API_KEY;
+      // v28: repassa a identidade de quem enviou para o Railway registrar a
+      // autoria (whatsapp_message_authors), como fazemos no caminho UazAPI.
+      const authDoUsuario = req.headers.get('authorization');
+      if (authDoUsuario) headers['Authorization'] = authDoUsuario;
       const r = await fetch(`${RAILWAY_URL}/functions/send-whatsapp-cloud`, {
         method: 'POST',
         headers,
@@ -276,7 +409,9 @@ Deno.serve(async (req)=>{
     const useTarget = action === undefined || [
       'send_media',
       'send_location',
-      'send_text'
+      'send_text',
+      'send_contact',
+      'send_poll'
     ].includes(action);
     const tgt = getTarget(body.phone, body.chat_id);
     if (useTarget && isInviteLink(tgt)) {
@@ -296,6 +431,55 @@ Deno.serve(async (req)=>{
         });
       }
     }
+    // === v26: GATE DE OPT-OUT ===
+    // Quem pediu para não receber mais não recebe — e é aqui que isso vale,
+    // porque este arquivo é a fonte REAL do envio: são ~40 pontos de chamada
+    // espalhados pelo sistema e nenhum deles checava nada. Antes desta versão,
+    // `leads.is_blocked` existia e estava em 0 de 21.439 leads, sem nenhum
+    // consumidor — marcar alguém como bloqueado não impedia envio nenhum.
+    //
+    // Só vale para 1:1: grupo e link de convite passam direto (opt-out é do
+    // indivíduo, não do grupo). `ignore_optout: true` é a válvula para o caso
+    // legítimo — cliente ativo com processo em andamento que precisa de aviso
+    // processual — e fica registrada no log de quem usou.
+    //
+    // Falha de consulta NÃO bloqueia envio: banco fora do ar não pode virar
+    // parada de atendimento. O gate é conservador para o lado de entregar.
+    if (useTarget && tgt && !isGroupJid(tgt) && !isInviteLink(tgt) && body.ignore_optout === true) {
+      // Bypass sempre deixa rastro: se um dia voltarmos a receber denúncia, é
+      // por aqui que se descobre quem furou a fila.
+      console.warn('[send-whatsapp] GATE DE OPT-OUT IGNORADO (ignore_optout=true):', {
+        phone: `***${String(tgt).replace(/\D/g, '').slice(-4)}`,
+        instance_name: body.instance_name || null,
+        motivo: body.ignore_optout_reason || 'não informado'
+      });
+    }
+    if (useTarget && tgt && !isGroupJid(tgt) && !isInviteLink(tgt) && body.ignore_optout !== true) {
+      const key = optoutKey(tgt);
+      if (key) {
+        try {
+          const { data: optout } = await extClient.from('whatsapp_optouts').select('id, created_at, source').eq('phone_key', key).is('revoked_at', null).maybeSingle();
+          if (optout) {
+            console.log('[send-whatsapp] envio barrado por opt-out:', {
+              phone: `***${key.slice(-4)}`,
+              optout_id: optout.id,
+              desde: optout.created_at,
+              origem: optout.source
+            });
+            return jsonResp({
+              success: false,
+              error: 'Este número pediu para não receber mais mensagens. Envio bloqueado.',
+              error_code: 'RECIPIENT_OPTED_OUT',
+              retryable: false,
+              opted_out_at: optout.created_at
+            });
+          }
+        } catch (e) {
+          console.warn('[send-whatsapp] consulta de opt-out falhou, seguindo com o envio:', e?.message);
+        }
+      }
+    }
+    // === END GATE DE OPT-OUT ===
     if (action === 'resolve_group_link') {
       if (!body.group_link) return jsonResp({
         success: false,
@@ -473,6 +657,14 @@ Deno.serve(async (req)=>{
         external_message_id: eid
       };
       const sm = await saveMsg(cloudClient, extClient, row);
+      // v28: é aqui que a autoria do áudio/mídia passa a existir — o caption
+      // não carrega assinatura e o áudio nem caption tem.
+      const autoriaMidia = semSegurarResposta(registrarAutoria(cloudClient, extClient, req, {
+        eid,
+        phone: row.phone,
+        instance_name: row.instance_name
+      }));
+      if (autoriaMidia) await autoriaMidia;
       if (!sm) {
         const { data: em } = await extClient.from('whatsapp_messages').insert(row).select('id').single();
         return jsonResp({
@@ -541,6 +733,153 @@ Deno.serve(async (req)=>{
       return jsonResp({
         success: true,
         message_id: sm?.id,
+        instance_name: inst.instance_name
+      });
+    }
+    if (action === 'send_contact') {
+      // v27: vCard clicável — o "Contato" do menu de anexo.
+      const target = getTarget(body.phone, body.chat_id);
+      const fullName = typeof body.full_name === 'string' ? body.full_name.trim() : '';
+      const phoneNumber = typeof body.phone_number === 'string' ? body.phone_number.trim() : '';
+      if (!target || !fullName || !phoneNumber) return jsonResp({
+        success: false,
+        error: 'phone/chat_id, full_name and phone_number required'
+      });
+      const inst = await getInstance(cloudClient, extClient, body.instance_id, target, body.instance_name);
+      if (!inst) return jsonResp({
+        success: false,
+        error: 'No active instance'
+      });
+      const base = inst.base_url || 'https://abraci.uazapi.com';
+      const sb = {
+        number: target,
+        fullName,
+        phoneNumber
+      };
+      if (body.organization) sb.organization = String(body.organization);
+      if (body.email) sb.email = String(body.email);
+      const ur = await fetch(`${base}/send/contact`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          token: inst.instance_token
+        },
+        body: JSON.stringify(sb)
+      });
+      if (!ur.ok) {
+        const et = await readSafe(ur);
+        if (isDisc(ur.status, et)) return jsonResp(discPayload(inst.instance_name, et));
+        return jsonResp({
+          success: false,
+          error: `Erro contato: ${et || ur.status}`,
+          error_code: /not participating/i.test(et) ? 'NOT_IN_GROUP' : 'SEND_FAILED',
+          instance_name: inst.instance_name
+        });
+      }
+      const ud = await ur.json().catch(()=>({}));
+      const eid = ud?.key?.id || ud?.id || null;
+      const row = {
+        phone: storagePhone(target),
+        message_text: `👤 ${fullName}\n${phoneNumber}`,
+        message_type: 'contact',
+        direction: 'outbound',
+        status: 'sent',
+        contact_id: body.contact_id || null,
+        lead_id: body.lead_id || null,
+        instance_name: inst.instance_name,
+        instance_token: inst.instance_token,
+        external_message_id: eid,
+        metadata: {
+          contact_full_name: fullName,
+          contact_phone_number: phoneNumber,
+          contact_organization: body.organization || null,
+          contact_email: body.email || null
+        }
+      };
+      const sm = await saveMsg(cloudClient, extClient, row);
+      const autoriaContato = semSegurarResposta(registrarAutoria(cloudClient, extClient, req, {
+        eid,
+        phone: row.phone,
+        instance_name: row.instance_name
+      }));
+      if (autoriaContato) await autoriaContato;
+      return jsonResp({
+        success: true,
+        message_id: sm?.id,
+        external_message_id: eid,
+        instance_name: inst.instance_name
+      });
+    }
+    if (action === 'send_poll') {
+      // v27: enquete nativa do WhatsApp — o "Enquete" do menu de anexo.
+      const target = getTarget(body.phone, body.chat_id);
+      const question = typeof body.question === 'string' ? body.question.trim() : '';
+      const choices = Array.isArray(body.choices) ? body.choices.map((c)=>String(c).trim()).filter(Boolean) : [];
+      if (!target || !question || choices.length < 2) return jsonResp({
+        success: false,
+        error: 'phone/chat_id, question and at least 2 choices required'
+      });
+      const inst = await getInstance(cloudClient, extClient, body.instance_id, target, body.instance_name);
+      if (!inst) return jsonResp({
+        success: false,
+        error: 'No active instance'
+      });
+      const base = inst.base_url || 'https://abraci.uazapi.com';
+      const selectableCount = Math.max(1, Math.min(Number(body.selectable_count) || 1, choices.length));
+      const ur = await fetch(`${base}/send/menu`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          token: inst.instance_token
+        },
+        body: JSON.stringify({
+          number: target,
+          type: 'poll',
+          text: question,
+          choices,
+          selectableCount
+        })
+      });
+      if (!ur.ok) {
+        const et = await readSafe(ur);
+        if (isDisc(ur.status, et)) return jsonResp(discPayload(inst.instance_name, et));
+        return jsonResp({
+          success: false,
+          error: `Erro enquete: ${et || ur.status}`,
+          error_code: /not participating/i.test(et) ? 'NOT_IN_GROUP' : 'SEND_FAILED',
+          instance_name: inst.instance_name
+        });
+      }
+      const ud = await ur.json().catch(()=>({}));
+      const eid = ud?.key?.id || ud?.id || null;
+      const row = {
+        phone: storagePhone(target),
+        message_text: `📊 ${question}\n${choices.map((c)=>`▢ ${c}`).join('\n')}`,
+        message_type: 'poll',
+        direction: 'outbound',
+        status: 'sent',
+        contact_id: body.contact_id || null,
+        lead_id: body.lead_id || null,
+        instance_name: inst.instance_name,
+        instance_token: inst.instance_token,
+        external_message_id: eid,
+        metadata: {
+          poll_question: question,
+          poll_choices: choices,
+          poll_selectable_count: selectableCount
+        }
+      };
+      const sm = await saveMsg(cloudClient, extClient, row);
+      const autoriaEnquete = semSegurarResposta(registrarAutoria(cloudClient, extClient, req, {
+        eid,
+        phone: row.phone,
+        instance_name: row.instance_name
+      }));
+      if (autoriaEnquete) await autoriaEnquete;
+      return jsonResp({
+        success: true,
+        message_id: sm?.id,
+        external_message_id: eid,
         instance_name: inst.instance_name
       });
     }
@@ -643,6 +982,12 @@ Deno.serve(async (req)=>{
       external_message_id: eid
     };
     const sm = await saveMsg(cloudClient, extClient, row);
+    const autoriaTexto = semSegurarResposta(registrarAutoria(cloudClient, extClient, req, {
+      eid,
+      phone: row.phone,
+      instance_name: row.instance_name
+    }));
+    if (autoriaTexto) await autoriaTexto;
     if (!sm) {
       console.warn('Cloud save failed, saving to ext backup');
       const { data: em } = await extClient.from('whatsapp_messages').insert(row).select('id').single();
