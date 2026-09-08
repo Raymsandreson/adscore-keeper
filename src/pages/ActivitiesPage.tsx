@@ -42,7 +42,7 @@ import { buildNotificationAt, hydrateNotificationTime } from "@/lib/notification
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
 import { CompleteAndNotifyDialog, fetchLeadGroupOptions, type GroupOption } from '@/components/activities/CompleteAndNotifyDialog';
 import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
-import { ActivityMovementsPanel } from '@/components/activities/ActivityMovementsPanel';
+import { ActivityHandoffSummary, ActivityMovementsPanel } from '@/components/activities/ActivityMovementsPanel';
 import { describeActivityAuthor } from '@/lib/activityHistory';
 import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
@@ -6594,6 +6594,14 @@ const ActivitiesPage = () => {
                         em {format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm")}
                       </p>
                     )}
+                    {/* Por quantas mãos passou — a pergunta seguinte a "quem
+                        criou" e "quem mexeu por último". Fica aqui, e não só na
+                        aba Histórico, porque quem lê o rodapé já está com a
+                        dúvida na cabeça. Some quando não há repasse gravado. */}
+                    <ActivityHandoffSummary
+                      activityId={selectedActivity.id}
+                      resolveUserName={resolveUserName}
+                    />
                   </div>
                 )}
               </div>

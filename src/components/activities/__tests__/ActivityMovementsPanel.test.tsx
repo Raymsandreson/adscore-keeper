@@ -44,7 +44,7 @@ vi.mock('@/integrations/supabase', () => ({
   ensureExternalSession: async () => {},
 }));
 
-import { ActivityMovementsPanel } from '../ActivityMovementsPanel';
+import { ActivityHandoffSummary, ActivityMovementsPanel } from '../ActivityMovementsPanel';
 
 const evento = (over: Record<string, unknown>) => ({
   id: String(over.id),
@@ -116,5 +116,36 @@ describe('ActivityMovementsPanel', () => {
     render(<ActivityMovementsPanel activityId="a3" activityCreatedAt="2026-09-05T09:00:00-03:00" />);
 
     expect(await screen.findByText('Nenhuma movimentação registrada para esta atividade.')).toBeInTheDocument();
+  });
+});
+
+describe('ActivityHandoffSummary (rodapé da ficha)', () => {
+  it('mostra a cadeia de responsáveis junto de "Criado por"', async () => {
+    DATA.audit = CADEIA_REAL;
+    DATA.profiles = [];
+    render(<ActivityHandoffSummary activityId="07252a98" />);
+
+    expect(await screen.findByText('Repassada 2 vezes:')).toBeInTheDocument();
+    expect(screen.getByText('Jose Francisco Campos de Oliveira')).toBeInTheDocument();
+    expect(screen.getAllByText('Luana Barros').length).toBeGreaterThan(0);
+    expect(screen.getByText('Gisele Borges dos Santos')).toBeInTheDocument();
+    expect(screen.getByText('por Keliane Sousa Amorim Araújo')).toBeInTheDocument();
+  });
+
+  it('não desenha nada quando a atividade nunca foi repassada', async () => {
+    DATA.audit = [evento({ id: '1', action: 'insert', changes: null, created_at: '2026-09-05T09:00:00-03:00' })];
+    render(
+      <div>
+        <div data-testid="resumo">
+          <ActivityHandoffSummary activityId="a4" />
+        </div>
+        {/* O painel ao lado prova que o carregamento terminou — sem ele, o
+            resumo vazio passaria só por ainda estar em loading. */}
+        <ActivityMovementsPanel activityId="a4" activityCreatedAt="2026-09-05T09:00:00-03:00" />
+      </div>,
+    );
+
+    expect(await screen.findByText('Atividade criada')).toBeInTheDocument();
+    expect(screen.getByTestId('resumo').textContent).toBe('');
   });
 });
