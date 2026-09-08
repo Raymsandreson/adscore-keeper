@@ -2319,6 +2319,20 @@ Rota de fuga: `dom_contexto_processual_antes_peca_clicavel` guarda a versão
 anterior, criada pela própria migration antes de alterar. Remover só após 24h
 verdes.
 
+**Aplicada em produção em 08/09/2026** (Externo `kmedldlepwiityjsdahz`), com
+autorização do dono. Conferido logo depois, contra o banco real:
+
+| conferência | resultado |
+|---|---|
+| peças do grupo `120363405106042327` | 6 de 6 com `id` e `arquivo` |
+| `arquivo` que existe em `storage.objects` (bucket `jm-autos`) | 6 de 6 |
+| 20 grupos com peça lida, 84 peças | 0 sem `id` ou `arquivo` |
+| contexto novo vs. `..._antes_peca_clicavel`, tirando `id` e `arquivo` | **0 diferenças** nos 20 grupos |
+
+A última linha é a que importa para dormir tranquilo: fora as duas chaves novas,
+o contexto que vai para o prompt é byte a byte o mesmo de antes. Nenhuma outra
+chave, CTE ou ordenação mudou de comportamento.
+
 ### Rascunho antigo: procura, e não chuta
 
 Rascunho gravado antes disso não tem `id` nem `arquivo` — o retrato já foi
