@@ -82,7 +82,11 @@ export function AtendenteDeCasoSection({ agentId }: { agentId: string | null | u
       // As vozes clonadas moram no CLOUD; no Externo a mesma tabela tem RLS
       // `user_id = auth.uid()` com uuid do Cloud gravado — nunca casa.
       supabase.from('custom_voices').select('id, name').eq('status', 'ready').order('name'),
-      dbAny.from('dom_grupos_piloto').select('group_jid, group_name, modo, ativo').order('group_name'),
+      // `so_varredura = false`: desde 08/09/2026 a tabela também guarda os
+      // grupos de caso onde o Dom NÃO fala, só para a varredura de processos
+      // citados. São 1.331 — aqui é a lista de onde o Dom responde, não a
+      // lista de tudo que o sistema lê.
+      dbAny.from('dom_grupos_piloto').select('group_jid, group_name, modo, ativo').eq('so_varredura', false).order('group_name'),
       dbAny.from('dom_atendentes').select('id, nome, whatsapp, escopo, is_active, position').order('position'),
     ]);
     const cfg = a.data as any;
