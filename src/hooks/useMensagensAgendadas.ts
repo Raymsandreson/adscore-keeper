@@ -22,6 +22,15 @@ export interface MensagemAgendada {
   contact_name: string | null;
   mensagem: string;
   mensagem_original: string | null;
+  /**
+   * Arquivo que sai NO LUGAR do texto — hoje, a fala do atendente virtual
+   * quando o cliente mandou áudio. `mensagem` continua sendo o registro do que
+   * foi dito; é ela que esta bolha mostra. Nulo = sai texto.
+   */
+  media_url: string | null;
+  media_type: string | null;
+  /** Ligado: o áudio sai como nota de voz, não como arquivo anexado. */
+  media_ptt: boolean | null;
   replyid: string | null;
   mentions: string[] | null;
   proximo_envio_at: string;
@@ -79,7 +88,7 @@ const SELECT = `id, phone, chat_id, instance_name, contact_id, lead_id, contact_
   unidade, dias_da_semana, repetir_ate, max_envios, ativo, total_enviado, ultimo_envio_at,
   ultimo_erro, encerrado_motivo, pular_se_responder, ultima_verificacao_at, ultimo_resultado,
   criado_por, criado_por_nome, criado_em, cancelado_em,
-  cancelado_por_nome`;
+  cancelado_por_nome, media_url, media_type, media_ptt`;
 
 /** `repetir_ate` é DATE no banco — só o dia, sem fuso para atrapalhar. */
 const soODia = (d: Date | null): string | null => {

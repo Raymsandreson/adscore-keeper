@@ -372,12 +372,30 @@ export function AtendenteVirtualPanel() {
    */
   const porNaFilaDeEnvio = async (p: Pendente, corpo: string) => {
     const quando = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    // QUEM FALOU POR VOZ RECEBE VOZ. O áudio já estava pronto e tocava aqui do
+    // lado — o que faltava era o cano: até 08/09/2026 a fila só sabia carregar
+    // texto, então a resposta falada morria no painel e a cliente que mandou
+    // três áudios recebeu parágrafo (Caso 09, 07/09/2026).
+    //
+    // Vai SÓ a nota de voz, sem o texto atrás: mandar os dois é a mesma coisa
+    // dita duas vezes. O texto continua gravado em `mensagem`, que é o registro
+    // do que foi dito e o que a bolha da conversa mostra.
+    //
+    // Áudio editado NÃO sai: se a pessoa mexeu no texto, a fala gravada não é
+    // mais essa resposta. Nesse caso sai o texto, e o botão avisa antes.
+    // `audio_erro` COM url é o áudio que ficou pela metade (teto de fala): ele
+    // soa completo e omite o final, o que é pior que mandar escrito.
+    const falaVale = !!p.audio_url && !p.audio_erro
+      && corpo === (p.resposta_final || p.resposta_sugerida);
     const { data: ag, error: errAg } = await dbAny.from('whatsapp_mensagens_agendadas').insert({
       phone: p.group_jid,
       instance_name: p.instance_name,
       contact_name: p.group_name,
       mensagem: corpo,
       mensagem_original: corpo,
+      media_url: falaVale ? p.audio_url : null,
+      media_type: falaVale ? 'audio/mpeg' : null,
+      media_ptt: falaVale,
       proximo_envio_at: quando,
       repeticao: 'nenhuma',
       intervalo: 1,
@@ -687,7 +705,7 @@ export function AtendenteVirtualPanel() {
               rodape={
                 p.audio_url ? (
                   <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                    <Volume2 className="h-3 w-3" />gravou em áudio — abra para escutar
+                    <Volume2 className="h-3 w-3" />vai como nota de voz — abra para escutar antes
                   </p>
                 ) : p.agendamento_id && saiEm[p.agendamento_id] ? (
                   <p className="text-[10px] text-emerald-700 font-medium">
@@ -762,8 +780,14 @@ export function AtendenteVirtualPanel() {
 
         <TabsContent value="enviadas" className="space-y-2 pt-3">
           {enviadasF.length === 0 && vazio('Nenhuma mensagem chegou ao cliente ainda.')}
+          {/* Clicável como na fila, e pelo mesmo motivo: conferir de onde saiu a
+              resposta só vale se der para conferir DEPOIS que ela saiu. Sem
+              isto, a única aba onde a pergunta "em que ele se baseou?" aparece
+              de verdade — a das mensagens que o cliente já leu — era a única
+              que não respondia. O painel abre em leitura: o que saiu, saiu. */}
           {enviadasF.map(p => (
             <LinhaPendente key={p.id} p={p}
+              onClick={() => { setAberto(p); setTexto(p.resposta_final || p.resposta_sugerida); }}
               rodape={<p className="text-[10px] text-emerald-700">
                 Enviada em {p.enviado_em ? quando(p.enviado_em) : '—'}
               </p>} />
@@ -880,8 +904,21 @@ export function AtendenteVirtualPanel() {
                 </div>
               )}
               <div className="space-y-1">
-                <Label className="text-xs">Resposta sugerida (dá para editar)</Label>
-                <Textarea className="text-xs min-h-[180px]" value={texto} onChange={e => setTexto(e.target.value)} />
+                {aberto.status === 'enviada' ? (
+                  <>
+                    {/* Já chegou ao cliente: editar aqui não muda o que ele leu,
+                        só mentiria sobre o que foi dito. */}
+                    <Label className="text-xs">O que foi enviado</Label>
+                    <p className="text-xs bg-muted rounded p-2 whitespace-pre-wrap">
+                      {aberto.resposta_final || aberto.resposta_sugerida}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Label className="text-xs">Resposta sugerida (dá para editar)</Label>
+                    <Textarea className="text-xs min-h-[180px]" value={texto} onChange={e => setTexto(e.target.value)} />
+                  </>
+                )}
               </div>
 
               {/* As fontes que geraram a resposta. Vêm DEPOIS dela de propósito:
@@ -922,6 +959,9 @@ export function AtendenteVirtualPanel() {
                       próximos áudios desta voz, não só para este. Voz diferente
                       pede ritmo diferente: quem fala pausado na gravação
                       original soa arrastado a 0,90x. */}
+                  {/* Refazer a fala só faz sentido antes de sair: a resposta
+                      que já chegou ao cliente não muda de voz nem de ritmo. */}
+                  {aberto.status !== 'enviada' && (
                   <div className="space-y-1 border-t pt-2">
                     <Label className="text-[11px] text-muted-foreground">
                       Velocidade da fala
@@ -962,10 +1002,15 @@ export function AtendenteVirtualPanel() {
                       desta voz{aberto.audio_voz ? ` (${aberto.audio_voz})` : ''}.
                     </p>
                   </div>
+                  )}
                   <p className="text-[10px] text-muted-foreground">
-                    Este áudio <strong>não foi enviado</strong> e não vai sair sozinho — nem em grupo
-                    que responde sozinho, onde quem sai é o texto. Ele existe para você ouvir antes
-                    de decidir se o atendente pode falar.
+                    {aberto.status === 'enviada'
+                      ? 'Esta é a fala que acompanhou a resposta.'
+                      : aberto.audio_erro
+                        ? 'Esta fala está incompleta, então ela NÃO sai: vai o texto. Refaça o áudio para poder mandar falado.'
+                        : texto === (aberto.resposta_final || aberto.resposta_sugerida)
+                          ? 'É ISTO que chega no cliente: só a nota de voz, sem o texto atrás. Escute antes de aprovar.'
+                          : 'Você editou o texto, então esta fala não é mais esta resposta — vai sair o TEXTO. Para mandar falado, use "Refazer com o texto de agora" depois de salvar.'}
                   </p>
                 </div>
               )}
@@ -973,7 +1018,19 @@ export function AtendenteVirtualPanel() {
                 onClick={() => abrirConversa(aberto.group_jid, aberto.instance_name, aberto.group_name)}>
                 <MessagesSquare className="h-3.5 w-3.5" />Abrir a conversa do grupo
               </Button>
-              {aberto.agendamento_id && saiEm[aberto.agendamento_id] ? (
+              {aberto.status === 'enviada' ? (
+                // Não há decisão a tomar sobre o que já foi lido. Mostrar
+                // "Aprovar e enviar" aqui criaria uma segunda cópia da mesma
+                // resposta na fila — o botão certo é nenhum.
+                <div className="rounded border border-emerald-600/40 bg-emerald-600/5 p-2 text-center">
+                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                    Já chegou ao cliente{aberto.enviado_em ? ` em ${quando(aberto.enviado_em)}` : ''}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Esta tela é só para conferir o que foi dito e de onde saiu.
+                  </p>
+                </div>
+              ) : aberto.agendamento_id && saiEm[aberto.agendamento_id] ? (
                 // Já está indo. Mostrar "aprovar" aqui seria mentira — e pior,
                 // faria a pessoa achar que a mensagem depende dela.
                 <>
@@ -997,7 +1054,9 @@ export function AtendenteVirtualPanel() {
                     disabled={enviando || !texto.trim()}
                     onClick={() => aprovarEEnviar(aberto)}>
                     {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SendHorizonal className="h-3.5 w-3.5" />}
-                    Aprovar e enviar (sai em 5 min)
+                    {aberto.audio_url && !aberto.audio_erro && texto === (aberto.resposta_final || aberto.resposta_sugerida)
+                      ? 'Aprovar e mandar em áudio (sai em 5 min)'
+                      : 'Aprovar e enviar (sai em 5 min)'}
                   </Button>
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" className="text-xs gap-1 flex-1"
