@@ -62,6 +62,11 @@
 --   * Ponte existente nunca é trocada nem apagada por aqui.
 --   * Nada em lead_processes: processo órfão continua órfão até gente olhar.
 --
+-- APLICADO em 08/09/2026 com aval do Raym. Primeira rodada do vinculador, só no
+-- piloto: 154 processos do grupo em 125 grupos, 25 pontes, 141 na fila.
+-- Depois da 20260909010000 (todos os grupos de caso): 205 citações em 167
+-- grupos, 35 pontes, 191 na fila. Cron job 4946 ativo.
+--
 -- ROTA DE FUGA
 --   * dom_contexto_processual_antes_do_processo_do_grupo guarda a RPC de antes.
 --   * detectar_processos_em_grupos_antes_do_processo_do_grupo idem.

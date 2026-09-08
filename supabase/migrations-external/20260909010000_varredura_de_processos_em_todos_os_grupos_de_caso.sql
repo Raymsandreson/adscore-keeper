@@ -40,6 +40,12 @@
 -- uma vez, por índice de telefone. O cron faz 300 grupos/hora; a primeira
 -- carga pode ser puxada à mão em lotes.
 --
+-- APLICADO em 08/09/2026 com aval do Raym. Inseridos 1.335 (1.112 prev +
+-- 223 trab), todos operacional, 0 com ativo. Varridos em 4 lotes na hora:
+-- 114 citam algum CNJ (81 já no lead, 51 viraram processo do grupo em 42
+-- grupos, 50 fila). PREV amostrados (293): 8 citam CNJ, 17 citam número do
+-- INSS, 268 nenhum — o detector lê só CNJ; número do INSS é o próximo degrau.
+--
 -- ROTA DE FUGA
 --   delete from grupo_processo_detectado d using dom_grupos_piloto g
 --    where g.group_jid = d.group_jid and g.so_varredura;

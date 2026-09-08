@@ -2843,3 +2843,88 @@ com o grupo da ficha pela ponte.
 **Rollback (< 1 min):** tirar o `TabsTrigger`/`TabsContent` de `atendente` do
 `LeadEditDialog`. O `leadId` do painel é opcional — sem chamador, ele volta a ser
 exatamente a tela de operação de antes. Não há migration nem mudança de schema.
+
+### Processo citado no grupo pela equipe é processo do grupo (08/09/2026)
+
+**A decisão (Raym):** "se o processo está no grupo é porque faz parte do caso —
+principalmente nas mensagens de notificação, de como está, o que foi feito e o
+próximo passo, que informam o número do processo e o assunto". E a estrutura é
+**lead · grupo · processo** — sem objeto novo no meio.
+
+**Por que a citação vale.** A frase "Referente ao processo n° X de Y" sai só do
+front (`buildActivityMessage.ts`), quando **uma pessoa** conclui a atividade e
+clica em notificar. Nenhum cron, nenhuma edge function manda isso. Cada citação
+da equipe é alguém dizendo "este processo é deste grupo" no momento em que
+trabalhou nele. No CASO 398 a pessoa notificou o grupo certo mesmo com o lead
+errado. A objeção do "eco da casa" (07/09) valia para número inventado: das 295
+citações da equipe ainda não vinculadas, 295 passavam no dígito verificador.
+
+**A trava.** Citação sozinha não basta — "Caso 188 – Elias" citava o processo de
+"Caso 29 – Ivanilde". O número do caso no nome do grupo tem que bater com o do
+lead dono do processo (`busca_chave_caso`). "Caso 223.1 – filho" ↔ "Caso 223 –
+Antônio" bate; "188" ↔ "29" não. Sem número, ou número diferente, fica na fila
+humana (`vw_grupo_processo_desalinhado`).
+
+**A regra, em três linhas:**
+
+```
+processo citado no grupo PELA EQUIPE + CNJ válido + nº do caso bate
+   grupo SEM lead  →  ganha o lead dono do processo (ponte, auto_linked, log)
+   grupo COM lead  →  processo vira "do grupo" (status processo_do_grupo); ponte intocada
+```
+
+**Onde mora.** Sem tabela nova: `grupo_processo_detectado` (a tabela do
+detector) ganhou o status `processo_do_grupo`. É ela que diz "este processo é
+deste grupo". A RPC `dom_contexto_processual` lê `processos do lead ∪ citados
+com processo_do_grupo`; cada processo sai com `origem_vinculo` (`lead` |
+`citado_no_grupo`) e o `vinculo` traz `processos_citados`. Peças, movimentações,
+decisões e audiências fluem pelo CNJ, esteja o processo no lead que estiver. A
+`FontesDaResposta` mostra "entrou porque a equipe o citou neste grupo — não está
+no lead do grupo; se for do mesmo cliente, vale juntar".
+
+**Cobertura.** O detector só varria `dom_grupos_piloto` com `ativo` — 1.133 de
+2.464 grupos de caso (46%). Os 1.335 de fora (1.112 PREV + 223 CASO/FAMÍLIA,
+pelo `dom_classificar_escopo` do próprio Dom) entraram na mesma tabela com
+`ativo = false` e `so_varredura = true`: o detector e o vinculador os leem; tudo
+que o Dom faz filtra `ativo` (conferido: rascunho, contexto, cobrança,
+`dom_grupos_para_olhar`, `vw_dom_grupo_sem_ficha`), então ele continua mudo
+neles. Nada liga `ativo` sozinho — só o switch da tela, e a lista da tela
+(`AtendenteDeCasoSection`) esconde os `so_varredura`.
+
+**Resultado da primeira carga (08/09/2026):**
+
+| | |
+|---|---|
+| citações da equipe que viraram "processo do grupo" | 205, em 167 grupos |
+| grupos sem lead que ganharam lead pelo processo | 35 |
+| citações na fila humana (número não bate / sem número / 2+ donos) | 191 |
+| dos 1.335 grupos novos, quantos citam algum CNJ | 114 (81 já estavam no lead, 51 viraram do grupo, 50 fila) |
+| não-regressão em 15 grupos com ponte | 0 perderam lead, vínculo ou processo; 5 ganharam processo |
+
+**O que os PREV mostraram.** Em 293 PREV amostrados: 8 citam CNJ, 17 citam
+número do INSS (protocolo/NB, 9–11 dígitos), 268 não citam número nenhum. O
+detector lê só CNJ. Ligar o número do INSS ao `inss_admin_processes` é o próximo
+degrau, se valer a pena — a maioria dos PREV está antes do protocolo.
+
+**Ritmo.** `rodar_processos_citados_no_grupo(3)` no cron `processos-citados-no-grupo`
+(minuto 23 de cada hora): re-varre só grupos com mensagem nova que parece CNJ
+(dirigido pelo índice de `created_at`, não por grupo), roda o detector (300
+grupos) e o vinculador. A re-varredura não apaga `processo_do_grupo`.
+
+| objeto | papel |
+|---|---|
+| `grupo_processo_detectado.status = 'processo_do_grupo'` | a memória "este processo é deste grupo" |
+| `vincular_processos_citados_no_grupo(p_group_jid)` | aplica a regra; grava ponte + `lead_group_audit_log` (source = nome da função) |
+| `detectar_processos_em_grupos` | aceita `ativo or so_varredura`; ON CONFLICT preserva `processo_do_grupo` |
+| `rodar_processos_citados_no_grupo(p_horas)` | o cron |
+| `dom_contexto_processual` | `citados` ∪ `proc`; `origem_vinculo`; `vinculo.processos_citados` |
+| `vw_grupo_processo_conciliacao` | casava `group_jid` por texto exato (ponte sem `@g.us`, índice com) — a coluna "Processo" da lista ficava "—"; passou a `jid_chave` e inclui os processos do grupo |
+| `dom_grupos_piloto.so_varredura` | grupo só para varredura; o Dom não fala |
+
+**Rollback:** `dom_contexto_processual_antes_do_processo_do_grupo` e
+`detectar_processos_em_grupos_antes_do_processo_do_grupo` guardam as versões
+anteriores; `cron.unschedule('processos-citados-no-grupo')`; pontes automáticas
+têm `auto_linked = true` e log com `source`; `update grupo_processo_detectado
+set status = 'eco_da_casa' where status = 'processo_do_grupo'`; `delete from
+dom_grupos_piloto where so_varredura`. Migrations:
+`20260908183000`, `20260908233000`, `20260909010000`.
