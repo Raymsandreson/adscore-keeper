@@ -380,6 +380,21 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
    * sair sozinha — e quem lia concluía, com razão, que ainda precisava aprovar.
    */
   const [saiEm, setSaiEm] = useState<Record<string, string>>({});
+  /**
+   * O que NÃO chegou, indexado por agendamento_id → motivo da falha.
+   *
+   * Em 08/09/2026 o painel carimbou "Já chegou ao cliente" numa resposta que
+   * morreu em timeout de DNS: a fila contava "disparei" como "entreguei" (ver
+   * migration 20260908220000). O banco agora só declara entrega com confirmação
+   * na mão, e o rascunho que falhou volta a `pendente` — o que é honesto, mas
+   * silencioso: quem revisa veria o rascunho de novo na fila sem saber que ele
+   * já tentou sair e não conseguiu, e concluiria que ninguém aprovou ainda.
+   *
+   * Este aviso é o que fecha a volta. Não é decoração: sem ele a pessoa reaprova
+   * às cegas, e se a causa persistir ela repete o ciclo achando que é a primeira
+   * vez.
+   */
+  const [naoChegou, setNaoChegou] = useState<Record<string, string>>({});
   const [ritmo, setRitmo] = useState(RITMO_PADRAO);
   const [busca, setBusca] = useState('');
   const [achados, setAchados] = useState<GrupoPiloto[]>([]);
@@ -597,14 +612,28 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
         .map(p => p.agendamento_id).filter(Boolean) as string[];
       if (ids.length) {
         const { data: ags } = await dbAny.from('whatsapp_mensagens_agendadas')
-          .select('id, proximo_envio_at, ativo').in('id', ids);
+          .select('id, proximo_envio_at, ativo, encerrado_motivo, ultimo_erro').in('id', ids);
         const mapa: Record<string, string> = {};
-        for (const a of (ags as { id: string; proximo_envio_at: string; ativo: boolean }[]) || []) {
+        const falhas: Record<string, string> = {};
+        type Ag = {
+          id: string; proximo_envio_at: string; ativo: boolean;
+          encerrado_motivo: string | null; ultimo_erro: string | null;
+        };
+        for (const a of (ags as Ag[]) || []) {
           if (a.ativo) mapa[a.id] = a.proximo_envio_at;
+          // `falha_no_envio` é escrito pelo wa_agendadas_conferir quando as
+          // tentativas acabaram. Só ele conta como "não chegou": agendamento
+          // inativo por `fim_da_regra` é entrega concluída, e `respondida` é a
+          // trava do pular_se_responder fazendo o que devia.
+          if (a.encerrado_motivo === 'falha_no_envio') {
+            falhas[a.id] = a.ultimo_erro || 'sem motivo registrado';
+          }
         }
         setSaiEm(mapa);
+        setNaoChegou(falhas);
       } else {
         setSaiEm({});
+        setNaoChegou({});
       }
     } catch (err) {
       console.error('[AtendenteVirtualPanel]', err);
@@ -1086,7 +1115,15 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
               onMarcar={(v) => marcar(p.id, v)}
               onClick={() => { setAberto(p); setTexto(p.resposta_final || p.resposta_sugerida); }}
               rodape={
-                p.audio_url ? (
+                // A falha vem na frente de todo o resto: saber que a mensagem
+                // não chegou muda o que a pessoa faz agora; saber que ela seria
+                // uma nota de voz, não.
+                p.agendamento_id && naoChegou[p.agendamento_id] ? (
+                  <p className="text-[10px] text-destructive font-medium flex items-start gap-1">
+                    <AlertTriangle className="h-3 w-3 mt-px shrink-0" />
+                    NÃO chegou ao cliente — tentou e falhou. Abra e envie de novo.
+                  </p>
+                ) : p.audio_url ? (
                   <p className="text-[10px] text-muted-foreground flex items-center gap-1">
                     <Volume2 className="h-3 w-3" />vai como nota de voz — abra para escutar antes
                   </p>
@@ -1494,6 +1531,40 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
                     Esta tela é só para conferir o que foi dito e de onde saiu.
                   </p>
                 </div>
+              ) : aberto.agendamento_id && naoChegou[aberto.agendamento_id] ? (
+                // NÃO CHEGOU, e isso precisa ser dito antes de qualquer botão.
+                //
+                // Aqui é onde a tela mentiu em 08/09/2026: dizia "Já chegou ao
+                // cliente" sobre uma resposta que morreu em timeout de DNS. O
+                // banco parou de mentir (migration 20260908220000); esta caixa
+                // é o outro lado — o revisor precisa VER que a fila tentou e
+                // não conseguiu, senão ele reaprova sem saber que já falhou.
+                //
+                // O botão de aprovar continua logo abaixo, de propósito: o
+                // caminho de sair daqui é reenviar, e ele tem que estar à mão.
+                <>
+                  <div className="rounded border border-destructive/40 bg-destructive/5 p-2">
+                    <p className="text-xs font-medium text-destructive flex items-start gap-1">
+                      <AlertTriangle className="h-3.5 w-3.5 mt-px shrink-0" />
+                      Esta resposta NÃO chegou ao cliente
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      A fila tentou e desistiu depois de três vezes. Motivo registrado:
+                    </p>
+                    <p className="text-[10px] font-mono text-destructive/90 mt-0.5 break-words">
+                      {naoChegou[aberto.agendamento_id]}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Confira se a conversa mudou desde então antes de mandar de novo — o
+                      texto foi escrito para o que o cliente tinha dito naquela hora.
+                    </p>
+                  </div>
+                  <Button size="sm" className="w-full text-xs gap-1"
+                    disabled={enviando} onClick={() => aprovarEEnviar(aberto)}>
+                    {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SendHorizonal className="h-3.5 w-3.5" />}
+                    Tentar enviar de novo
+                  </Button>
+                </>
               ) : aberto.agendamento_id && saiEm[aberto.agendamento_id] ? (
                 // Já está indo. Mostrar "aprovar" aqui seria mentira — e pior,
                 // faria a pessoa achar que a mensagem depende dela.
