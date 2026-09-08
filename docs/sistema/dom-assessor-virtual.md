@@ -2361,3 +2361,91 @@ o desempate para pegar o primeiro candidato.
 A busca é **sob demanda, uma peça por clique**. Carregar o acervo inteiro de
 cada processo listado (140 peças no caso 88) para talvez abrir uma seria pagar
 adiantado por algo que quase sempre não acontece.
+
+---
+
+## Quem falou por áudio recebe áudio (08/09/2026)
+
+### O que acontecia
+
+No **"Caso 09 - SÓ RAIMUNDA"**, em 07/09/2026, a cliente mandou três áudios
+cobrando o dinheiro do processo. O Dom escreveu a resposta E gravou a fala dela:
+o rascunho `ef9b4f2a` tinha `audio_url` preenchido, voz Keilane, `audio_erro`
+nulo — áudio inteiro, sem corte. Às 21:38 alguém clicou em **Aprovar e enviar**;
+às 21:44 chegou no grupo **texto**, três parágrafos.
+
+Não era o áudio que falhava. Era o cano:
+
+| peça | o que ela sabia fazer |
+|---|---|
+| `dom_respostas_pendentes.audio_url` | guardar a fala pronta ✅ |
+| painel do Dom | tocar a fala para o revisor ✅ |
+| `whatsapp_mensagens_agendadas` | **só texto** — não tinha coluna de mídia |
+| `wa_agendadas_disparar()` | **só `{"message": ...}`** — sem `action` |
+
+O próprio código dizia isso em comentário: *"este áudio NÃO foi enviado e não vai
+sair sozinho — nem em grupo automático, onde quem sai é o texto"*. Era gravar o
+recado sem ter telefone.
+
+### O conserto
+
+No cano, não na tela — a `send-whatsapp` já sabia mandar nota de voz
+(`action: 'send_media'` + `ptt: true` → `type: 'ptt'` na UazAPI) desde a v23. O
+que faltava era a fila conseguir carregar isso até lá.
+
+- **Migration `20260908013000`** (Externo): a linha da fila ganha `media_url`,
+  `media_type` e `media_ptt`. Quando vêm preenchidos, o disparo chama
+  `send_media` com `ptt: true`; quando não vêm, **nada muda** — sai texto, com o
+  mesmo corpo de antes.
+- **Painel** (`AtendenteVirtualPanel`): "Aprovar e enviar" leva o áudio junto, e
+  o botão passa a dizer **"Aprovar e mandar em áudio"** quando é isso que vai
+  acontecer.
+- **`dom-rascunho`**: em grupo automático o agendamento também nasce com a fala.
+- **Bolha tracejada da conversa**: avisa *"vai como nota de voz — o cliente ouve,
+  não lê"*, porque o texto que ela mostra deixou de ser o que chega.
+
+**Sai só a nota de voz, sem o texto atrás** (decisão do Raym, 08/09/2026): mandar
+os dois é a mesma coisa dita duas vezes. O texto continua gravado em `mensagem` —
+ele é o registro do que foi dito, e é o que a bolha e o painel mostram.
+
+### As três travas, cada uma por um jeito de isto virar mentira
+
+1. **Áudio cortado não fala.** `audio_erro` com `audio_url` preenchida quer dizer
+   que a fala terminou antes da resposta. Fala pela metade soa completa e omite o
+   final — pior que mandar escrito. Nesse caso sai o texto, e a tela diz por quê.
+2. **Texto editado não sai falado.** Se alguém mexeu na resposta depois da
+   gravação, a fala já não é mais aquela resposta. Sai o texto; para mandar
+   falado, é "Refazer com o texto de agora" primeiro.
+3. **Instância `cloud_gerencia` continua em texto.** `channel=cloud` desvia o
+   envio para o Railway, que trata outro contrato. O motivo fica em
+   `ultimo_resultado` — áudio que não pode sair falado não some calado.
+
+### Onde ficou
+
+| arquivo | papel |
+|---|---|
+| `20260908013000_agendada_pode_sair_em_audio.sql` | colunas de mídia + ramo de voz no disparo |
+| `AtendenteVirtualPanel.tsx` | `porNaFilaDeEnvio` leva a fala; botão diz o que vai sair |
+| `dom-rascunho/index.ts` | grupo automático agenda com a fala (passo 7 → 8) |
+| `useMensagensAgendadas.ts` / `WhatsAppChat.tsx` | a bolha avisa que vai como voz |
+
+**Rollback (< 1 min):** `update whatsapp_mensagens_agendadas set media_url = null,
+media_type = null, media_ptt = false where media_url is not null;` — a fila volta
+a sair em texto sem tocar em código.
+
+## "Enviadas" também mostra de onde saiu a resposta (08/09/2026)
+
+A aba **Na fila** abre painel com a pergunta do cliente, a resposta, as fontes
+que a geraram (`FontesDaResposta`, com a peça clicável) e o áudio. A aba
+**Enviadas** renderizava o mesmo cartão **sem `onClick`**: era a única lista onde
+a pergunta *"em que ele se baseou?"* não tinha resposta — justamente a das
+mensagens que o cliente já leu, que são as que alguém precisa auditar.
+
+Agora o cartão de Enviadas abre o mesmo painel, **em leitura**:
+
+- o texto que saiu aparece como texto, não em campo editável (editar ali não muda
+  o que o cliente leu, só mentiria sobre o que foi dito);
+- no lugar de "Aprovar e enviar" fica o carimbo de quando chegou — o botão
+  criaria uma segunda cópia da mesma resposta na fila;
+- os botões de velocidade e "refazer o áudio" somem: fala que já saiu não muda de
+  ritmo.
