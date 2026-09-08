@@ -21,6 +21,7 @@ import { RobotBadge } from '@/components/activities/RobotBadge';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { ACTIVITY_STATUS_CLASS, ACTIVITY_STATUS_LABEL } from '@/lib/activityHistory';
 import { CheckCircle2, Circle, CornerDownRight, PanelRightOpen, History, AlertTriangle } from 'lucide-react';
 
 /** Colunas que a cadeia realmente usa — `select('*')` aqui seria peso à toa. */
@@ -132,19 +133,11 @@ export function useActivityChain(activity: ChainAnchor | null | undefined): Acti
   return { items: visible, loading, unavailable, reload };
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  pendente: 'Pendente',
-  em_andamento: 'Em andamento',
-  concluida: 'Concluída',
-  reagendada: 'Reagendada',
-};
-
-const STATUS_CLASS: Record<string, string> = {
-  pendente: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  em_andamento: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  concluida: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  reagendada: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-};
+// Rótulo e cor de situação vivem em `@/lib/activityHistory` — a linha do tempo
+// de movimentações usa os mesmos, e duas cópias divergiriam na primeira vez que
+// alguém criasse um status novo.
+const STATUS_LABEL = ACTIVITY_STATUS_LABEL;
+const STATUS_CLASS = ACTIVITY_STATUS_CLASS;
 
 const fmt = (iso: string | null) => {
   if (!iso) return null;

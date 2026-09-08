@@ -26,19 +26,19 @@ function normalizePhone(raw: any): string {
 
 // UazAPI (evento `groups`) repassa o GroupInfo do whatsmeow: quem sai fica
 // no array `Leave` (jids), e `Sender` indica quem executou a ação.
-function eventObj(body: any): any {
+export function eventObj(body: any): any {
   if (body?.event && typeof body.event === 'object') return body.event;
   if (body?.data && typeof body.data === 'object') return body.data;
   return {};
 }
 
-function leaveList(body: any): string[] {
+export function leaveList(body: any): string[] {
   const ev = eventObj(body);
   const arr = body?.Leave || ev?.Leave || ev?.leave || [];
   return Array.isArray(arr) ? arr : [];
 }
 
-function extractPhones(body: any): string[] {
+export function extractPhones(body: any): string[] {
   const candidates: any[] = [];
   if (Array.isArray(body?.participants)) candidates.push(...body.participants);
   if (Array.isArray(body?.members)) candidates.push(...body.members);
@@ -49,7 +49,7 @@ function extractPhones(body: any): string[] {
   return Array.from(new Set(candidates.map((p: any) => normalizePhone(typeof p === 'string' ? p : p?.id || p?.phone || p?.jid)).filter(Boolean)));
 }
 
-function extractAction(body: any): string {
+export function extractAction(body: any): string {
   const raw = body?.action || body?.payload?.action || (typeof body?.event === 'string' ? body.event : '');
   const a = String(raw || '').toLowerCase();
   if (a.includes('leave')) return 'leave';
@@ -70,13 +70,46 @@ function extractAction(body: any): string {
   return a || 'unknown';
 }
 
-function extractGroup(body: any): { jid: string; name: string | null } {
+export function extractGroup(body: any): { jid: string; name: string | null } {
   const ev = eventObj(body);
   const jid = body?.groupJid || body?.chatId || body?.group?.id || body?.payload?.group?.id || body?.group_id
     || ev?.JID || ev?.jid || body?.JID || body?.id || '';
   const name = body?.groupName || body?.group?.name || body?.payload?.group?.subject
     || ev?.Name || ev?.GroupName || null;
   return { jid: String(jid || ''), name: name ? String(name) : null };
+}
+
+/**
+ * Este payload é um evento de PARTICIPANTE de grupo?
+ *
+ * Existe porque o webhook principal (/webhooks/uazapi/:instance_name) é o
+ * Único que a UazAPI de fato chama, e até 08/09/2026 ele jogava fora tudo que
+ * não fosse mensagem ou chamada — inclusive `groups`. O endpoint dedicado
+ * /webhooks/uazapi-group-exit existia numa URL que ninguém cadastrou, e a
+ * `whatsapp_group_exits` estava com ZERO linhas desde que foi criada.
+ *
+ * Reconhece as três formas que já apareceram: o EventType `groups` da UazAPI,
+ * o nome longo `group-participants-update`, e o payload cru do whatsmeow, que
+ * não traz rótulo nenhum — só os arrays `Leave`/`Join`.
+ *
+ * NUNCA casa mensagem de grupo: mensagem chega como EventType `messages` e não
+ * tem `Leave`/`Join`. Confundir as duas faria toda conversa de grupo cair no
+ * gravador de saída, que é exatamente o erro que ninguém perceberia.
+ */
+export function isGroupParticipantEvent(eventType: string, body: any): boolean {
+  const tipo = String(eventType || '').toLowerCase();
+  if (tipo === 'groups') return true;
+
+  const bruto = [body?.EventType, body?.eventType, body?.event_type, body?.type,
+                 typeof body?.event === 'string' ? body.event : '']
+    .map((v: any) => String(v || '').toLowerCase());
+  if (bruto.some((v) => v.includes('group-participants') || v.includes('group_participants'))) return true;
+
+  // Payload cru do whatsmeow: sem rótulo, mas com quem entrou ou saiu.
+  const ev = eventObj(body);
+  const temLeave = Array.isArray(body?.Leave || ev?.Leave || ev?.leave);
+  const temJoin = Array.isArray(body?.Join || ev?.Join || ev?.join);
+  return temLeave || temJoin;
 }
 
 export async function handler(req: Request, res: Response) {

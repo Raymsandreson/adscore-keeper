@@ -130,6 +130,9 @@ interface ShortcutFormState {
   audience_mode: 'ctwa_only' | 'outbound_only' | 'both';
   proactive_first_message_enabled: boolean;
   proactive_first_message_instruction: string;
+  auto_delay_first_minutes: number;
+  auto_delay_next_minutes: number;
+  auto_conversation_window_minutes: number;
 }
 
 const DEFAULT_FORM: ShortcutFormState = {
@@ -148,6 +151,7 @@ const DEFAULT_FORM: ShortcutFormState = {
   forward_questions_to_group: false, notify_instance_name: null,
   lead_status_board_ids: [], lead_status_filter: [], audience_mode: 'both',
   proactive_first_message_enabled: false, proactive_first_message_instruction: '',
+  auto_delay_first_minutes: 3, auto_delay_next_minutes: 2, auto_conversation_window_minutes: 180,
 };
 
 
@@ -539,6 +543,9 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
       temperature: s.temperature ?? 0.7,
       max_tokens: (s as any).max_tokens ?? 2048,
       response_delay_seconds: s.response_delay_seconds ?? 2,
+      auto_delay_first_minutes: (s as any).auto_delay_first_minutes ?? 3,
+      auto_delay_next_minutes: (s as any).auto_delay_next_minutes ?? 2,
+      auto_conversation_window_minutes: (s as any).auto_conversation_window_minutes ?? 180,
       skip_confirmation: (s as any).skip_confirmation ?? false,
       partial_min_fields: (s as any).partial_min_fields || [],
       history_limit: (s as any).history_limit ?? 50,
@@ -648,6 +655,9 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
       temperature: form.temperature,
       max_tokens: form.max_tokens,
       response_delay_seconds: form.response_delay_seconds,
+      auto_delay_first_minutes: form.auto_delay_first_minutes,
+      auto_delay_next_minutes: form.auto_delay_next_minutes,
+      auto_conversation_window_minutes: form.auto_conversation_window_minutes,
       split_messages: form.split_messages,
       split_delay_seconds: form.split_delay_seconds,
       command_scope: commandScope,
@@ -1395,6 +1405,66 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
                     )}
                   </div>
                 </div>
+                {/* RITMO DE QUEM RESPONDE SOZINHO.
+                    Estes minutos valem no modo automático dos grupos (a aba
+                    "Fila do atendente"), e não no atendimento normal — por isso
+                    ficam separados dos delays em segundos acima, que são de
+                    agrupamento e de quebra de mensagem. */}
+                <div className="border rounded-lg p-3 space-y-3">
+                  <div>
+                    <Label className="text-sm font-medium">⏱️ Ritmo de quem responde sozinho</Label>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Vale nos grupos em modo automático. A espera é a janela de revisão: se
+                      alguém escrever no grupo antes de a hora chegar, a resposta não sai.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Primeira resposta (min)</Label>
+                      <Input
+                        type="number" min={1} max={60}
+                        value={form.auto_delay_first_minutes}
+                        onChange={e => setForm(f => ({ ...f, auto_delay_first_minutes: Math.min(60, Math.max(1, parseInt(e.target.value) || 1)) }))}
+                        className="h-9 text-xs"
+                      />
+                      <p className="text-[9px] text-muted-foreground">Conversa parada: quem chega precisa ler o caso.</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Respostas seguintes (min)</Label>
+                      <Input
+                        type="number" min={1} max={60}
+                        value={form.auto_delay_next_minutes}
+                        onChange={e => setForm(f => ({ ...f, auto_delay_next_minutes: Math.min(60, Math.max(1, parseInt(e.target.value) || 1)) }))}
+                        className="h-9 text-xs"
+                      />
+                      <p className="text-[9px] text-muted-foreground">Conversa em andamento: o celular já está na mão.</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">A conversa segue "a mesma" por (min)</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number" min={1} max={10080}
+                        value={form.auto_conversation_window_minutes}
+                        onChange={e => setForm(f => ({ ...f, auto_conversation_window_minutes: Math.min(10080, Math.max(1, parseInt(e.target.value) || 1)) }))}
+                        className="h-9 text-xs w-28"
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        Contados desde a última vez que o agente falou ali. Passou disso, a
+                        próxima volta ao tempo da primeira. Padrão 180 (3h).
+                      </p>
+                    </div>
+                  </div>
+                  {/* O cron é o teto do que estes números conseguem prometer: o rascunho
+                      só nasce na rodada, então um atraso menor que ela é invisível. */}
+                  {Math.min(form.auto_delay_first_minutes, form.auto_delay_next_minutes) < 2 && (
+                    <p className="text-[10px] text-amber-700 dark:text-amber-500">
+                      Abaixo de 2 minutos o número não se cumpre: o rascunho só nasce na rodada
+                      do robô, que é de 2 em 2 minutos. O cliente sentiria o mesmo que com 2.
+                    </p>
+                  )}
+                </div>
+
                 {/* Group forwarding */}
                 <div className="border rounded-lg p-3 space-y-2">
                   <Label className="text-sm font-medium">📨 Redirecionamento ao Grupo</Label>

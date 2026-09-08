@@ -53,8 +53,31 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const DOM_AGENT_ID = "d6ad8eee-d6a3-452c-b852-b94ef8dd54bf";
 
-/** A janela entre escrever e falar. É ela que faz o papel da revisão. */
-const ATRASO_MIN = 5;
+// A JANELA ENTRE ESCREVER E FALAR — E POR QUE ELA ENCOLHE
+//
+// É essa janela que faz o papel da revisão: silêncio aprova. Mas ela não é a
+// mesma o tempo todo, porque gente não é.
+//
+// Quem chega numa conversa parada demora: estava em outra coisa, precisa ler,
+// lembrar do caso. Quem JÁ ESTÁ na conversa responde rápido — o celular está na
+// mão. Um atraso fixo é relógio: cinco minutos exatos na primeira e na quinta
+// mensagem é a assinatura de uma máquina, não de uma pessoa ocupada.
+//
+// Daí dois números, e não um: a primeira resposta da conversa espera mais, as
+// seguintes espera menos. A conversa deixa de ser "a mesma" quando passa a
+// janela sem o agente falar nada ali — aí a próxima volta ao atraso de chegada.
+//
+// Os três vêm de `wjia_command_shortcuts`, editáveis na tela de configuração do
+// agente. O que está aqui é só o piso para quando a coluna vier nula.
+//
+// ATENÇÃO AO CRON. Estes minutos só valem se o `dom_rascunho_tick` for mais
+// rápido que eles: o rascunho nasce na rodada do cron, então um cron de 5 em 5
+// minutos soma de 0 a 5 minutos ANTES de o atraso começar a contar, e a
+// diferença entre 3 e 2 desaparece no ruído. Por isso o tick foi para 2 em 2
+// (migration `20260908180000`).
+const ATRASO_PRIMEIRA_PADRAO = 3;
+const ATRASO_SEGUINTE_PADRAO = 2;
+const JANELA_CONVERSA_PADRAO_MIN = 180;
 
 // VELOCIDADE DE FALA
 //
@@ -391,10 +414,18 @@ function descricaoDeMidia(tipo: string): string {
   return "";
 }
 
-// As 19 intenções levantadas sobre 45 dias de mensagem real dos grupos do
-// piloto. O agrupamento é o que decide a ação, não o rótulo:
+// As intenções levantadas sobre mensagem real dos grupos do piloto. O
+// agrupamento é o que decide a ação, não o rótulo:
 //   A responde | B acolhe sem falar de processo | C confirma curto
 //   D silêncio | E humano
+//
+// 20 a 23 entraram depois, sobre o que os 19 primeiros engoliam calado:
+// desistência caía em B5 (o Dom acolhia sozinho e NINGUÉM era avisado de que o
+// cliente falou em largar o caso), pedido de dinheiro adiantado ia junto com
+// "quando cai meu dinheiro" na E17, indicação de cliente novo caía em D14 e
+// virava silêncio, e elogio morria na D13. Medido em 04/09/2026: o Caso 341
+// mandou "eu já tô desistindo, já não tô aguentando mais" e o único rascunho
+// vivo do grupo era C9, sobre uma foto.
 const INTENCOES = `
 A1  pergunta sobre andamento do processo
 A2  pedido de explicação de algo que já foi dito
@@ -411,10 +442,14 @@ D12 só cumprimento, sem pedido junto
 D13 agradecimento ou fechamento de conversa
 D14 assunto fora do caso (corrente, figurinha, bom-dia religioso)
 D15 mensagem da própria equipe
-E16 reclamação, insatisfação, ameaça de sair
-E17 pergunta sobre dinheiro ou prazo
+E16 reclamação ou insatisfação com o atendimento, com a demora ou com a equipe
+E17 pergunta sobre dinheiro ou prazo DO PRÓPRIO CASO (quanto sai, quando cai)
 E18 quer falar com uma pessoa específica
 E19 assunto jurídico novo, fora deste processo
+E20 fala em desistir, largar, cancelar ou encerrar o caso, revogar a procuração, ou em sair do grupo
+E21 pede dinheiro adiantado, empréstimo, antecipação de valor ou ajuda financeira
+E22 indica cliente novo, oferece o caso de outra pessoa, passa contato de conhecido
+B23 elogio ou reconhecimento do trabalho ("vocês são ótimos", "Deus abençoe vocês")
 `.trim();
 
 async function gemini(model: string, systemPrompt: string, historico: any[], maxTokens: number, temperatura: number) {
@@ -450,6 +485,20 @@ async function classificar(pergunta: string, ultimasTrocas: string) {
     "",
     "Códigos possíveis:",
     INTENCOES,
+    "",
+    "QUANDO A MENSAGEM TEM MAIS DE UMA COISA, vale a mais grave, nesta ordem:",
+    "  E20 > E16 > E21 > E22 > E17 > E18 > E19 > A > C > B > D",
+    "Isto não é sugestão. Os erros que esta regra conserta são reais:",
+    "  · desabafo que fala em DESISTIR, largar, cancelar, revogar ou sair é E20,",
+    "    NUNCA B5 — mesmo quando vem embrulhado em bom-dia e pergunta de",
+    "    andamento (\"bom dia, como tá o processo? eu já tô desistindo\" = E20);",
+    "  · pedir dinheiro ADIANTADO, empréstimo ou antecipação é E21, não E17.",
+    "    E17 é ele perguntando do dinheiro DELE no caso; E21 é ele pedindo",
+    "    dinheiro agora, que é assunto de pessoa e não do processo;",
+    "  · indicar conhecido, oferecer caso de terceiro ou mandar contato é E22,",
+    "    não D14 nem E19 — D14 vira silêncio e a indicação se perde;",
+    "  · elogio é B23, não D13. D13 é fechamento de conversa (\"ok\", \"obrigada\");",
+    "    B23 é ele reconhecendo o trabalho, e isso merece resposta.",
     "",
     "conversa_encerrada = true quando a última mensagem do cliente só reconhece o",
     "que já foi dito (obrigada, ok, tá bom, 👍) e não pede nada novo. Nesse caso a",
@@ -496,6 +545,61 @@ async function classificar(pergunta: string, ultimasTrocas: string) {
 // impede o relatório de processo de aparecer em cima de um desabafo.
 function instrucaoDaIntencao(cod: string, panorama = false): string {
   const g = cod.charAt(0);
+
+  // Estes três são da família E (vão para humano de qualquer jeito), mas a
+  // frase que o Dom escreve enquanto o humano não chega é diferente em cada um
+  // — e no E20 e no E21 a frase errada custa caro. Por isso vêm ANTES do bloco
+  // genérico de E, que fala em "reclamação, dinheiro, prazo".
+  if (cod === "E20") {
+    return [
+      "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
+      "O cliente falou em DESISTIR, largar, cancelar o caso ou sair. Isto é o",
+      "assunto mais sério que chega aqui, e não é seu para resolver.",
+      "Responda em duas ou três frases: reconheça o cansaço dele pelo nome que ele",
+      "deu (demora, falta de resposta, dificuldade), diga que alguém da equipe vai",
+      "falar com ele, e nada além disso.",
+      "É PROIBIDO tentar convencer, argumentar que vale a pena, citar prazo, valor,",
+      "fase do processo, ou explicar consequência de desistir. Quem faz isso é",
+      "advogado, falando com ele.",
+      "=== FIM ===",
+    ].join("\n");
+  }
+  if (cod === "E21") {
+    return [
+      "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
+      "O cliente está pedindo DINHEIRO ADIANTADO — empréstimo, antecipação, ajuda.",
+      "Não é pergunta sobre o caso dele: é pedido de dinheiro agora.",
+      "Responda curto e sem constranger: diga que entendeu o pedido e que a equipe",
+      "vai falar com ele sobre isso.",
+      "É PROIBIDO dizer sim, dizer não, citar valor, citar prazo de pagamento, ou",
+      "explicar como funcionaria. Prometer dinheiro que não é seu para prometer é",
+      "o pior erro possível nesta conversa.",
+      "=== FIM ===",
+    ].join("\n");
+  }
+  if (cod === "E22") {
+    return [
+      "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
+      "O cliente está INDICANDO alguém — um conhecido com um caso, um contato.",
+      "Agradeça em uma ou duas frases, com a confiança que isso significa, e diga",
+      "que alguém da equipe entra em contato para ouvir o caso.",
+      "É PROIBIDO pedir CPF, documento ou detalhe do caso do terceiro aqui: este",
+      "grupo é do caso do cliente, e dado de outra pessoa não entra nele.",
+      "Nada de andamento de processo nesta resposta.",
+      "=== FIM ===",
+    ].join("\n");
+  }
+  if (cod === "B23") {
+    return [
+      "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
+      "O cliente ELOGIOU o trabalho. Agradeça em uma ou duas frases, simples e sem",
+      "cerimônia, e devolva o crédito para a equipe que cuida do caso dele.",
+      "É PROIBIDO emendar andamento, prazo, cobrança ou pedido de qualquer tipo —",
+      "responder elogio com relatório transforma o agrado em atendimento.",
+      "=== FIM ===",
+    ].join("\n");
+  }
+
   if (g === "B") {
     return [
       "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
@@ -535,7 +639,12 @@ function instrucaoDaIntencao(cod: string, panorama = false): string {
       "O cliente pediu o PANORAMA: ele quer saber de todos os casos dele, não de",
       "um. Siga a regra O CLIENTE PEDIU O PANORAMA, acima, à risca.",
       "Um parágrafo curto para CADA processo, sem pular nenhum, com o nome do",
-      "caso, como está hoje e o que mudou por último — com a data.",
+      // "e há quantos dias" estava SÓ na função no ar (v16), editada direto no
+      // dashboard e nunca devolvida ao git. Voltou para cá em 08/09/2026, antes
+      // do deploy seguinte — que teria apagado a frase sem ninguém perceber.
+      // Data sozinha obriga o cliente a fazer a conta; o que ele quer saber é
+      // se está parado há uma semana ou há quatro meses.
+      "caso, como está hoje e o que mudou por último — com a data e há quantos dias.",
       "Processo sem movimentação nova também entra: diga que não teve novidade.",
       "Deixar um de fora é o erro aqui.",
       "=== FIM ===",
@@ -911,7 +1020,7 @@ Deno.serve(async (req) => {
     // Prompt vem da TABELA, não da view: é lido mesmo com is_active = false.
     const { data: agente } = await supabase
       .from("wjia_command_shortcuts")
-      .select("prompt_instructions, base_prompt, temperature, max_tokens, history_limit, model, reply_with_audio, reply_voice_id, max_tts_chars, genero_voz")
+      .select("prompt_instructions, base_prompt, temperature, max_tokens, history_limit, model, reply_with_audio, reply_voice_id, max_tts_chars, genero_voz, auto_delay_first_minutes, auto_delay_next_minutes, auto_conversation_window_minutes")
       .eq("id", DOM_AGENT_ID)
       .maybeSingle();
     if (!agente) return json({ error: "agente Dom não encontrado" }, 500);
@@ -1092,6 +1201,52 @@ Deno.serve(async (req) => {
       grupos = data ?? [];
     }
 
+    // OS TRÊS NÚMEROS DO RITMO, com piso e teto.
+    //
+    // Teto de 60 min porque atraso maior que isso não é "parecer ocupado", é
+    // abandono — e a janela de revisão vira longa demais para o `pular_se_
+    // responder` proteger de alguma coisa. Piso de 1 porque zero seria o agente
+    // respondendo no mesmo segundo, que é o defeito que estes números existem
+    // para consertar.
+    const nosLimites = (v: unknown, padrao: number) =>
+      Math.min(Math.max(Number(v) > 0 ? Number(v) : padrao, 1), 60);
+    const atrasoPrimeira = nosLimites(agente.auto_delay_first_minutes, ATRASO_PRIMEIRA_PADRAO);
+    const atrasoSeguinte = nosLimites(agente.auto_delay_next_minutes, ATRASO_SEGUINTE_PADRAO);
+    const janelaConversaMin = Math.min(
+      Math.max(Number(agente.auto_conversation_window_minutes) > 0
+        ? Number(agente.auto_conversation_window_minutes)
+        : JANELA_CONVERSA_PADRAO_MIN, 1),
+      60 * 24 * 7,
+    );
+
+    // QUAIS CONVERSAS AINDA ESTÃO QUENTES — uma consulta só, antes do laço.
+    //
+    // Perguntar grupo a grupo dentro do laço seria N+1: uma ida ao banco por
+    // grupo só para descobrir um booleano. Aqui é um `in` com os jids que
+    // interessam, coberto por `idx_wa_agendadas_conversa (phone, ...)`.
+    //
+    // A pergunta é "o agente falou aqui dentro da janela?", e não "alguém falou
+    // aqui?": mensagem do cliente não engatilha nada — o que faz a conversa
+    // estar em andamento é o agente já ter entrado nela. Mensagem de humano
+    // também não, porque quando um colega responde vale a pausa de
+    // `human_reply_pause_minutes`, que é outra regra.
+    const jidsAuto = (grupos ?? [])
+      .filter((g: any) => g.modo === "automatico")
+      .map((g: any) => g.group_jid);
+    const conversaQuente = new Set<string>();
+    if (jidsAuto.length) {
+      const desde = new Date(Date.now() - janelaConversaMin * 60 * 1000).toISOString();
+      const { data: falas } = await supabase
+        .from("whatsapp_mensagens_agendadas")
+        .select("phone")
+        .in("phone", jidsAuto)
+        // Pega o automático ("Atendente virtual") e o aprovado no painel
+        // ("Atendente virtual (aprovado à mão)"): os dois são o agente falando.
+        .like("criado_por_nome", "Atendente virtual%")
+        .gte("ultimo_envio_at", desde);
+      for (const f of falas ?? []) conversaQuente.add(String((f as any).phone));
+    }
+
     const pulados: any[] = [];
     let rascunhos = 0;
 
@@ -1106,17 +1261,39 @@ Deno.serve(async (req) => {
 
       // 1. Deduplica pelo id da mensagem no WhatsApp — a mesma mensagem chega
       //    uma vez por número nosso que está no grupo.
-      const vistos = new Set<string>();
+      const vistos = new Map<string, any>();
       const lista: any[] = [];
       for (const m of brutas ?? []) {
         const msg = (m.metadata as any)?.message ?? {};
         const mid = String(msg.messageid || msg.id || `${m.created_at}|${m.message_text}`);
-        if (vistos.has(mid)) continue;
-        vistos.add(mid);
+        const texto = (m.message_text || "").trim();
+        const tipo = m.message_type || "text";
+
+        // As cópias da mesma mensagem NÃO são iguais, e ficar com a primeira
+        // (a mais recente, porque a busca vem em ordem decrescente) é sorteio.
+        // A instância que transcreveu o áudio traz o texto; a que não
+        // transcreveu traz vazio. A que recebeu `mediaType` vazio da UazAPI
+        // traz o tipo errado. Medido em 08/09/2026: dos áudios que tinham uma
+        // cópia boa e uma pobre em 7 dias, o sorteio deu a pobre em 4 de 4 —
+        // um deles o áudio do seu Manoel que virou "[o cliente enviou um
+        // documento]". Agora a cópia que tem conteúdo ganha da que chegou por
+        // último.
+        const jaVista = vistos.get(mid);
+        if (jaVista) {
+          if (!jaVista.texto && texto) {
+            jaVista.texto = texto;
+            jaVista.tipo = tipo;
+          } else if (!jaVista.texto && jaVista.tipo === "document" && tipo !== "document") {
+            // Sem texto de nenhum lado, vale o tipo mais específico: `document`
+            // é para onde o webhook joga o que não reconheceu.
+            jaVista.tipo = tipo;
+          }
+          continue;
+        }
         const remetente = so(msg.sender_pn || msg.sender);
-        lista.push({
-          texto: (m.message_text || "").trim(),
-          tipo: m.message_type || "text",
+        const linha = {
+          texto,
+          tipo,
           instancia: m.instance_name,
           criado: m.created_at,
           autor: msg.senderName || m.contact_name || null,
@@ -1124,7 +1301,9 @@ Deno.serve(async (req) => {
           //    Quem não está na lista é tratado como cliente — errar respondendo
           //    um colega é visível; errar ignorando cliente é silencioso.
           daEquipe: msg.fromMe === true || (remetente !== "" && equipe.has(remetente)),
-        });
+        };
+        vistos.set(mid, linha);
+        lista.push(linha);
       }
       lista.reverse();
 
@@ -1295,7 +1474,18 @@ Deno.serve(async (req) => {
       if (grupoIntencao === "E") {
         const { data: pick } = await supabase.rpc("pick_dom_atendente", { p_escopo: "reclamacao" });
         atendenteId = (pick as any) || null;
-        motivo = motivo || `intenção ${cls.intencao}: precisa de atendente humano`;
+        // O motivo é o que a pessoa lê na fila antes de abrir. "precisa de
+        // atendente humano" serve para E17 ou E18; para quem falou em desistir,
+        // ele esconde a única informação que faz alguém largar o que está
+        // fazendo e ir olhar.
+        const MOTIVO_POR_INTENCAO: Record<string, string> = {
+          E20: "falou em DESISTIR do caso — falar com ele hoje",
+          E21: "pediu dinheiro adiantado — só a equipe responde isso",
+          E22: "indicou um cliente novo — alguém precisa ligar",
+        };
+        motivo = motivo
+          || MOTIVO_POR_INTENCAO[cls.intencao]
+          || `intenção ${cls.intencao}: precisa de atendente humano`;
       }
 
       const { data: linhaFila, error: errFila } = await supabase.from("dom_respostas_pendentes").insert({
@@ -1377,10 +1567,15 @@ Deno.serve(async (req) => {
       //    conversa, o "tirar da fila" e o "enviar agora" — nada disso precisou
       //    ser escrito de novo.
       //
-      //    A janela de 5 minutos É a revisão: silêncio aprova. E `pular_se_
-      //    responder` garante o resto — se o cliente OU um colega escrever no
-      //    grupo dentro da janela, a resposta não sai. Rascunho velho não fala,
-      //    e o tique seguinte redesenha em cima do que foi dito.
+      //    A janela É a revisão: silêncio aprova. E `pular_se_responder` garante
+      //    o resto — se o cliente OU um colega escrever no grupo dentro da
+      //    janela, a resposta não sai. Rascunho velho não fala, e o tique
+      //    seguinte redesenha em cima do que foi dito.
+      //
+      //    A janela encolhe quando a conversa já está em andamento (ver o bloco
+      //    dos três números lá em cima). Encolher é seguro: o que protege é o
+      //    `pular_se_responder`, não o tamanho da espera — e numa conversa
+      //    quente a chance de alguém escrever por cima é maior, não menor.
       //
       //    Fica de fora, de propósito: grupo de reclamação (já foi para uma
       //    pessoa) e resposta que o próprio modelo marcou com [REVISAR] — nesses
@@ -1388,7 +1583,8 @@ Deno.serve(async (req) => {
       const pendenteId = (linhaFila as any)?.id ?? null;
       let agendadoPara: string | null = null;
       if (g.modo === "automatico" && !atendenteId && !motivo) {
-        const quando = new Date(Date.now() + ATRASO_MIN * 60 * 1000).toISOString();
+        const atrasoMin = conversaQuente.has(g.group_jid) ? atrasoSeguinte : atrasoPrimeira;
+        const quando = new Date(Date.now() + atrasoMin * 60 * 1000).toISOString();
         const { data: ag, error: errAg } = await supabase
           .from("whatsapp_mensagens_agendadas").insert({
             phone: g.group_jid,
@@ -1419,7 +1615,7 @@ Deno.serve(async (req) => {
           await supabase.from("dom_respostas_pendentes")
             .update({
               agendamento_id: (ag as any).id,
-              motivo_revisao: `sai sozinho em ${ATRASO_MIN} min — some se alguém escrever antes`,
+              motivo_revisao: `sai sozinho em ${atrasoMin} min — some se alguém escrever antes`,
             })
             .eq("id", pendenteId);
         }

@@ -11,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
+import { ActivityMovementsPanel } from '@/components/activities/ActivityMovementsPanel';
 import { cn } from '@/lib/utils';
 import { statusAtividadeDef } from '@/lib/activityStatus';
 import { toast } from 'sonner';
@@ -62,6 +63,7 @@ import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
 import { loadActivityMessageOrigin, type ActivityMessageOrigin } from '@/lib/whatsappMessageActivities';
 import { carregarConversaDaNotaDaAtividade } from '@/lib/whatsappActivityNotes';
 import { MessageSquare } from 'lucide-react';
+import { completarCamposComMarcosLigado } from '@/lib/completarCamposComMarcos';
 
 // Conversa do WhatsApp em painel de baixo pra cima — mesmo componente que a
 // caixa de pendências usa pra não tirar a pessoa da tela.
@@ -1396,6 +1398,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       formCaseTitle, formProcessId, formProcessTitle,
       fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
       regua: resumirRegua(reguaDoProcesso.marcos),
+      // Só completa os campos vazios com os marcos se a pessoa tiver ligado —
+      // de fábrica a mensagem sai com o que está escrito na ficha, e só.
+      completarCamposComMarcos: completarCamposComMarcosLigado(),
       currentUserId: user?.id || null, resolveUserName, getTemplateForContext, inssDesfecho,
     }, audience);
 
@@ -2020,7 +2025,15 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
             </TabsContent>
 
             <TabsContent value="historico" className="mt-0">
-              <div className="p-4">
+              <div className="space-y-4 p-4">
+                {/* Movimentações desta atividade (audit do banco) antes da
+                    sequência de continuidade — mesma ordem da página de
+                    Atividades, a ficha é a mesma em qualquer tela. */}
+                <ActivityMovementsPanel
+                  activityId={activityId}
+                  activityCreatedAt={selectedActivity?.created_at || null}
+                  resolveUserName={resolveUserName}
+                />
                 <ActivityChainPanel
                   currentActivityId={activityId}
                   items={chain.items}

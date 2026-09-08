@@ -128,7 +128,7 @@ Falta:
   consultado quando a conversa tem agente atribuído)
 - tela da fila `dom_respostas_pendentes` — sem ela o modo híbrido enfileira para
   ninguém
-- atraso de 5 min por fila agendada (ver abaixo)
+- atraso configurável por fila agendada (3 min na primeira, 2 nas seguintes — ver abaixo)
 - aviso proativo de movimentação nova (o Dom hoje só reage a mensagem)
 
 ## `dom-rascunho` — o piloto rodando sem tocar em produção
@@ -172,7 +172,7 @@ ruído — cliente não usa esse número.
 O cron **não foi criado** por causa do item 1: um tick de 2 em 2 minutos hoje
 encheria a fila de resposta para "obrigada".
 
-## Como ele decide: as 19 intenções
+## Como ele decide: as 23 intenções
 
 `dom-rascunho` classifica a última mensagem do cliente num modelo barato
 (flash-lite) ANTES de gastar o modelo bom, e o grupo da intenção decide a ação:
@@ -180,17 +180,44 @@ encheria a fila de resposta para "obrigada".
 | Grupo | O que ele faz | Intenções |
 |---|---|---|
 | A | responde a pergunta | A1 andamento, A2 explicação, A3 problema prático, A4 o que ele precisa fazer |
-| B | acolhe, **sem falar de processo** | B5 desabafo, B6 notícia boa, B7 notícia ruim |
+| B | acolhe, **sem falar de processo** | B5 desabafo, B6 notícia boa, B7 notícia ruim, B23 elogio |
 | C | confirma curto | C8 entregando dado, C9 documento, C10 agendamento, C11 fato novo |
 | D | **cala** | D12 cumprimento, D13 agradecimento, D14 fora do caso, D15 mensagem da equipe |
-| E | chama humano | E16 reclamação, E17 dinheiro/prazo, E18 quer pessoa, E19 assunto novo |
+| E | chama humano | E16 reclamação, E17 dinheiro/prazo do caso, E18 quer pessoa, E19 assunto novo, E20 desistência, E21 pede dinheiro adiantado, E22 indicação de cliente |
 
 Mais `conversa_encerrada`: quando a última mensagem só reconhece o que já foi
 dito, ninguém responde de volta. O Dom é convidado na conversa, não dono dela.
 
-## Cron: `dom_rascunho_tick`, de 5 em 5 minutos
+### E20 a E22 e B23 — o que as 19 primeiras engoliam calado (08/09/2026)
 
-Agendado no Externo em 04/09/2026. O custo **não escala com a frequência,
+As quatro entraram depois, cada uma tapando um buraco medido nos dados, não
+imaginado:
+
+- **E20 (desistência)** era **B5**. "Falar em desistir" é desabafo pela forma e
+  emergência pelo conteúdo — e B acolhe **sozinho**, sem avisar ninguém. Em
+  04/09/2026 o Caso 341 mandou *"eu já tô desistindo, já não tô aguentando
+  mais"* e o único rascunho vivo do grupo era **C9**, sobre uma foto do dia
+  seguinte. Ninguém foi acionado.
+- **E21 (pede dinheiro adiantado)** era **E17**, junto com "quando cai meu
+  dinheiro". Vai para humano nos dois casos, mas a resposta que o Dom escreve
+  enquanto o humano não chega é outra: em E21 é proibido citar valor, prazo ou
+  dizer sim ou não.
+- **E22 (indicação de cliente)** era **D14** (assunto fora do caso) → **silêncio**.
+  Cliente oferecendo cliente e o sistema não registrava nada.
+- **B23 (elogio)** era **D13** → silêncio. D13 sozinho gerou 115 silêncios.
+
+O classificador ganhou junto uma **ordem de prioridade explícita**
+(`E20 > E16 > E21 > E22 > E17 > E18 > E19 > A > C > B > D`), porque estas falas
+quase nunca chegam puras: vêm dentro de um bom-dia com pergunta de andamento.
+
+No painel, estas cinco (as quatro novas mais E16) ganharam chips **por código**,
+na fileira "Olho nelas" — filtrar por letra E devolvia a desistência misturada
+com quem só perguntou de prazo.
+
+## Cron: `dom_rascunho_tick`, de 2 em 2 minutos
+
+Agendado no Externo em 04/09/2026, de 5 em 5 minutos; apertado para 2 em 2 em
+08/09/2026 (ver *"O ritmo de quem responde sozinho"*, no fim). O custo **não escala com a frequência,
 escala com a conversa**: antes de qualquer chamada de modelo a função pula todo
 grupo cuja última mensagem já foi decidida — `dom_respostas_pendentes` cobre o
 rascunho gerado, `dom_decisoes` cobre o silêncio. Rodada em grupo parado é só
@@ -2615,3 +2642,204 @@ Agora o cartão de Enviadas abre o mesmo painel, **em leitura**:
   criaria uma segunda cópia da mesma resposta na fila;
 - os botões de velocidade e "refazer o áudio" somem: fala que já saiu não muda de
   ritmo.
+
+## Aprovada não espera os cinco minutos (08/09/2026)
+
+Quem clicava em **"Aprovar e enviar"** no painel colocava a resposta na fila com
+`proximo_envio_at = agora + 5 min` — o mesmo atraso do modo automático. Só que
+os dois casos não são o mesmo caso:
+
+| | quem decidiu | para que serve o atraso |
+|---|---|---|
+| **Modo automático** | ninguém: o agente respondeu sozinho | é a janela de revisão — alguém ainda pode alcançar a mensagem antes do cliente |
+| **Aprovar e enviar** | uma pessoa leu, às vezes editou, e clicou | **nenhuma** — a revisão é o clique |
+
+Segurar cinco minutos depois de uma aprovação humana não protegia de nada: só
+fazia o cliente esperar por uma decisão que já tinha sido tomada. Agora
+`porNaFilaDeEnvio` agenda para **agora**, e vale igual para o botão do painel e
+para **"Enviar as marcadas"** do lote.
+
+**"Na hora" é até um minuto, e a tela diz isso.** Continua sendo o tique do
+banco (`wa_agendadas_tick`, de minuto em minuto) quem envia — não uma chamada
+direta do front. É a mesma decisão do "enviar agora" da bolha
+(`useMensagensAgendadas.enviarAgora`): um segundo caminho de envio seriam duas
+verdades sobre a mesma mensagem, e mensagem dobrada se os dois rodassem juntos.
+Por isso os textos falam em *"sai no próximo minuto"*, e não em "instantâneo".
+
+**`pular_se_responder` continua ligado.** Se o cliente escrever DENTRO desse
+minuto, a aprovada não sai. O marco de `wa_agendada_deve_enviar` (migration
+`20260825190000`) é o `criado_em` do agendamento, então a mensagem que gerou o
+rascunho — mais velha que ele — não bloqueia nada.
+
+**O que sumiu junto:** a promessa de *"ainda dá para cancelar pela conversa"* no
+rodapé do painel. Com envio no próximo minuto ela virava mentira, e uma tela que
+promete uma janela que não existe é pior que uma tela sem janela. O botão passou
+a dizer **"(sai na hora)"**.
+
+**O que NÃO mudou:** os cinco minutos do modo automático (grupo que responde
+sozinho). Ali não houve aprovação, e a janela é a única proteção que existe.
+
+| arquivo | o que mudou |
+|---|---|
+| `AtendenteVirtualPanel.tsx` | `porNaFilaDeEnvio` agenda para agora; textos do botão, dos toasts, do rodapé e o `motivo_revisao` |
+
+**Rollback (< 1 min):** voltar `const quando` para
+`new Date(Date.now() + 5 * 60 * 1000).toISOString()`. Não há migration nem
+mudança de schema — é só código de front.
+
+## O ritmo de quem responde sozinho (08/09/2026)
+
+O modo automático esperava **cinco minutos**, sempre — constante no código
+(`ATRASO_MIN`). Duas coisas erradas nisso, e a segunda é a que importa.
+
+### 1. Atraso fixo é relógio, não pessoa
+
+Quem chega numa conversa parada demora: estava em outra coisa, precisa ler,
+lembrar do caso. Quem **já está** na conversa responde rápido — o celular está
+na mão. Responder sempre com o mesmo intervalo exato, na primeira e na décima
+mensagem, é a assinatura de uma máquina.
+
+Agora são dois números e uma janela:
+
+| | padrão | o que é |
+|---|---|---|
+| `auto_delay_first_minutes` | 3 min | primeira resposta de uma conversa parada |
+| `auto_delay_next_minutes` | 2 min | respostas seguintes, com a conversa quente |
+| `auto_conversation_window_minutes` | 180 (3h) | por quanto tempo a conversa segue sendo "a mesma" |
+
+A conta de "está quente?" é **uma consulta só, antes do laço** — não uma por
+grupo: um `in` nos jids automáticos contra `whatsapp_mensagens_agendadas`,
+coberto por `idx_wa_agendadas_conversa (phone, ...)`. A pergunta é *"o agente
+falou aqui dentro da janela?"*, e não *"alguém falou aqui?"*: mensagem do
+cliente não engatilha nada — o que faz a conversa estar em andamento é o agente
+já ter entrado nela. Mensagem de colega também não, porque aí vale a pausa de
+`human_reply_pause_minutes`, que é outra regra.
+
+**Por que 3h e não 24h.** Conversa de WhatsApp esfria em minutos, não em um dia.
+Com janela de 24h o cliente escreve às 9h, volta às 22h e recebe resposta em 2
+minutos — responder à noite na velocidade de quem estava com o celular na mão é
+o oposto de parecer gente. É configurável justamente porque isso é calibragem.
+
+### 2. O número não mandava no relógio — o cron mandava
+
+Esta é a parte que quase passou batido. O rascunho **só nasce na rodada do
+cron**, e o `dom_rascunho_tick` rodava de 5 em 5 minutos. Isso somava de 0 a 5
+minutos **antes** de o atraso começar a contar:
+
+| | mín | máx | média |
+|---|---|---|---|
+| antes (atraso 5, cron 5 min) | 5 | 11 | **~8 min** |
+| só baixar o atraso para 3 | 3 | 9 | **~6 min** |
+| **agora** (atraso 3, cron 2 min) | 3 | 6 | **~4,5 min** |
+| atraso 3, cron 1 min | 3 | 5 | ~4 min |
+
+Ou seja: trocar 5 por 3 sozinho tiraria 2 minutos de 8, e a diferença entre "3
+min" e "2 min" da escada **sumiria dentro do ruído do cron**. Configurar um
+ritmo que a máquina não consegue cumprir é escrever número decorativo — por isso
+o campo da tela avisa quando alguém digita menos que a rodada.
+
+**Por que 2 em 2 e não 1 em 1.** Medido nas 24h anteriores, em 297 execuções da
+`dom-rascunho`: mediana **4,6s**, p90 **11,4s**, pior caso **38,8s**. De minuto
+em minuto sobrariam 21s de margem no pior caso — rodadas encostando uma na
+outra em dia ruim. De 2 em 2 a margem é de 3x.
+
+**O custo não é 5x.** As invocações vão de 288 para 720 por dia, mas a função
+pula todo grupo cuja última mensagem já foi decidida **antes** de chamar
+qualquer modelo: rodada em grupo parado é só leitura de banco. O número de
+chamadas de modelo — a única linha cara — depende de quantas mensagens novas
+chegaram, não de quantas vezes olhamos.
+
+### O que a tela passou a dizer
+
+O painel dizia "5 minutos" em três lugares, escrito à mão. Texto que promete
+cinco quando o banco diz três é pior que texto nenhum: quem lê decide por ele e
+descobre a diferença pelo cliente reclamando. Agora o painel lê o ritmo do
+agente e escreve o número que vale.
+
+### Contexto de quando isto foi escrito
+
+**Nenhum grupo estava em modo automático** — 1.149 ativos, todos em `rascunho`.
+Isto é calibragem de algo que ainda não rodou em produção, e é exatamente por
+isso que virou configuração e não constante: os números vão precisar de ajuste
+quando o primeiro grupo ligar, e esse ajuste não pode depender de deploy.
+
+| arquivo | o que mudou |
+|---|---|
+| `20260908190000_ritmo_do_atendente_virtual.sql` | 3 colunas em `wjia_command_shortcuts` + cron para `*/2` |
+| `dom-rascunho/index.ts` | lê a config, decide o atraso pela conversa quente (uma query, fora do laço) |
+| `WhatsAppCommandConfig.tsx` | os três campos, com aviso quando o número é menor que a rodada |
+| `AtendenteVirtualPanel.tsx` | textos passam a citar o ritmo real |
+
+**Rollback (< 1 min, sem deploy):** `update wjia_command_shortcuts set
+auto_delay_first_minutes = 5, auto_delay_next_minutes = 5 where id =
+'d6ad8eee-d6a3-452c-b852-b94ef8dd54bf';` — volta ao fixo de cinco minutos. O
+cron volta com `cron.alter_job(..., schedule := '*/5 * * * *')`. Nenhum dos dois
+mexe em código.
+
+---
+
+## O painel também mora dentro da ficha do cliente (08/09/2026)
+
+Até aqui o que o Dom escreveu só existia na tela de operação
+(Configurações → Atendente Virtual), misturado com os 1.149 grupos do piloto.
+Quem abria a ficha de um cliente não tinha como saber se o assessor já tinha
+falado com ele, o que ficou esperando revisão, nem o que foi silenciado.
+
+`LeadEditDialog` ganhou a aba **Atendente Virtual**, que renderiza o **mesmo**
+`AtendenteVirtualPanel` com a prop `leadId`. Não é um painel reduzido paralelo:
+um segundo componente divergiria na primeira mudança, e o assessor veria dentro
+da ficha uma ação que já não existe mais na tela de operação.
+
+### O recorte
+
+Com `leadId`, o painel primeiro resolve os grupos daquela ficha e só então
+carrega qualquer lista. As duas fontes são os mesmos dois degraus da
+`dom_contexto_processual`:
+
+1. `lead_whatsapp_groups` — a ponte explícita
+2. `leads.whatsapp_group_id` — o cadastro da ficha
+
+**A normalização do jid não é detalhe.** Medido em 08/09/2026 no banco externo:
+
+| tabela | linhas | com `@` |
+|---|---|---|
+| `dom_respostas_pendentes` | 228 | 0 |
+| `dom_decisoes` | 779 | 0 |
+| `dom_grupos_piloto` | 1.149 | 0 |
+| `lead_whatsapp_groups` | 2.567 | 1.471 |
+| `leads.whatsapp_group_id` | 3.900 | 2.803 |
+
+As três tabelas do Dom guardam o jid curto; as duas do lead guardam misturado.
+Comparar cru daria lista vazia em mais da metade das fichas — e vazio ali se lê
+como "o assessor nunca falou com este cliente".
+
+**Filtra por GRUPO, não por `lead_id`.** 31 dos 228 rascunhos foram gravados sem
+`lead_id` (o assessor não tinha achado a ficha na hora) — são justamente os que
+mais interessam a quem abre a ficha depois. Filtrar pela coluna deixaria esses
+31 calados. Pelo grupo não se perde nada: dos 197 com `lead_id`, os 197 batem
+com o grupo da ficha pela ponte.
+
+### O que muda de forma na aba
+
+- **Quatro abas em vez de seis.** "Nas conversas" procura em todos os grupos com
+  rascunho na fila (dentro de um cliente devolveria conversa de outro) e "Sem
+  ficha" é a lista dos grupos órfãos — esta ficha, por definição, não está lá.
+- **A chave "responde sozinho"** aparece para o grupo da ficha em qualquer modo,
+  não só nos que já respondem sozinhos: é onde ela precisa estar para ser ligada.
+- **Ficha sem grupo** não consulta nada e diz o porquê. Lista vazia sem
+  explicação seria a mesma armadilha do "(0)".
+- **Cada cartão diz de qual processo a resposta falava**, lendo
+  `contexto_usado.processos[].numero` (o mesmo campo da `FontesDaResposta`).
+  Rascunho anterior a 07/09/2026 não tem `contexto_usado` e não ganha a linha —
+  escrever "sem processo" ali seria afirmar o que ninguém guardou. Esta linha
+  vale nas **duas** telas, porque o cartão é o mesmo.
+
+| arquivo | o que mudou |
+|---|---|
+| `AtendenteVirtualPanel.tsx` | prop `leadId`; resolve os grupos da ficha; recorta as consultas; esconde as duas abas; a linha do processo no cartão |
+| `LeadEditDialog.tsx` | aba "Atendente Virtual", ao lado de Chat IA, com import dinâmico |
+| `__tests__/AtendenteVirtualPanel.no-lead.test.tsx` | 6 testes: as duas fontes, a normalização, o recorte em toda consulta, ficha sem grupo, as abas que somem, e que sem `leadId` nada mudou |
+
+**Rollback (< 1 min):** tirar o `TabsTrigger`/`TabsContent` de `atendente` do
+`LeadEditDialog`. O `leadId` do painel é opcional — sem chamador, ele volta a ser
+exatamente a tela de operação de antes. Não há migration nem mudança de schema.

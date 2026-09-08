@@ -15,7 +15,7 @@
  * A última existe porque um atendente que nunca fala parece estar funcionando.
  * Sem ver o silêncio, não dá para saber se ele está calando demais ou de menos.
  */
-import { useCallback, useEffect, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { db, ensureExternalSession, externalFunctionUrl } from '@/integrations/supabase';
 import { Card, CardContent } from '@/components/ui/card';
@@ -36,6 +36,19 @@ import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 import { ContagemAteEnvio } from '@/components/whatsapp/ContagemAteEnvio';
 
 const dbAny = db as unknown as SupabaseClient;
+
+/** O agente Dom em `wjia_command_shortcuts` — o mesmo id que a `dom-rascunho` usa. */
+const DOM_AGENT_ID = 'd6ad8eee-d6a3-452c-b852-b94ef8dd54bf';
+
+/**
+ * O ritmo do modo automático, como está configurado AGORA.
+ *
+ * A tela dizia "5 minutos" em três lugares, escrito à mão, de quando o atraso
+ * era constante no código. Agora ele é editável na configuração do agente — e
+ * um texto que promete cinco quando o banco diz três é pior que texto nenhum:
+ * quem lê decide com base nele e descobre a diferença pelo cliente reclamando.
+ */
+const RITMO_PADRAO = { primeira: 3, seguinte: 2 };
 
 /** O formulario unico do lead, por id. Lazy: ele arrasta o LeadEditDialog e o
  *  useLeads junto, e ninguem precisa disso ate clicar em vincular. */
@@ -204,12 +217,14 @@ function nomeDoAtendente(p: Pendente): string | null {
 const quando = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 
+type Filtro = { chave: string; rotulo: string; casa: (i: string | null) => boolean };
+
 /**
- * As 19 intenções em cinco famílias, que é como a decisão de fato é tomada:
+ * As intenções em cinco famílias, que é como a decisão de fato é tomada:
  * a letra manda, o número é detalhe. Filtrar por "E16" obrigaria a pessoa a
  * decorar códigos; filtrar por "Precisa de gente" é a pergunta que ela faz.
  */
-const FAMILIAS: { chave: string; rotulo: string; casa: (i: string | null) => boolean }[] = [
+const FAMILIAS: Filtro[] = [
   { chave: 'todas', rotulo: 'Todas', casa: () => true },
   { chave: 'A', rotulo: 'Perguntou algo', casa: (i) => (i || '').startsWith('A') },
   { chave: 'B', rotulo: 'Desabafo', casa: (i) => (i || '').startsWith('B') },
@@ -218,6 +233,27 @@ const FAMILIAS: { chave: string; rotulo: string; casa: (i: string | null) => boo
   { chave: 'E', rotulo: 'Precisa de gente', casa: (i) => (i || '').startsWith('E') },
   { chave: 'COBRANCA', rotulo: 'Cobrança', casa: (i) => i === 'COBRANCA' },
 ];
+
+/**
+ * Aqui a regra da família se inverte de propósito.
+ *
+ * Cinco falas mudam o dia de quem lê e desapareciam dentro da letra:
+ * reclamação e desistência viravam "Precisa de gente" junto com quem só
+ * perguntou de prazo, e elogio virava "Desabafo". Quem abre este painel de
+ * manhã não procura a letra E — procura quem falou em desistir.
+ *
+ * Por isso estes chips filtram por CÓDIGO, e vivem numa fileira separada: não
+ * são um recorte das famílias, são o que não pode passar batido.
+ */
+const OLHO_NELAS: Filtro[] = [
+  { chave: 'E20', rotulo: 'Desistência', casa: (i) => i === 'E20' },
+  { chave: 'E16', rotulo: 'Reclamação', casa: (i) => i === 'E16' },
+  { chave: 'E21', rotulo: 'Pede dinheiro', casa: (i) => i === 'E21' },
+  { chave: 'E22', rotulo: 'Indicação', casa: (i) => i === 'E22' },
+  { chave: 'B23', rotulo: 'Elogio', casa: (i) => i === 'B23' },
+];
+
+const FILTROS: Filtro[] = [...FAMILIAS, ...OLHO_NELAS];
 
 /**
  * Abre a conversa do grupo no painel de baixo pra cima — o mesmo drawer do
@@ -253,11 +289,29 @@ interface NaConversa {
   intencao: string | null;
 }
 
+/**
+ * Os processos que entraram no prompt desta resposta, pelo número.
+ *
+ * Dentro da ficha é a pergunta que o cliente faria: "essa mensagem foi sobre
+ * qual dos meus processos?". Sai do mesmo `contexto_usado` que abastece a
+ * FontesDaResposta no detalhe — aqui é só o resumo de uma linha, para não
+ * precisar abrir cada cartão para descobrir.
+ *
+ * Rascunho anterior a 07/09/2026 não tem `contexto_usado` e não ganha a linha:
+ * inventar "sem processo" ali seria afirmar o que ninguém guardou.
+ */
+function processosDoRascunho(p: Pendente): string[] {
+  return (p.contexto_usado?.processos || [])
+    .map(pr => (pr?.numero || '').trim())
+    .filter(Boolean);
+}
+
 /** Linha comum das três listas que saem de dom_respostas_pendentes. */
 function LinhaPendente({ p, onClick, rodape, marcada, onMarcar }: {
   p: Pendente; onClick?: () => void; rodape?: React.ReactNode;
   marcada?: boolean; onMarcar?: (v: boolean) => void;
 }) {
+  const processos = processosDoRascunho(p);
   return (
     <Card className={onClick ? 'cursor-pointer hover:border-primary/40' : ''} onClick={onClick}>
       <CardContent className="p-3 space-y-1">
@@ -282,13 +336,31 @@ function LinhaPendente({ p, onClick, rodape, marcada, onMarcar }: {
           <strong>{p.pergunta_autor || 'Cliente'}:</strong> {p.pergunta}
         </p>
         <p className="text-[11px] truncate">{p.resposta_final || p.resposta_sugerida}</p>
+        {processos.length > 0 && (
+          <p className="text-[10px] text-muted-foreground/80 truncate">
+            {processos.length === 1 ? 'sobre o processo ' : 'sobre os processos '}
+            {processos.join(' · ')}
+          </p>
+        )}
         {rodape}
       </CardContent>
     </Card>
   );
 }
 
-export function AtendenteVirtualPanel() {
+/**
+ * O painel inteiro, ou o mesmo painel recortado num cliente só.
+ *
+ * `leadId` ausente = a tela de operação, com os 1.149 grupos do piloto. Com
+ * `leadId`, é a aba dentro da ficha: as mesmas listas, os mesmos cartões e o
+ * mesmo detalhe lateral, só que do cliente que está aberto.
+ *
+ * É o MESMO componente de propósito. Um painel reduzido paralelo divergiria na
+ * primeira mudança — o botão novo entraria num e não no outro, e o assessor
+ * veria dentro da ficha uma ação que já não existe mais na tela de operação.
+ */
+export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
+  const noLead = !!leadId;
   const [fila, setFila] = useState<Pendente[]>([]);
   const [enviadas, setEnviadas] = useState<Pendente[]>([]);
   const [comHumano, setComHumano] = useState<Pendente[]>([]);
@@ -308,12 +380,33 @@ export function AtendenteVirtualPanel() {
    * sair sozinha — e quem lia concluía, com razão, que ainda precisava aprovar.
    */
   const [saiEm, setSaiEm] = useState<Record<string, string>>({});
+  const [ritmo, setRitmo] = useState(RITMO_PADRAO);
   const [busca, setBusca] = useState('');
   const [achados, setAchados] = useState<GrupoPiloto[]>([]);
   const [buscaConversa, setBuscaConversa] = useState('');
   const [nasConversas, setNasConversas] = useState<NaConversa[]>([]);
   const [buscandoConversas, setBuscandoConversas] = useState(false);
   const [totalGrupos, setTotalGrupos] = useState(0);
+  /**
+   * Os grupos DESTE lead, no formato curto do jid — o recorte da aba da ficha.
+   *
+   * `null` = ainda não resolvi (não dá para carregar nada); `[]` = resolvi e a
+   * ficha não tem grupo nenhum, que é uma resposta e não um erro.
+   *
+   * Vem de duas fontes porque o vínculo mora em dois lugares — os mesmos dois
+   * degraus da `dom_contexto_processual`: a ponte explícita
+   * (`lead_whatsapp_groups`) e o cadastro da ficha (`leads.whatsapp_group_id`).
+   * Só a ponte perderia os grupos que existem apenas no cadastro (167 dentro do
+   * piloto, medidos em 07/09/2026).
+   *
+   * A NORMALIZAÇÃO não é detalhe. Medido em 08/09/2026 no banco externo, as três
+   * tabelas do Dom guardam o jid CURTO — 0 de 228 rascunhos, 0 de 779 decisões e
+   * 0 de 1.149 grupos do piloto têm '@' — enquanto as duas fontes do lead
+   * guardam misturado: 1.471 de 2.567 na ponte e 2.803 de 3.900 no cadastro.
+   * Comparar cru daria lista vazia em mais da metade das fichas, e vazio aqui se
+   * lê como "o assessor nunca falou com este cliente".
+   */
+  const [jidsDoLead, setJidsDoLead] = useState<string[] | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState<Pendente | null>(null);
   const [texto, setTexto] = useState('');
@@ -380,42 +473,99 @@ export function AtendenteVirtualPanel() {
     }
   }, [aberto, regerando]);
 
+  /**
+   * Resolve os grupos da ficha antes de qualquer lista aparecer.
+   *
+   * Roda só na aba do lead. Na tela de operação `leadId` é undefined e este
+   * efeito não faz uma consulta sequer — a tela grande continua exatamente
+   * como estava.
+   */
+  useEffect(() => {
+    if (!leadId) { setJidsDoLead(null); return; }
+    let vivo = true;
+    (async () => {
+      await ensureExternalSession();
+      const [ponte, ficha] = await Promise.all([
+        dbAny.from('lead_whatsapp_groups').select('group_jid').eq('lead_id', leadId),
+        dbAny.from('leads').select('whatsapp_group_id').eq('id', leadId).maybeSingle(),
+      ]);
+      if (!vivo) return;
+      const curto = (j: unknown) => String(j ?? '').split('@')[0].trim();
+      const todos = [
+        ...((ponte.data as { group_jid: string | null }[] | null) || []).map(g => curto(g.group_jid)),
+        curto((ficha.data as { whatsapp_group_id: string | null } | null)?.whatsapp_group_id),
+      ].filter(Boolean);
+      setJidsDoLead([...new Set(todos)]);
+    })();
+    return () => { vivo = false; };
+  }, [leadId]);
+
   const carregar = useCallback(async () => {
+    // `null` = ainda não sei quais são os grupos da ficha, e carregar agora
+    // traria a fila do escritório inteiro dentro de um cliente — o vazamento
+    // que o recorte existe para evitar.
+    if (noLead && jidsDoLead === null) return;
+    // `[]` = a ficha não tem grupo. As consultas sairiam com `in('group_jid',
+    // [])`: cinco viagens ao banco para trazer nada. As listas são zeradas
+    // porque o painel não é remontado quando a ficha aberta troca.
+    if (noLead && jidsDoLead.length === 0) {
+      setFila([]); setEnviadas([]); setComHumano([]);
+      setSilenciadas([]); setGrupos([]); setSemFicha([]); setSaiEm({});
+      return;
+    }
     setCarregando(true);
     try {
       await ensureExternalSession();
       const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, audio_velocidade, audio_estabilidade, audio_estilo, audio_pausa_ms, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, contexto_usado, dom_atendentes(nome)';
+      /**
+       * O recorte da ficha, aplicado a toda consulta que tem `group_jid`.
+       *
+       * Filtra por GRUPO e não por `lead_id`: 31 dos 228 rascunhos foram
+       * gravados sem `lead_id` (o assessor não tinha achado a ficha na hora),
+       * e são exatamente os que mais interessam a quem abre a ficha depois.
+       * Filtrar pela coluna deixaria essas 31 fora, caladas. Pelo grupo não
+       * perde nada: dos 197 com `lead_id`, os 197 batem com o grupo da ficha
+       * (medido em 08/09/2026).
+       */
+      const escopo = (q: any) => (noLead ? q.in('group_jid', jidsDoLead ?? []) : q);
+
       const [f, e, h, s, gp, sf] = await Promise.all([
         // "Na fila" é tudo que AINDA NÃO SAIU — inclusive o que alguém já
         // aprovou. Filtrar só por 'pendente' fazia a resposta aprovada sumir
         // das quatro abas: não estava mais na fila, nunca chegou em enviadas,
         // e ficava parada para sempre sem ninguém ver.
-        dbAny.from('dom_respostas_pendentes').select(sel)
-          .in('status', ['pendente', 'aprovada', 'editada']).is('atendente_id', null)
+        escopo(dbAny.from('dom_respostas_pendentes').select(sel)
+          .in('status', ['pendente', 'aprovada', 'editada']).is('atendente_id', null))
           .order('criado_em', { ascending: false }).limit(100),
-        dbAny.from('dom_respostas_pendentes').select(sel)
-          .eq('status', 'enviada')
+        escopo(dbAny.from('dom_respostas_pendentes').select(sel)
+          .eq('status', 'enviada'))
           .order('enviado_em', { ascending: false }).limit(100),
-        dbAny.from('dom_respostas_pendentes').select(sel)
-          .not('atendente_id', 'is', null)
+        escopo(dbAny.from('dom_respostas_pendentes').select(sel)
+          .not('atendente_id', 'is', null))
           .order('criado_em', { ascending: false }).limit(100),
-        dbAny.from('dom_decisoes')
+        escopo(dbAny.from('dom_decisoes')
           .select('id, group_name, group_jid, intencao, decisao, motivo, pergunta, criado_em')
-          .eq('decisao', 'silencio')
+          .eq('decisao', 'silencio'))
           .order('criado_em', { ascending: false }).limit(100),
         // Só os que RESPONDEM SOZINHOS. São mais de mil grupos no piloto:
         // desenhar mil chaves na tela não é configuração, é entulho. Quem
         // procura um grupo específico usa a busca abaixo.
-        dbAny.from('dom_grupos_piloto')
-          .select('group_jid, group_name, modo, ativo')
-          .eq('ativo', true).eq('modo', 'automatico').order('group_name'),
+        noLead
+          ? dbAny.from('dom_grupos_piloto')
+              .select('group_jid, group_name, modo, ativo')
+              .in('group_jid', jidsDoLead ?? []).order('group_name')
+          : dbAny.from('dom_grupos_piloto')
+              .select('group_jid, group_name, modo, ativo')
+              .eq('ativo', true).eq('modo', 'automatico').order('group_name'),
         // Os que o assessor atende sem saber de quem são. Ordenados pelo
         // ESTRAGO já feito — quantas respostas saíram no escuro — e não por
         // nome: a fila de conserto começa por onde já custou caro.
-        dbAny.from('vw_dom_grupo_sem_ficha')
-          .select('group_jid, group_name, situacao, fichas_no_cadastro, rascunhos_no_escuro, ultimo_rascunho_em, o_que_fazer')
-          .order('rascunhos_no_escuro', { ascending: false })
-          .order('group_name'),
+        noLead
+          ? Promise.resolve({ data: [] as unknown })
+          : dbAny.from('vw_dom_grupo_sem_ficha')
+              .select('group_jid, group_name, situacao, fichas_no_cadastro, rascunhos_no_escuro, ultimo_rascunho_em, o_que_fazer')
+              .order('rascunhos_no_escuro', { ascending: false })
+              .order('group_name'),
       ]);
       setFila((f.data as unknown as Pendente[]) || []);
       setEnviadas((e.data as unknown as Pendente[]) || []);
@@ -424,9 +574,24 @@ export function AtendenteVirtualPanel() {
       setGrupos((gp.data as unknown as GrupoPiloto[]) || []);
       setSemFicha((sf.data as unknown as SemFicha[]) || []);
 
-      const { count } = await dbAny.from('dom_grupos_piloto')
-        .select('group_jid', { count: 'exact', head: true }).eq('ativo', true);
-      setTotalGrupos(count || 0);
+      if (!noLead) {
+        const { count } = await dbAny.from('dom_grupos_piloto')
+          .select('group_jid', { count: 'exact', head: true }).eq('ativo', true);
+        setTotalGrupos(count || 0);
+      }
+
+      // O ritmo é do agente, não do painel: lido aqui só para a tela contar a
+      // verdade. Falhar não pode apagar a fila — cai no padrão e segue.
+      const { data: cfg } = await dbAny.from('wjia_command_shortcuts')
+        .select('auto_delay_first_minutes, auto_delay_next_minutes')
+        .eq('id', DOM_AGENT_ID).maybeSingle();
+      if (cfg) {
+        const c = cfg as { auto_delay_first_minutes: number | null; auto_delay_next_minutes: number | null };
+        setRitmo({
+          primeira: c.auto_delay_first_minutes || RITMO_PADRAO.primeira,
+          seguinte: c.auto_delay_next_minutes || RITMO_PADRAO.seguinte,
+        });
+      }
 
       const ids = [...((f.data as unknown as Pendente[]) || [])]
         .map(p => p.agendamento_id).filter(Boolean) as string[];
@@ -446,7 +611,7 @@ export function AtendenteVirtualPanel() {
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [noLead, jidsDoLead]);
 
   useEffect(() => { carregar(); }, [carregar]);
 
@@ -468,8 +633,8 @@ export function AtendenteVirtualPanel() {
    * Liga/desliga o "responde sozinho" de um grupo.
    *
    * `rascunho` → escreve e espera alguém aprovar (nada sai).
-   * `automatico` → entra na fila de envio com 5 minutos de atraso; a janela é a
-   * revisão, e a bolha tracejada na conversa deixa cancelar ou mandar na hora.
+   * `automatico` → entra na fila de envio com o atraso configurado; a janela é
+   * a revisão, e a bolha tracejada na conversa deixa cancelar ou mandar na hora.
    */
   const trocarModo = async (g: GrupoPiloto, sozinho: boolean) => {
     setTrocandoModo(g.group_jid);
@@ -483,7 +648,7 @@ export function AtendenteVirtualPanel() {
       ? (atual.some(x => x.group_jid === g.group_jid) ? atual : [...atual, { ...g, modo }])
       : atual.filter(x => x.group_jid !== g.group_jid));
     toast.success(sozinho
-      ? `${g.group_name}: responde sozinho, 5 min depois de o cliente escrever`
+      ? `${g.group_name}: responde sozinho, ${ritmo.primeira} min depois de o cliente escrever`
       : `${g.group_name}: volta a só rascunhar`);
   };
 
@@ -492,12 +657,28 @@ export function AtendenteVirtualPanel() {
    *
    * "Marcar como boa" só marca: um rascunho de grupo em modo Rascunho não tinha
    * NENHUM caminho para chegar ao cliente, e ficava preso no painel para sempre.
-   * Aqui ele entra na mesma fila de agendamento do resto, com os mesmos 5
-   * minutos — então ainda dá para desistir pela bolha na conversa, e quem
-   * escreveu no grupo nesse meio-tempo cancela o envio sozinho.
+   * Aqui ele entra na mesma fila de agendamento do resto.
+   *
+   * SEM OS CINCO MINUTOS DE ESPERA. Aquele atraso é a janela de revisão do modo
+   * automático: a resposta que sai sozinha precisa de um tempo em que alguém
+   * ainda possa alcançá-la. Aqui a revisão JÁ ACONTECEU — uma pessoa leu, às
+   * vezes editou, e clicou em aprovar. Segurar cinco minutos depois disso não
+   * protege de nada; só faz o cliente esperar por uma decisão já tomada.
+   *
+   * "Na hora" é o próximo tique do banco (`wa_agendadas_tick`, de minuto em
+   * minuto) — até um minuto, e a tela diz isso em voz alta. Continua sendo o
+   * disparo do banco quem envia, e não uma chamada direta daqui, pelo mesmo
+   * motivo do "enviar agora" da conversa: um segundo caminho de envio seriam
+   * duas verdades sobre a mesma mensagem, e mensagem dobrada se os dois
+   * rodassem juntos.
+   *
+   * `pular_se_responder` fica ligado: se o cliente escrever DENTRO desse
+   * minuto, a aprovada não sai. O marco da conferência é a criação do
+   * agendamento, então a mensagem que gerou o rascunho — mais velha que ele —
+   * não bloqueia nada.
    */
   const porNaFilaDeEnvio = async (p: Pendente, corpo: string) => {
-    const quando = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const quando = new Date().toISOString();
     // QUEM FALOU POR VOZ RECEBE VOZ. O áudio já estava pronto e tocava aqui do
     // lado — o que faltava era o cano: até 08/09/2026 a fila só sabia carregar
     // texto, então a resposta falada morria no painel e a cliente que mandou
@@ -536,7 +717,7 @@ export function AtendenteVirtualPanel() {
         resposta_final: corpo,
         agendamento_id: (ag as { id: string }).id,
         revisado_em: new Date().toISOString(),
-        motivo_revisao: 'aprovado à mão — sai em 5 min',
+        motivo_revisao: 'aprovado à mão — sai no próximo minuto',
       } as never)
       .eq('id', p.id);
     if (error) throw error;
@@ -547,7 +728,7 @@ export function AtendenteVirtualPanel() {
     try {
       await porNaFilaDeEnvio(p, texto);
       setAberto(null);
-      toast.success('Na fila — sai em 5 minutos, dá para cancelar pela conversa');
+      toast.success('Aprovada — sai no próximo minuto');
       carregar();
     } catch (e) {
       toast.error('Não consegui pôr na fila: ' + ((e as Error)?.message || 'erro'));
@@ -585,7 +766,7 @@ export function AtendenteVirtualPanel() {
     setMarcadas(new Set());
     if (ok) {
       toast.success(acao === 'enviar'
-        ? `${ok} na fila — saem em 5 minutos`
+        ? `${ok} aprovada(s) — saem no próximo minuto`
         : `${ok} descartada(s)`);
     }
     // Falha silenciosa em lote é o pior tipo: a pessoa acha que mandou tudo.
@@ -672,11 +853,30 @@ export function AtendenteVirtualPanel() {
   };
 
   /** O filtro de intenção vale para as três listas que têm intenção. */
-  const casa = FAMILIAS.find(f => f.chave === familia) ?? FAMILIAS[0];
+  const casa = FILTROS.find(f => f.chave === familia) ?? FILTROS[0];
   const filaF = fila.filter(p => casa.casa(p.intencao));
   const enviadasF = enviadas.filter(p => casa.casa(p.intencao));
   const comHumanoF = comHumano.filter(p => casa.casa(p.intencao));
   const silenciadasF = silenciadas.filter(d => casa.casa(d.intencao));
+
+  /**
+   * Quanto cada chip tem, somando as quatro listas que carregam intenção.
+   *
+   * Sem o número, chip zerado e chip cheio são idênticos até você clicar — e a
+   * pergunta "cadê a desistência?" não tem resposta na tela. Com o número, zero
+   * é uma resposta: ninguém falou nisso no que está carregado aqui.
+   */
+  const contagens = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    for (const f of FILTROS) {
+      mapa[f.chave] =
+        fila.filter(p => f.casa(p.intencao)).length +
+        enviadas.filter(p => f.casa(p.intencao)).length +
+        comHumano.filter(p => f.casa(p.intencao)).length +
+        silenciadas.filter(d => f.casa(d.intencao)).length;
+    }
+    return mapa;
+  }, [fila, enviadas, comHumano, silenciadas]);
 
   const vazio = (txt: string) => <p className="text-xs text-muted-foreground py-6 text-center">{txt}</p>;
 
@@ -684,10 +884,20 @@ export function AtendenteVirtualPanel() {
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <p className="text-[11px] text-muted-foreground flex-1">
-          O que o atendente virtual fez.{' '}
-          {grupos.length === 0
-            ? `Nenhum dos ${totalGrupos} grupos responde sozinho ainda — tudo fica esperando revisão e nada sai para o cliente.`
-            : `${grupos.length} de ${totalGrupos} grupos respondem sozinhos: a resposta entra na fila e sai 5 minutos depois, se ninguém escrever antes.`}
+          {noLead ? (
+            jidsDoLead === null
+              ? 'Procurando o grupo deste cliente…'
+              : jidsDoLead.length === 0
+                ? 'Esta ficha não tem grupo de WhatsApp ligado — o assessor virtual não tem por onde falar com este cliente, e por isso não há nada aqui.'
+                : `O que o atendente virtual escreveu para este cliente, ${jidsDoLead.length === 1 ? 'no grupo da ficha' : `nos ${jidsDoLead.length} grupos da ficha`}.`
+          ) : (
+            <>
+              O que o atendente virtual fez.{' '}
+              {grupos.length === 0
+                ? `Nenhum dos ${totalGrupos} grupos responde sozinho ainda — tudo fica esperando revisão e nada sai para o cliente.`
+                : `${grupos.length} de ${totalGrupos} grupos respondem sozinhos: a resposta entra na fila e sai ${ritmo.primeira} min depois, se ninguém escrever antes.`}
+            </>
+          )}
         </p>
         <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={carregar} disabled={carregando}>
           {carregando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -695,29 +905,42 @@ export function AtendenteVirtualPanel() {
         </Button>
       </div>
 
-      <Card>
+      {!(noLead && jidsDoLead?.length === 0) && <Card>
         <CardContent className="p-3 space-y-2">
-          <p className="text-[11px] font-medium">Quem responde sozinho</p>
+          <p className="text-[11px] font-medium">
+            {noLead ? 'O grupo deste cliente responde sozinho?' : 'Quem responde sozinho'}
+          </p>
           <p className="text-[10px] text-muted-foreground">
-            Ligado, ele responde sozinho 5 minutos depois de o cliente escrever. A mensagem
-            aparece na conversa como bolha tracejada com cronômetro — dá para tirar da fila
-            ou mandar na hora. Se alguém escrever no grupo antes, ela não sai.
-            {' '}Os outros continuam trabalhando em modo rascunho: escrevem e enchem a fila,
-            sem nada chegar no cliente.
+            Ligado, ele responde sozinho {ritmo.primeira} min depois de o cliente escrever —
+            e {ritmo.seguinte} min nas respostas seguintes, enquanto a conversa continua. A
+            mensagem aparece na conversa como bolha tracejada com cronômetro — dá para tirar
+            da fila ou mandar na hora. Se alguém escrever no grupo antes, ela não sai.
+            {noLead
+              ? ' Desligado, ele continua escrevendo: o rascunho cai na fila abaixo e nada chega ao cliente sem alguém aprovar.'
+              : ' Os outros continuam trabalhando em modo rascunho: escrevem e enchem a fila, sem nada chegar no cliente.'}
           </p>
 
           <div className="space-y-1 pt-1">
             {grupos.length === 0 && (
               <p className="text-[10px] text-muted-foreground italic py-1">
-                Nenhum grupo responde sozinho ainda.
+                {!noLead
+                  ? 'Nenhum grupo responde sozinho ainda.'
+                  : jidsDoLead === null
+                    ? 'Procurando o grupo da ficha…'
+                    : 'O grupo desta ficha não está no piloto do assessor — ele não escreve nada aqui, nem rascunho.'}
               </p>
             )}
             {grupos.map(g => (
               <div key={g.group_jid} className="flex items-center gap-2">
                 <span className="text-[11px] flex-1 truncate">{g.group_name || g.group_jid}</span>
-                <span className="text-[10px] text-emerald-700 whitespace-nowrap">responde sozinho</span>
+                {/* Na tela grande esta lista já vem filtrada em `automatico`, então
+                    o rótulo continua o mesmo. Na ficha vêm os dois modos, e dizer
+                    "responde sozinho" num grupo que só rascunha seria mentira. */}
+                <span className={`text-[10px] whitespace-nowrap ${g.modo === 'automatico' ? 'text-emerald-700' : 'text-muted-foreground'}`}>
+                  {g.modo === 'automatico' ? 'responde sozinho' : 'só rascunha'}
+                </span>
                 <Switch
-                  checked
+                  checked={g.modo === 'automatico'}
                   disabled={trocandoModo === g.group_jid}
                   onCheckedChange={(v) => trocarModo(g, v)}
                 />
@@ -725,7 +948,7 @@ export function AtendenteVirtualPanel() {
             ))}
           </div>
 
-          <div className="pt-2 border-t space-y-1">
+          {!noLead && <div className="pt-2 border-t space-y-1">
             <Input
               value={busca}
               onChange={(e) => procurar(e.target.value)}
@@ -748,27 +971,57 @@ export function AtendenteVirtualPanel() {
                 />
               </div>
             ))}
-          </div>
+          </div>}
         </CardContent>
-      </Card>
+      </Card>}
 
-      <div className="flex flex-wrap items-center gap-1">
-        <span className="text-[10px] text-muted-foreground mr-1">Intenção:</span>
-        {FAMILIAS.map(f => (
-          <Button
-            key={f.chave}
-            size="sm"
-            variant={familia === f.chave ? 'default' : 'outline'}
-            className="h-6 px-2 text-[10px]"
-            onClick={() => { setFamilia(f.chave); setMarcadas(new Set()); }}
-          >
-            {f.rotulo}
-          </Button>
-        ))}
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] text-muted-foreground mr-1">Intenção:</span>
+          {FAMILIAS.map(f => (
+            <Button
+              key={f.chave}
+              size="sm"
+              variant={familia === f.chave ? 'default' : 'outline'}
+              className="h-6 px-2 text-[10px]"
+              onClick={() => { setFamilia(f.chave); setMarcadas(new Set()); }}
+            >
+              {f.rotulo}
+              {f.chave !== 'todas' && (
+                <span className="ml-1 opacity-60">{contagens[f.chave] ?? 0}</span>
+              )}
+            </Button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] text-muted-foreground mr-1">Olho nelas:</span>
+          {OLHO_NELAS.map(f => (
+            <Button
+              key={f.chave}
+              size="sm"
+              variant={familia === f.chave ? 'default' : 'outline'}
+              className="h-6 px-2 text-[10px]"
+              onClick={() => { setFamilia(f.chave); setMarcadas(new Set()); }}
+            >
+              {f.rotulo}
+              <span className="ml-1 opacity-60">{contagens[f.chave] ?? 0}</span>
+            </Button>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          As de cima são as cinco famílias — a letra que decide o que o Dom faz. As de
+          baixo são falas específicas que não podem passar batido, e o número diz quantas
+          existem no que está carregado nas quatro abas.
+        </p>
       </div>
 
       <Tabs defaultValue="fila">
-        <TabsList className="grid w-full grid-cols-6">
+        {/* Dentro da ficha caem duas abas. "Nas conversas" procura em TODOS os
+            grupos com rascunho na fila — dentro de um cliente ela devolveria
+            conversa de outro. E "Sem ficha" é a lista de grupos órfãos: esta
+            ficha, por definição, não está lá. */}
+        <TabsList className={`grid w-full ${noLead ? 'grid-cols-4' : 'grid-cols-6'}`}>
           <TabsTrigger value="fila" className="text-xs gap-1">
             <Inbox className="h-3.5 w-3.5" />Na fila
             {filaF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filaF.length}</Badge>}
@@ -785,16 +1038,20 @@ export function AtendenteVirtualPanel() {
             <VolumeX className="h-3.5 w-3.5" />Silenciadas
             {silenciadasF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{silenciadasF.length}</Badge>}
           </TabsTrigger>
-          <TabsTrigger value="conversas" className="text-xs gap-1">
-            <Search className="h-3.5 w-3.5" />Nas conversas
-          </TabsTrigger>
+          {!noLead && (
+            <TabsTrigger value="conversas" className="text-xs gap-1">
+              <Search className="h-3.5 w-3.5" />Nas conversas
+            </TabsTrigger>
+          )}
           {/* A sexta é a que dói: grupos que ele atende sem saber de quem são. */}
-          <TabsTrigger value="semficha" className="text-xs gap-1">
-            <UserX className="h-3.5 w-3.5" />Sem ficha
-            {semFicha.length > 0 && (
-              <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{semFicha.length}</Badge>
-            )}
-          </TabsTrigger>
+          {!noLead && (
+            <TabsTrigger value="semficha" className="text-xs gap-1">
+              <UserX className="h-3.5 w-3.5" />Sem ficha
+              {semFicha.length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{semFicha.length}</Badge>
+              )}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="fila" className="space-y-2 pt-3">
@@ -848,7 +1105,7 @@ export function AtendenteVirtualPanel() {
           ))}
         </TabsContent>
 
-        <TabsContent value="conversas" className="space-y-2 pt-3">
+        {!noLead && <TabsContent value="conversas" className="space-y-2 pt-3">
           <Input
             value={buscaConversa}
             onChange={(e) => procurarNasConversas(e.target.value)}
@@ -902,7 +1159,7 @@ export function AtendenteVirtualPanel() {
               </p>
             </button>
           ))}
-        </TabsContent>
+        </TabsContent>}
 
         <TabsContent value="enviadas" className="space-y-2 pt-3">
           {enviadasF.length === 0 && vazio('Nenhuma mensagem chegou ao cliente ainda.')}
@@ -962,7 +1219,7 @@ export function AtendenteVirtualPanel() {
             esses grupos sem UM dado do processo, e continuará respondendo até
             alguém ligar o grupo à ficha. O número de respostas já escritas no
             escuro fica visível de propósito — é o custo de adiar. */}
-        <TabsContent value="semficha" className="space-y-2 pt-3">
+        {!noLead && <TabsContent value="semficha" className="space-y-2 pt-3">
           {semFicha.length === 0
             ? vazio('Todo grupo do piloto tem ficha de cliente. Nada a consertar aqui.')
             : (
@@ -1023,7 +1280,7 @@ export function AtendenteVirtualPanel() {
               </CardContent>
             </Card>
           ))}
-        </TabsContent>
+        </TabsContent>}
       </Tabs>
 
       {/* Detalhe em painel lateral — nunca redireciona, nunca abre aba nova. */}
@@ -1262,8 +1519,8 @@ export function AtendenteVirtualPanel() {
                     onClick={() => aprovarEEnviar(aberto)}>
                     {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SendHorizonal className="h-3.5 w-3.5" />}
                     {aberto.audio_url && !aberto.audio_erro && texto === (aberto.resposta_final || aberto.resposta_sugerida)
-                      ? 'Aprovar e mandar em áudio (sai em 5 min)'
-                      : 'Aprovar e enviar (sai em 5 min)'}
+                      ? 'Aprovar e mandar em áudio (sai na hora)'
+                      : 'Aprovar e enviar (sai na hora)'}
                   </Button>
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" className="text-xs gap-1 flex-1"
@@ -1278,8 +1535,9 @@ export function AtendenteVirtualPanel() {
                   <p className="text-[10px] text-muted-foreground">
                     Esta não vai sair sozinha — ou é de antes de o grupo passar a responder
                     sozinho, ou é assunto que precisa de gente (reclamação, dinheiro, prazo), ou o
-                    próprio agente pediu revisão. <strong>Aprovar e enviar</strong> põe na fila com
-                    5 minutos de atraso, e ainda dá para cancelar pela conversa.
+                    próprio agente pediu revisão. <strong>Aprovar e enviar</strong> manda na hora:
+                    a revisão é você clicando aqui, então não há mais o que esperar. Sai no
+                    próximo minuto — sem janela para desistir depois.
                   </p>
                 </>
               )}

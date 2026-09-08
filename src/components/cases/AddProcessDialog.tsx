@@ -21,7 +21,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
-import { avisarErro } from '@/lib/erroDoBanco';
+import { avisarErro, erroLegivel } from '@/lib/erroDoBanco';
 import { KanbanBoard, isBoardArchived } from '@/hooks/useKanbanBoards';
 import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
 import { syncProcessMarcos, syncProcessCompromissos } from '@/utils/escavadorMovementUtils';
@@ -66,6 +66,59 @@ interface EscavadorResult {
   fontes_tribunais_estao_arquivadas?: boolean;
 }
 
+/** Caso que já detém um número de processo. Nomear esse caso é o que substitui
+ *  o antigo aviso cego "já vinculado(s) ou com erro". */
+export interface OwnerCase {
+  caseId: string;
+  label: string;
+  isCurrent: boolean;
+}
+
+/** Quem já detém cada número de processo, em duas queries (sem N+1).
+ *  Número ausente do Map = livre para vincular a este caso. */
+export async function fetchOwnerCases(numeros: string[], currentCaseId: string): Promise<Map<string, OwnerCase>> {
+  const map = new Map<string, OwnerCase>();
+  const limpos = [...new Set(numeros.filter(Boolean))];
+  if (limpos.length === 0) return map;
+
+  const { data: vinculados, error } = await externalSupabase
+    .from('lead_processes')
+    .select('process_number, case_id')
+    .in('process_number', limpos)
+    .not('case_id', 'is', null)
+    .is('deleted_at', null);
+
+  if (error) {
+    console.error('[AddProcessDialog] checagem de duplicata falhou:', error);
+    throw new Error(`Não foi possível checar se o processo já está em outro caso: ${error.message}`);
+  }
+  if (!vinculados?.length) return map;
+
+  const caseIds = [...new Set(vinculados.map(v => v.case_id as string))];
+  const { data: casos } = await externalSupabase
+    .from('legal_cases')
+    .select('id, case_number, title')
+    .in('id', caseIds);
+
+  const porId = new Map((casos || []).map(c => [c.id as string, c]));
+  for (const v of vinculados) {
+    const numero = v.process_number as string;
+    if (map.has(numero)) continue;
+    const caso = porId.get(v.case_id as string);
+    map.set(numero, {
+      caseId: v.case_id as string,
+      label: (caso?.case_number as string) || (caso?.title as string) || 'outro caso',
+      isCurrent: v.case_id === currentCaseId,
+    });
+  }
+  return map;
+}
+
+/** Frase única para a pessoa saber onde o processo já está. */
+export function ownerPhrase(owner: OwnerCase): string {
+  return owner.isCurrent ? 'já está neste caso' : `já está no ${owner.label}`;
+}
+
 export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, onProcessAdded, boards = [] }: AddProcessDialogProps) {
   const [tab, setTab] = useState<'escavador' | 'email' | 'manual'>('escavador');
   const [searching, setSearching] = useState(false);
@@ -76,6 +129,8 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
   const [results, setResults] = useState<EscavadorResult[]>([]);
   const [selectedResults, setSelectedResults] = useState<Set<number>>(new Set());
   const [searchError, setSearchError] = useState('');
+  // Nº do processo -> caso que já o detém. Marca o card antes do clique.
+  const [ownerByNumero, setOwnerByNumero] = useState<Map<string, OwnerCase>>(new Map());
 
   // Common fields - always asked
   const [processType, setProcessType] = useState<'judicial' | 'administrativo'>('judicial');
@@ -237,6 +292,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     setSearchError('');
     setResults([]);
     setSelectedResults(new Set());
+    setOwnerByNumero(new Map());
 
     try {
       const actionMap = {
@@ -274,6 +330,12 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
       }
 
       setResults(processos);
+      // Quem já detém cada processo: o card avisa antes de a pessoa clicar.
+      try {
+        setOwnerByNumero(await fetchOwnerCases(processos.map(p => p.numero_cnj), caseId));
+      } catch (ownerErr) {
+        console.error('[AddProcessDialog] não deu para marcar os já vinculados:', ownerErr);
+      }
       if (processos.length === 0) {
         setSearchError('Nenhum processo encontrado.');
       }
@@ -286,6 +348,12 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
   };
 
   const toggleResult = (index: number) => {
+    const numero = results[index]?.numero_cnj;
+    const owner = numero ? ownerByNumero.get(numero) : undefined;
+    if (owner) {
+      toast.warning(`Este processo ${ownerPhrase(owner)}.`, { duration: 6000 });
+      return;
+    }
     setSelectedResults(prev => {
       const next = new Set(prev);
       if (next.has(index)) next.delete(index);
@@ -306,7 +374,8 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     }
     setSaving(true);
     let successCount = 0;
-    let skipCount = 0;
+    const dupes: { numero: string; owner: OwnerCase }[] = [];
+    const errors: { numero: string; erro: unknown }[] = [];
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const extUserId = await remapToExternal(user?.id);
@@ -315,17 +384,10 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
         const result = results[idx];
         if (!result) continue;
 
-        // Check duplicate
-        const { data: existing } = await externalSupabase
-          .from('lead_processes')
-          .select('id, case_id')
-          .eq('process_number', result.numero_cnj)
-          .not('case_id', 'is', null)
-          .is('deleted_at', null)
-          .maybeSingle();
-
-        if (existing) {
-          skipCount++;
+        // Revalida na hora de salvar: o mapa da busca pode ter envelhecido.
+        const owner = (await fetchOwnerCases([result.numero_cnj], caseId)).get(result.numero_cnj);
+        if (owner) {
+          dupes.push({ numero: result.numero_cnj, owner });
           continue;
         }
 
@@ -448,7 +510,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
 
         if (error) {
           console.error('Error saving process:', error);
-          skipCount++;
+          errors.push({ numero: result.numero_cnj, erro: error });
         } else {
           successCount++;
           
@@ -514,8 +576,24 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
         toast.success(`${successCount} processo(s) vinculado(s) ao caso`);
         onProcessAdded();
       }
-      if (skipCount > 0) {
-        toast.warning(`${skipCount} processo(s) já vinculado(s) ou com erro`);
+      // Duplicata e falha de gravação são coisas diferentes: cada uma com o seu
+      // aviso, e a duplicata dizendo em qual caso o processo já está.
+      if (dupes.length === 1) {
+        toast.warning(`Processo ${dupes[0].numero} ${ownerPhrase(dupes[0].owner)}.`, { duration: 8000 });
+      } else if (dupes.length > 1) {
+        toast.warning(
+          `${dupes.length} processos não vinculados — ${dupes.map(d => `${d.numero} ${ownerPhrase(d.owner)}`).join('; ')}`,
+          { duration: 10000 },
+        );
+      }
+      // Um erro só: mostra o "por quê" e o "e agora" que o banco mandou.
+      if (errors.length === 1) {
+        avisarErro(errors[0].erro, `Processo ${errors[0].numero} não salvo`);
+      } else if (errors.length > 1) {
+        toast.error(
+          `${errors.length} processos não salvos — ${errors.map(e => `${e.numero}: ${erroLegivel(e.erro, 'erro ao salvar').titulo}`).join(' | ')}`,
+          { duration: 12000 },
+        );
       }
       if (successCount > 0) {
         onOpenChange(false);
@@ -544,16 +622,10 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
       const extUserId = await remapToExternal(user?.id);
 
       if (manualForm.process_number) {
-        const { data: existing } = await externalSupabase
-          .from('lead_processes')
-          .select('id, case_id')
-          .eq('process_number', manualForm.process_number)
-          .not('case_id', 'is', null)
-          .is('deleted_at', null)
-          .maybeSingle();
+        const owner = (await fetchOwnerCases([manualForm.process_number], caseId)).get(manualForm.process_number);
 
-        if (existing) {
-          toast.error('Este número de processo já está vinculado a outro caso.');
+        if (owner) {
+          toast.error(`Este número de processo ${ownerPhrase(owner)}.`, { duration: 8000 });
           setSaving(false);
           return;
         }
@@ -628,6 +700,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     setSearchQuery('');
     setResults([]);
     setSelectedResults(new Set());
+    setOwnerByNumero(new Map());
     setSearchError('');
     setOabEstado('SP');
     setProcessType('judicial');
@@ -783,16 +856,17 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
                 {results.map((r, i) => {
                   const fonte = r.fontes?.[0];
                   const isSelected = selectedResults.has(i);
+                  const owner = ownerByNumero.get(r.numero_cnj);
                   return (
                     <div
                       key={r.numero_cnj || i}
-                      className={`border rounded-lg p-3 cursor-pointer transition-colors hover:bg-muted/50 ${
-                        isSelected ? 'ring-2 ring-primary bg-primary/5' : ''
-                      }`}
+                      className={`border rounded-lg p-3 transition-colors ${
+                        owner ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50'
+                      } ${isSelected ? 'ring-2 ring-primary bg-primary/5' : ''}`}
                       onClick={() => toggleResult(i)}
                     >
                       <div className="flex items-start gap-2">
-                        <Checkbox checked={isSelected} className="mt-0.5" />
+                        <Checkbox checked={isSelected} disabled={!!owner} className="mt-0.5" />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium">{r.numero_cnj}</p>
                           {fonte?.classe && (
@@ -805,6 +879,11 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
                           )}
                           {fonte?.nome && (
                             <p className="text-[10px] text-muted-foreground mt-0.5">{fonte.nome}</p>
+                          )}
+                          {owner && (
+                            <p className="text-[10px] font-medium text-amber-600 mt-1">
+                              {owner.isCurrent ? 'Já vinculado a este caso' : `Já vinculado ao ${owner.label}`}
+                            </p>
                           )}
                         </div>
                         <Badge variant="secondary" className="text-[10px] shrink-0">

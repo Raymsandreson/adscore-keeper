@@ -45,6 +45,7 @@ import { CapturaStatusPanel } from '@/components/notifications/CapturaStatusPane
 import { SemMovimentacaoNoProcesso } from '@/components/notifications/SemMovimentacaoNoProcesso';
 import { OrfaosSemVinculo } from '@/components/notifications/OrfaosSemVinculo';
 import { notificationsSupported, requestNotificationPermission } from '@/lib/nativeNotification';
+import { completarCamposComMarcosLigado } from '@/lib/completarCamposComMarcos';
 
 /**
  * Ficha completa do processo (mesma da tela de Processos), aberta por cima do
@@ -854,6 +855,7 @@ export function ProcessUpdatesBell({
         : null,
       faseProcessual: ctx.fase,
       regua: ctx.regua,
+      completarCamposComMarcos: completarCamposComMarcosLigado(),
       leadPreview: { board_id: ctx.boardId },
       systemOabs,
       currentUserId: user?.id || null,

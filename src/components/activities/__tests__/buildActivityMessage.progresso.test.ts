@@ -146,8 +146,15 @@ describe('campos vazios preenchidos pela régua', () => {
     ],
   };
 
-  it('atividade sem texto ganha as três seções, em linguagem de leigo', () => {
+  it('de fábrica, campo vazio continua vazio — o interruptor vem desligado', () => {
     const msg = buildActivityMessage(ctx({ ...semCampos, regua: REGUA_CHEIA }), 'client');
+    expect(msg).not.toContain('*Como está?:*');
+    expect(msg).not.toContain('já passou por');
+    expect(msg).not.toContain('Agora aguardamos a próxima etapa');
+  });
+
+  it('ligado o interruptor, atividade sem texto ganha as três seções, em linguagem de leigo', () => {
+    const msg = buildActivityMessage(ctx({ ...semCampos, regua: REGUA_CHEIA, completarCamposComMarcos: true }), 'client');
     expect(msg).toContain('*Como está?:* Seguimos acompanhando o processo de perto — a movimentação mais recente: o INSS apresentou a defesa dele, em 17/06/2026.');
     expect(msg).toContain('*O que foi feito?:* Até aqui o processo já passou por: visita da assistente social da Justiça (28/04/2026); o INSS apresentou a defesa dele (17/06/2026).');
     expect(msg).toContain('*Próximo passo:* Agora aguardamos a próxima etapa: decisão do juiz (sentença). Estamos de olho em cada movimentação e avisamos assim que houver novidade.');
@@ -158,7 +165,7 @@ describe('campos vazios preenchidos pela régua', () => {
 
   it('texto digitado pelo assessor sempre vence o automático', () => {
     const msg = buildActivityMessage(
-      ctx({ ...semCampos, formCurrentStatus: 'Réplica protocolada, aguardando sentença.', regua: REGUA_CHEIA }),
+      ctx({ ...semCampos, formCurrentStatus: 'Réplica protocolada, aguardando sentença.', regua: REGUA_CHEIA, completarCamposComMarcos: true }),
       'client',
     );
     expect(msg).toContain('*Como está?:* Réplica protocolada, aguardando sentença.');
@@ -166,7 +173,7 @@ describe('campos vazios preenchidos pela régua', () => {
   });
 
   it('sem régua, campo vazio continua vazio — nada é inventado', () => {
-    const msg = buildActivityMessage(ctx({ ...semCampos, regua: null }), 'client');
+    const msg = buildActivityMessage(ctx({ ...semCampos, regua: null, completarCamposComMarcos: true }), 'client');
     expect(msg).not.toContain('*Como está?:*');
     expect(msg).not.toContain('já passou por');
   });

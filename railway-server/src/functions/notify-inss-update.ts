@@ -22,6 +22,7 @@ import { conferirNomeDoSegurado } from '../lib/inss-nome-confere';
 import {
   classificarMensagemCliente,
   dentroDaJanela,
+  ehSalarioMaternidade,
   eventoElegivelParaZap,
   exigenciaDeAgendamentoDePericia,
   mensagemVaiAoCliente,
@@ -298,6 +299,9 @@ export const handler: RequestHandler = async (req, res) => {
       pontosPendentes: pendencias.cliente,
       nome: proc.nome_segurado,
       beneficio: proc.benefit_type,
+      // `servico` é o campo limpo do requerimento e é ele que decide o caminho
+      // prometido no indeferimento (maternidade = recurso, o resto = ação).
+      servico: proc.servico,
       requerimento: proc.requerimento_number,
     };
     const tipoMensagem = classificarMensagemCliente(entrada);
@@ -432,6 +436,13 @@ export const handler: RequestHandler = async (req, res) => {
                 texto,
                 group_jid: destino.grupo.group_jid,
                 instancia: sent.instancia || destino.grupo.instance_name,
+                // O áudio gravado de `indeferido` promete ação judicial. Em
+                // salário-maternidade o texto promete recurso — sem esta
+                // chave o cliente leria uma coisa e ouviria outra.
+                categoria:
+                  tipoMensagem === 'indeferido' && ehSalarioMaternidade(entrada)
+                    ? 'maternidade'
+                    : null,
               });
             }
             zapPatch = sent.ok

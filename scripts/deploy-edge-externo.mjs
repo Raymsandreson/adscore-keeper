@@ -64,16 +64,29 @@ for (const slug of slugs) {
     console.log(`  ${slug}: sem backup (função ainda não existe no projeto)`);
   }
 
-  // `verify_jwt: false` é a config atual dessas funções: quem chama é o pg_cron
-  // do Externo com a anon key. Mudar isso aqui derrubaria o cron em silêncio.
+  // O deploy NÃO decide autenticação — ele preserva a que a função já tem.
+  //
+  // Aqui ficava `verify_jwt: false` fixo, com o comentário de que essa era "a
+  // config atual dessas funções". Não é: medido em 08/09/2026, `dom-rascunho`
+  // está no ar com `verify_jwt: true`. Um deploy de rotina — mudar uma linha de
+  // texto do rascunho — derrubaria a exigência de JWT dela sem ninguém pedir e
+  // sem aparecer em lugar nenhum, porque a função continua respondendo igual.
+  // Ficar aberta é a falha que não dá sintoma.
+  //
+  // Função nova (o POST) nasce com JWT exigido. Quem precisa de função aberta
+  // abre de propósito, uma vez, e o deploy respeita a partir dali.
+  const meta = await fetch(`${base}/${slug}`, { headers: { Authorization: `Bearer ${PAT}` } });
+  const verifyJwt = meta.ok ? ((await meta.json()).verify_jwt !== false) : true;
+  console.log(`  ${slug}: verify_jwt preservado = ${verifyJwt}`);
+
   let r = await fetch(base, {
     method: 'POST', headers,
-    body: JSON.stringify({ slug, name: slug, verify_jwt: false, body: codigo }),
+    body: JSON.stringify({ slug, name: slug, verify_jwt: verifyJwt, body: codigo }),
   });
   if (r.status === 409 || r.status === 400) {
     r = await fetch(`${base}/${slug}`, {
       method: 'PATCH', headers,
-      body: JSON.stringify({ verify_jwt: false, body: codigo }),
+      body: JSON.stringify({ verify_jwt: verifyJwt, body: codigo }),
     });
   }
   if (!r.ok) { console.error(`  ${slug}: FALHOU ${r.status} ${await r.text()}`); falhou = true; }

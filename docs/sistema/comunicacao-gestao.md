@@ -662,6 +662,49 @@ Um card por gerente (quem é gestor de time em `team_managers` ou de setor em `o
 
 ---
 
+## Saída de cliente do grupo (Monitor de agentes → aba "Saídas")
+
+**Propósito**: mostrar quem saiu — ou foi tirado — de um grupo de caso, com o
+contato e o lead já identificados. Cliente que sai sozinho do grupo do próprio
+processo é o sinal mais barato de insatisfação que existe, e ele não aparece em
+lugar nenhum na conversa.
+
+**Não é intenção.** O classificador do Dom lê MENSAGEM; sair do grupo é evento
+do WhatsApp, sem texto. Por isso vive fora da fila do atendente virtual, na aba
+própria.
+
+### O caminho do evento (consertado em 08/09/2026)
+
+`UazAPI → POST /webhooks/uazapi/:instance_name → whatsapp-webhook →
+isGroupParticipantEvent → whatsapp-group-exit → whatsapp_group_exits (Externo)
+→ aba "Saídas" / hook useGroupExits`
+
+Até 08/09/2026 esse caminho estava partido no meio, e o sintoma era mudo:
+`whatsapp_group_exits` com **zero linhas desde a criação**, com 28 instâncias
+ativas. Nada disso era falta de código — o handler, a tabela, o hook e a aba já
+existiam. O que faltava era o evento chegar: a UazAPI chama **uma URL por
+instância**, e o endpoint dedicado `/webhooks/uazapi-group-exit/:instance_name`
+morava em outra, que ninguém tinha como cadastrar. O evento `groups` caía no
+webhook principal e morria no filtro `SKIPPING non-message, non-call EventType`.
+
+`isGroupParticipantEvent` reconhece as três formas já vistas: o `EventType`
+`groups` da UazAPI, o nome longo `group-participants-update`, e o payload cru do
+whatsmeow — que não traz rótulo nenhum, só os arrays `Leave`/`Join`. Mensagem de
+grupo **nunca** entra por aí (chega como `messages` e não tem `Leave`/`Join`);
+tem teste para isso, porque o erro invisível seria toda conversa de grupo virar
+registro de saída.
+
+**Saiu sozinho ≠ foi tirado**: `exit_action` vale `leave` quando quem executou é
+o próprio que saiu, e `remove` quando foi outra pessoa. A diferença é o que a
+tela precisa dizer — sair sozinho é insatisfação, ser removido é rotina de
+encerramento de caso.
+
+**Se a aba continuar vazia**, o log `[whatsapp-webhook] evento de grupo recebido`
+(sem telefone e sem nome) diz se o evento sequer chega. Sem ele, "ninguém saiu" e
+"a UazAPI não manda o evento" são indistinguíveis — e nesse segundo caso o passo
+é habilitar o evento `groups` no webhook das instâncias, no painel da UazAPI.
+Não existe função no sistema que configure isso.
+
 ## Ligações — `/calls`
 
 **Propósito**: registro e acompanhamento de ligações (CallFace): histórico, resultado, avaliação, retornos agendados, áudio e resumo por IA.

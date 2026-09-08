@@ -1,6 +1,11 @@
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
-import { dentroDaJanela, JANELA_FIM_HORA, JANELA_INICIO_HORA } from '../lib/inss-mensagem-cliente';
+import {
+  dentroDaJanela,
+  ehSalarioMaternidade,
+  JANELA_FIM_HORA,
+  JANELA_INICIO_HORA,
+} from '../lib/inss-mensagem-cliente';
 import {
   descreverErro,
   enviarDocumentoAoGrupo,
@@ -112,7 +117,7 @@ export const handler: RequestHandler = async (req, res) => {
     const processIds = [...new Set(fila.map((f: any) => f.process_id).filter(Boolean))];
     const { data: procs } = await supabase
       .from('inss_admin_processes')
-      .select('id, lead_id, case_id, nome_segurado, cpf_segurado, legal_cases:case_id(lead_id)')
+      .select('id, lead_id, case_id, nome_segurado, cpf_segurado, servico, legal_cases:case_id(lead_id)')
       .in('id', processIds);
     const leadPorProcesso = new Map<string, string | null>(
       (procs || []).map((p: any) => [p.id, p.lead_id || p.legal_cases?.lead_id || null]),
@@ -124,6 +129,11 @@ export const handler: RequestHandler = async (req, res) => {
     );
     const seguradoPorProcesso = new Map<string, string | null>(
       (procs || []).map((p: any) => [p.id, p.nome_segurado || null]),
+    );
+    // O texto da fila já foi redigido pelo notify; o que ainda se decide aqui é
+    // o ÁUDIO, e ele depende do serviço (maternidade promete recurso).
+    const servicoPorProcesso = new Map<string, string | null>(
+      (procs || []).map((p: any) => [p.id, p.servico || null]),
     );
 
     const limite = Date.now() - VALIDADE_DIAS * 24 * 60 * 60 * 1000;
@@ -195,6 +205,11 @@ export const handler: RequestHandler = async (req, res) => {
                   texto: item.zap_texto,
                   group_jid: destino.grupo.group_jid,
                   instancia: sent.instancia || destino.grupo.instance_name,
+                  categoria:
+                    item.zap_tipo === 'indeferido' &&
+                    ehSalarioMaternidade({ servico: servicoPorProcesso.get(item.process_id) })
+                      ? 'maternidade'
+                      : null,
                 }),
               );
             }
