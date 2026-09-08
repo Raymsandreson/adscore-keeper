@@ -11,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
+import { ActivityMovementsPanel } from '@/components/activities/ActivityMovementsPanel';
 import { cn } from '@/lib/utils';
 import { statusAtividadeDef } from '@/lib/activityStatus';
 import { toast } from 'sonner';
@@ -2024,7 +2025,15 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
             </TabsContent>
 
             <TabsContent value="historico" className="mt-0">
-              <div className="p-4">
+              <div className="space-y-4 p-4">
+                {/* Movimentações desta atividade (audit do banco) antes da
+                    sequência de continuidade — mesma ordem da página de
+                    Atividades, a ficha é a mesma em qualquer tela. */}
+                <ActivityMovementsPanel
+                  activityId={activityId}
+                  activityCreatedAt={selectedActivity?.created_at || null}
+                  resolveUserName={resolveUserName}
+                />
                 <ActivityChainPanel
                   currentActivityId={activityId}
                   items={chain.items}
