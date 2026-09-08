@@ -153,14 +153,164 @@ function datasPorExtenso(texto: string): string {
     });
 }
 
+// DINHEIRO FALADO NÃO É DINHEIRO ESCRITO — a mesma lição da data
+//
+// "R$ 2.000.000,00" no papel é claro. Na boca da voz é uma travada: o modelo
+// tropeça no cifrão seguido de pontos e vírgula, e foi exatamente isso que
+// apareceu na nota de voz do Caso 182 em 08/09/2026.
+//
+// E tem um segundo estrago, pior que o primeiro. O Dom escreve o valor DUAS
+// vezes, em dígito e em palavra:
+//
+//     "R$ 2.000.000,00 (dois milhões de reais)"
+//
+// No escrito isso é bom — confere. Falado, o cliente ouve o valor duas vezes
+// seguidas, e é aí que a mensagem passa de informação para enrolação.
+//
+// A conversão acontece SÓ no áudio, junto da data e da limpeza de asterisco: a
+// mensagem escrita continua com o valor em números.
+const UNIDADES = [
+  "zero", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito",
+  "nove", "dez", "onze", "doze", "treze", "quatorze", "quinze", "dezesseis",
+  "dezessete", "dezoito", "dezenove",
+];
+const DEZENAS = ["", "", "vinte", "trinta", "quarenta", "cinquenta",
+                 "sessenta", "setenta", "oitenta", "noventa"];
+const CENTENAS = ["", "cento", "duzentos", "trezentos", "quatrocentos",
+                  "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"];
+
+/** 0..999. "cem" sozinho, "cento e um" acompanhado — não são a mesma palavra. */
+function ate999(n: number): string {
+  if (n === 0) return "";
+  if (n === 100) return "cem";
+  const c = Math.floor(n / 100), r = n % 100;
+  const p: string[] = [];
+  if (c) p.push(CENTENAS[c]);
+  if (r > 0 && r < 20) p.push(UNIDADES[r]);
+  else if (r >= 20) {
+    const d = Math.floor(r / 10), u = r % 10;
+    p.push(u ? `${DEZENAS[d]} e ${UNIDADES[u]}` : DEZENAS[d]);
+  }
+  return p.join(" e ");
+}
+
+/**
+ * Inteiro por extenso, até bilhões.
+ *
+ * O "e" entre grupos é a parte que erra fácil, e a regra é: ele entra antes do
+ * ÚLTIMO grupo quando esse grupo é redondo (múltiplo de 100) ou menor que 100.
+ * É o que separa "um milhão E quinhentos mil" de "novecentos e noventa e nove
+ * mil novecentos e noventa e nove" — sem isso o primeiro sai emendado.
+ */
+function inteiroPorExtenso(n: number): string {
+  if (n === 0) return "zero";
+  const escala = [
+    { v: 1e9, s: "bilhão", p: "bilhões" },
+    { v: 1e6, s: "milhão", p: "milhões" },
+    { v: 1e3, s: "mil", p: "mil" },
+  ];
+  const partes: { txt: string; val: number }[] = [];
+  let resto = n;
+  for (const g of escala) {
+    const q = Math.floor(resto / g.v);
+    if (q) {
+      partes.push({
+        txt: g.v === 1e3 ? (q === 1 ? "mil" : `${ate999(q)} mil`)
+                         : `${ate999(q)} ${q === 1 ? g.s : g.p}`,
+        val: q * g.v,
+      });
+      resto %= g.v;
+    }
+  }
+  if (resto) partes.push({ txt: ate999(resto), val: resto });
+  if (partes.length === 1) return partes[0].txt;
+  const ult = partes[partes.length - 1];
+  const ligacao = (ult.val < 100 || ult.val % 100 === 0) ? " e " : " ";
+  return partes.slice(0, -1).map((x) => x.txt).join(" ") + ligacao + ult.txt;
+}
+
+/**
+ * "2.000.000,00" → "dois milhões de reais". Nulo quando não dá para converter
+ * — e nulo aqui quer dizer "deixa o texto como estava", nunca "inventa".
+ *
+ * O "de" antes de "reais" só entra em milhão/bilhão EXATO: "dois milhões de
+ * reais", mas "dois milhões e quinhentos mil reais" (sem "de"). Acima de um
+ * trilhão devolve nulo em vez de arriscar uma escala que ninguém revisou.
+ *
+ * VERIFICADO caso a caso em 08/09/2026:
+ *   2.000.000,00 → dois milhões de reais
+ *     882.000,00 → oitocentos e oitenta e dois mil reais
+ *   1.500.000,00 → um milhão e quinhentos mil reais
+ *       1.234,56 → mil duzentos e trinta e quatro reais e cinquenta e seis centavos
+ *       1.100,00 → mil e cem reais
+ *         101,00 → cento e um reais
+ *         100,00 → cem reais
+ *           1,00 → um real
+ *           0,50 → cinquenta centavos
+ */
+function valorPorExtenso(bruto: string): string | null {
+  const limpo = String(bruto).replace(/\./g, "");
+  const [i, c] = limpo.split(",");
+  const inteiro = Number(i || 0);
+  const centavos = Number((c || "0").padEnd(2, "0").slice(0, 2));
+  if (!Number.isFinite(inteiro) || !Number.isFinite(centavos) || inteiro >= 1e12) return null;
+  const p: string[] = [];
+  if (inteiro > 0) {
+    const redondo = inteiro >= 1e6 && inteiro % 1e6 === 0;
+    p.push(`${inteiroPorExtenso(inteiro)}${redondo ? " de" : ""} ${inteiro === 1 ? "real" : "reais"}`);
+  }
+  if (centavos > 0) {
+    p.push(`${inteiroPorExtenso(centavos)} ${centavos === 1 ? "centavo" : "centavos"}`);
+  }
+  return p.length ? p.join(" e ") : "zero reais";
+}
+
+/**
+ * Tira o cifrão do caminho da voz.
+ *
+ * A ORDEM DAS DUAS TROCAS IMPORTA. O caso com parêntese vem primeiro porque é
+ * o que o Dom escreve na prática, e ele resolve os dois problemas de uma vez:
+ * some o token difícil E some a repetição. Se a troca do valor solto viesse
+ * antes, "R$ 2.000.000,00 (dois milhões de reais)" viraria "dois milhões de
+ * reais (dois milhões de reais)" — o dobro do defeito original.
+ */
+function dinheiroPorExtenso(texto: string): string {
+  return texto
+    .replace(/R\$\s*[\d.]+(?:,\d{2})?\s*\(\s*([^)]*(?:reais|centavos)[^)]*)\)/gi, "$1")
+    .replace(/R\$\s*([\d.]+(?:,\d{2})?)/g, (todo, n) => valorPorExtenso(n) ?? todo);
+}
+
 /**
  * Nunca deixa um valor torto do banco virar `speed: NaN` na chamada da API.
  *
- * Genérico porque agora são quatro ajustes e não um: repetir a mesma guarda
- * quatro vezes é como quatro chaves diferentes para a mesma porta — na hora de
- * trocar a fechadura alguém esquece uma.
+ * Genérico porque são quatro ajustes e não um: repetir a mesma guarda quatro
+ * vezes é como quatro chaves diferentes para a mesma porta — na hora de trocar
+ * a fechadura alguém esquece uma.
+ *
+ * AUSENTE VEM ANTES DE INVÁLIDO, e a ordem destas duas linhas é o conserto de
+ * 08/09/2026. Antes só existia a checagem de `Number.isFinite`, e ela NÃO pega
+ * o caso mais comum de todos:
+ *
+ *     Number(null)      === 0    ← e 0 é finito
+ *     Number(undefined) === NaN
+ *     Number("")        === 0    ← idem
+ *
+ * Então `null` (o que o banco devolve em coluna não preenchida) passava pela
+ * guarda como se fosse o número zero e caía no `Math.max(0, min)` — grampeado
+ * no PISO da faixa, não no padrão. É um termostato que, sem leitura do sensor,
+ * em vez de ir para o ajuste de fábrica vai para o fundo da escala.
+ *
+ * O estrago, medido em produção: todo áudio do cron entre 12:50 e 19:20 de
+ * 08/09/2026 saiu com `stability: 0` — o extremo "máxima variação emocional" da
+ * ElevenLabs — em vez de 0,60. É a gagueira que apareceu nas notas de voz. E a
+ * mesma falha estava aqui desde 07/09/2026 na velocidade: voz sem
+ * `velocidade_fala` gravado falava a 0,5x, METADE do ritmo, em vez de 1,1x.
+ * Ficou escondida porque a Keilane tinha 0,95 gravado, que sobrescrevia o 0,5.
+ *
+ * Por isso ausência é testada por IDENTIDADE, antes de qualquer conversão.
  */
 const numeroValido = (v: unknown, padrao: number, min: number, max: number): number => {
+  if (v === null || v === undefined || v === "") return padrao;
   const n = Number(v);
   if (!Number.isFinite(n)) return padrao;
   return Math.min(Math.max(n, min), max);
@@ -468,13 +618,13 @@ async function gerarAudioDoRascunho(
     // O que se fala é diferente do que se escreve: asterisco de negrito virava
     // "asterisco" na boca da voz, link lido em voz alta é ruído puro, e data em
     // número vira uma sequência de "barra" que ninguém entende falada.
-    const limpo = datasPorExtenso(
+    const limpo = dinheiroPorExtenso(datasPorExtenso(
       texto
         .replace(/\*([^*]+)\*/g, "$1")
         .replace(/_([^_]+)_/g, "$1")
         .replace(/https?:\/\/\S+/g, "")
         .replace(/\n{3,}/g, "\n\n"),
-    ).trim();
+    )).trim();
     if (limpo.length < 5) return { url: null, voz: null, erro: "texto curto demais para virar áudio", velocidade, estabilidade, estilo, pausaMs };
 
     // Mesma cascata de resolução do whatsapp-ai-agent-reply, para a voz do

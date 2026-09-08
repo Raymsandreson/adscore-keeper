@@ -99,21 +99,49 @@ type AjusteDeFala = {
 
 const VELOCIDADES = [0.85, 0.9, 0.95, 1.0, 1.05, 1.1];
 
+/**
+ * A FAIXA ENCOLHEU EM 08/09/2026, E ENCOLHEU POR MEDIDA.
+ *
+ * A primeira versão desta tabela ia de 0,80/0,00 até 0,30/0,65, e o erro estava
+ * na direção: cada degrau baixava a estabilidade E subia o estilo ao mesmo
+ * tempo. A doc da ElevenLabs diz que os dois empurram para o mesmo lado —
+ * stability baixa "can sound erratic", style alto "can reduce stability". Mexer
+ * nos dois juntos é apertar o acelerador e soltar o freio na mesma curva.
+ *
+ * O resultado veio no ouvido: a nota de voz do Caso 182, gerada em 0,45/0,45,
+ * saiu gaguejando. Já 0,60/0,30 é o valor que rodou dias em produção sem
+ * ninguém reclamar — é o piso conhecido, e agora é a ponta mais expressiva que
+ * a tela oferece. Nada abaixo dele, porque abaixo dele não há medição.
+ *
+ * "Expressivo" (0,30/0,65) foi removido: era território de gagueira.
+ *
+ * O banco guarda os NÚMEROS, não o nome — renomear um botão não pode reescrever
+ * o passado. Estes valores também vivem na dom-rascunho (ESTABILIDADE_PADRAO,
+ * ESTILO_PADRAO) e no CHECK da migration: se um mudar, os outros mudam junto.
+ */
 const TONS: { nome: string; estabilidade: number; estilo: number; ajuda: string }[] = [
-  { nome: 'Sério',       estabilidade: 0.80, estilo: 0.00, ajuda: 'firme e uniforme — para prazo, exigência, notícia ruim' },
-  { nome: 'Equilibrado', estabilidade: 0.60, estilo: 0.30, ajuda: 'o padrão de hoje — serve para quase tudo' },
-  { nome: 'Caloroso',    estabilidade: 0.45, estilo: 0.45, ajuda: 'mais variação — para acolher quem está ansioso' },
-  { nome: 'Expressivo',  estabilidade: 0.30, estilo: 0.65, ajuda: 'bem solto — o que mais escorrega para teatral' },
+  { nome: 'Sério',       estabilidade: 0.90, estilo: 0.00, ajuda: 'o mais firme e uniforme — para prazo, exigência, notícia ruim' },
+  { nome: 'Equilibrado', estabilidade: 0.75, estilo: 0.15, ajuda: 'firme com um pouco de variação — serve para quase tudo' },
+  { nome: 'Caloroso',    estabilidade: 0.60, estilo: 0.30, ajuda: 'o mais solto que temos medido — é o padrão do sistema' },
 ];
 
-/** O tom em que este áudio saiu. Nulo = gerado antes de 08/09/2026, nas
- *  constantes antigas — que são exatamente o "Equilibrado". */
+/**
+ * O tom em que este áudio saiu.
+ *
+ * Nulo = gerado antes de 08/09/2026, nas constantes antigas — que são
+ * exatamente 0,60/0,30, hoje rotulado "Caloroso". O padrão do sistema ser o
+ * mais expressivo dos três não é descuido: é o reconhecimento de que a faixa
+ * segura fica toda ACIMA do que já rodava, não abaixo.
+ */
 const nomeDoTom = (estabilidade: unknown, estilo: unknown): string => {
   const e = Number(estabilidade), y = Number(estilo);
   const achado = TONS.find(t => t.estabilidade === e && t.estilo === y);
   if (achado) return achado.nome;
-  if (!Number.isFinite(e) || !Number.isFinite(y)) return 'Equilibrado';
-  // Voz configurada por fora da tela (SQL na mão, por exemplo). Mostrar o
+  if (estabilidade === null || estabilidade === undefined
+      || estilo === null || estilo === undefined
+      || !Number.isFinite(e) || !Number.isFinite(y)) return 'Caloroso';
+  // Voz configurada por fora da tela (SQL na mão), ou um áudio gerado num
+  // preset que não existe mais — como o 0,45/0,45 que gaguejou. Mostrar o
   // número cru é melhor que rotular errado com o preset mais próximo.
   return `estabilidade ${e.toFixed(2)} · estilo ${y.toFixed(2)}`;
 };
