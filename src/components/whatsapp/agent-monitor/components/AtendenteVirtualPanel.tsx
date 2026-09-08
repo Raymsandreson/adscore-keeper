@@ -37,6 +37,19 @@ import { ContagemAteEnvio } from '@/components/whatsapp/ContagemAteEnvio';
 
 const dbAny = db as unknown as SupabaseClient;
 
+/** O agente Dom em `wjia_command_shortcuts` — o mesmo id que a `dom-rascunho` usa. */
+const DOM_AGENT_ID = 'd6ad8eee-d6a3-452c-b852-b94ef8dd54bf';
+
+/**
+ * O ritmo do modo automático, como está configurado AGORA.
+ *
+ * A tela dizia "5 minutos" em três lugares, escrito à mão, de quando o atraso
+ * era constante no código. Agora ele é editável na configuração do agente — e
+ * um texto que promete cinco quando o banco diz três é pior que texto nenhum:
+ * quem lê decide com base nele e descobre a diferença pelo cliente reclamando.
+ */
+const RITMO_PADRAO = { primeira: 3, seguinte: 2 };
+
 /** O formulario unico do lead, por id. Lazy: ele arrasta o LeadEditDialog e o
  *  useLeads junto, e ninguem precisa disso ate clicar em vincular. */
 const LeadPainelPorId = lazy(() => import('@/components/leads/LeadPainelPorId'));
@@ -303,6 +316,7 @@ export function AtendenteVirtualPanel() {
    * sair sozinha — e quem lia concluía, com razão, que ainda precisava aprovar.
    */
   const [saiEm, setSaiEm] = useState<Record<string, string>>({});
+  const [ritmo, setRitmo] = useState(RITMO_PADRAO);
   const [busca, setBusca] = useState('');
   const [achados, setAchados] = useState<GrupoPiloto[]>([]);
   const [buscaConversa, setBuscaConversa] = useState('');
@@ -423,6 +437,19 @@ export function AtendenteVirtualPanel() {
         .select('group_jid', { count: 'exact', head: true }).eq('ativo', true);
       setTotalGrupos(count || 0);
 
+      // O ritmo é do agente, não do painel: lido aqui só para a tela contar a
+      // verdade. Falhar não pode apagar a fila — cai no padrão e segue.
+      const { data: cfg } = await dbAny.from('wjia_command_shortcuts')
+        .select('auto_delay_first_minutes, auto_delay_next_minutes')
+        .eq('id', DOM_AGENT_ID).maybeSingle();
+      if (cfg) {
+        const c = cfg as { auto_delay_first_minutes: number | null; auto_delay_next_minutes: number | null };
+        setRitmo({
+          primeira: c.auto_delay_first_minutes || RITMO_PADRAO.primeira,
+          seguinte: c.auto_delay_next_minutes || RITMO_PADRAO.seguinte,
+        });
+      }
+
       const ids = [...((f.data as unknown as Pendente[]) || [])]
         .map(p => p.agendamento_id).filter(Boolean) as string[];
       if (ids.length) {
@@ -463,8 +490,8 @@ export function AtendenteVirtualPanel() {
    * Liga/desliga o "responde sozinho" de um grupo.
    *
    * `rascunho` → escreve e espera alguém aprovar (nada sai).
-   * `automatico` → entra na fila de envio com 5 minutos de atraso; a janela é a
-   * revisão, e a bolha tracejada na conversa deixa cancelar ou mandar na hora.
+   * `automatico` → entra na fila de envio com o atraso configurado; a janela é
+   * a revisão, e a bolha tracejada na conversa deixa cancelar ou mandar na hora.
    */
   const trocarModo = async (g: GrupoPiloto, sozinho: boolean) => {
     setTrocandoModo(g.group_jid);
@@ -478,7 +505,7 @@ export function AtendenteVirtualPanel() {
       ? (atual.some(x => x.group_jid === g.group_jid) ? atual : [...atual, { ...g, modo }])
       : atual.filter(x => x.group_jid !== g.group_jid));
     toast.success(sozinho
-      ? `${g.group_name}: responde sozinho, 5 min depois de o cliente escrever`
+      ? `${g.group_name}: responde sozinho, ${ritmo.primeira} min depois de o cliente escrever`
       : `${g.group_name}: volta a só rascunhar`);
   };
 
@@ -717,7 +744,7 @@ export function AtendenteVirtualPanel() {
           O que o atendente virtual fez.{' '}
           {grupos.length === 0
             ? `Nenhum dos ${totalGrupos} grupos responde sozinho ainda — tudo fica esperando revisão e nada sai para o cliente.`
-            : `${grupos.length} de ${totalGrupos} grupos respondem sozinhos: a resposta entra na fila e sai 5 minutos depois, se ninguém escrever antes.`}
+            : `${grupos.length} de ${totalGrupos} grupos respondem sozinhos: a resposta entra na fila e sai ${ritmo.primeira} min depois, se ninguém escrever antes.`}
         </p>
         <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={carregar} disabled={carregando}>
           {carregando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -729,9 +756,10 @@ export function AtendenteVirtualPanel() {
         <CardContent className="p-3 space-y-2">
           <p className="text-[11px] font-medium">Quem responde sozinho</p>
           <p className="text-[10px] text-muted-foreground">
-            Ligado, ele responde sozinho 5 minutos depois de o cliente escrever. A mensagem
-            aparece na conversa como bolha tracejada com cronômetro — dá para tirar da fila
-            ou mandar na hora. Se alguém escrever no grupo antes, ela não sai.
+            Ligado, ele responde sozinho {ritmo.primeira} min depois de o cliente escrever —
+            e {ritmo.seguinte} min nas respostas seguintes, enquanto a conversa continua. A
+            mensagem aparece na conversa como bolha tracejada com cronômetro — dá para tirar
+            da fila ou mandar na hora. Se alguém escrever no grupo antes, ela não sai.
             {' '}Os outros continuam trabalhando em modo rascunho: escrevem e enchem a fila,
             sem nada chegar no cliente.
           </p>

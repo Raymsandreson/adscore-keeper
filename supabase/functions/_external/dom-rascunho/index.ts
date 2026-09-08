@@ -53,8 +53,31 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const DOM_AGENT_ID = "d6ad8eee-d6a3-452c-b852-b94ef8dd54bf";
 
-/** A janela entre escrever e falar. É ela que faz o papel da revisão. */
-const ATRASO_MIN = 5;
+// A JANELA ENTRE ESCREVER E FALAR — E POR QUE ELA ENCOLHE
+//
+// É essa janela que faz o papel da revisão: silêncio aprova. Mas ela não é a
+// mesma o tempo todo, porque gente não é.
+//
+// Quem chega numa conversa parada demora: estava em outra coisa, precisa ler,
+// lembrar do caso. Quem JÁ ESTÁ na conversa responde rápido — o celular está na
+// mão. Um atraso fixo é relógio: cinco minutos exatos na primeira e na quinta
+// mensagem é a assinatura de uma máquina, não de uma pessoa ocupada.
+//
+// Daí dois números, e não um: a primeira resposta da conversa espera mais, as
+// seguintes espera menos. A conversa deixa de ser "a mesma" quando passa a
+// janela sem o agente falar nada ali — aí a próxima volta ao atraso de chegada.
+//
+// Os três vêm de `wjia_command_shortcuts`, editáveis na tela de configuração do
+// agente. O que está aqui é só o piso para quando a coluna vier nula.
+//
+// ATENÇÃO AO CRON. Estes minutos só valem se o `dom_rascunho_tick` for mais
+// rápido que eles: o rascunho nasce na rodada do cron, então um cron de 5 em 5
+// minutos soma de 0 a 5 minutos ANTES de o atraso começar a contar, e a
+// diferença entre 3 e 2 desaparece no ruído. Por isso o tick foi para 2 em 2
+// (migration `20260908180000`).
+const ATRASO_PRIMEIRA_PADRAO = 3;
+const ATRASO_SEGUINTE_PADRAO = 2;
+const JANELA_CONVERSA_PADRAO_MIN = 180;
 
 // VELOCIDADE DE FALA
 //
@@ -838,7 +861,7 @@ Deno.serve(async (req) => {
     // Prompt vem da TABELA, não da view: é lido mesmo com is_active = false.
     const { data: agente } = await supabase
       .from("wjia_command_shortcuts")
-      .select("prompt_instructions, base_prompt, temperature, max_tokens, history_limit, model, reply_with_audio, reply_voice_id, max_tts_chars, genero_voz")
+      .select("prompt_instructions, base_prompt, temperature, max_tokens, history_limit, model, reply_with_audio, reply_voice_id, max_tts_chars, genero_voz, auto_delay_first_minutes, auto_delay_next_minutes, auto_conversation_window_minutes")
       .eq("id", DOM_AGENT_ID)
       .maybeSingle();
     if (!agente) return json({ error: "agente Dom não encontrado" }, 500);
@@ -1017,6 +1040,52 @@ Deno.serve(async (req) => {
       const { data, error } = await supabase.rpc("dom_grupos_para_olhar", { p_limite: limite });
       if (error) return json({ error: `fila de grupos: ${error.message}` }, 500);
       grupos = data ?? [];
+    }
+
+    // OS TRÊS NÚMEROS DO RITMO, com piso e teto.
+    //
+    // Teto de 60 min porque atraso maior que isso não é "parecer ocupado", é
+    // abandono — e a janela de revisão vira longa demais para o `pular_se_
+    // responder` proteger de alguma coisa. Piso de 1 porque zero seria o agente
+    // respondendo no mesmo segundo, que é o defeito que estes números existem
+    // para consertar.
+    const nosLimites = (v: unknown, padrao: number) =>
+      Math.min(Math.max(Number(v) > 0 ? Number(v) : padrao, 1), 60);
+    const atrasoPrimeira = nosLimites(agente.auto_delay_first_minutes, ATRASO_PRIMEIRA_PADRAO);
+    const atrasoSeguinte = nosLimites(agente.auto_delay_next_minutes, ATRASO_SEGUINTE_PADRAO);
+    const janelaConversaMin = Math.min(
+      Math.max(Number(agente.auto_conversation_window_minutes) > 0
+        ? Number(agente.auto_conversation_window_minutes)
+        : JANELA_CONVERSA_PADRAO_MIN, 1),
+      60 * 24 * 7,
+    );
+
+    // QUAIS CONVERSAS AINDA ESTÃO QUENTES — uma consulta só, antes do laço.
+    //
+    // Perguntar grupo a grupo dentro do laço seria N+1: uma ida ao banco por
+    // grupo só para descobrir um booleano. Aqui é um `in` com os jids que
+    // interessam, coberto por `idx_wa_agendadas_conversa (phone, ...)`.
+    //
+    // A pergunta é "o agente falou aqui dentro da janela?", e não "alguém falou
+    // aqui?": mensagem do cliente não engatilha nada — o que faz a conversa
+    // estar em andamento é o agente já ter entrado nela. Mensagem de humano
+    // também não, porque quando um colega responde vale a pausa de
+    // `human_reply_pause_minutes`, que é outra regra.
+    const jidsAuto = (grupos ?? [])
+      .filter((g: any) => g.modo === "automatico")
+      .map((g: any) => g.group_jid);
+    const conversaQuente = new Set<string>();
+    if (jidsAuto.length) {
+      const desde = new Date(Date.now() - janelaConversaMin * 60 * 1000).toISOString();
+      const { data: falas } = await supabase
+        .from("whatsapp_mensagens_agendadas")
+        .select("phone")
+        .in("phone", jidsAuto)
+        // Pega o automático ("Atendente virtual") e o aprovado no painel
+        // ("Atendente virtual (aprovado à mão)"): os dois são o agente falando.
+        .like("criado_por_nome", "Atendente virtual%")
+        .gte("ultimo_envio_at", desde);
+      for (const f of falas ?? []) conversaQuente.add(String((f as any).phone));
     }
 
     const pulados: any[] = [];
@@ -1315,10 +1384,15 @@ Deno.serve(async (req) => {
       //    conversa, o "tirar da fila" e o "enviar agora" — nada disso precisou
       //    ser escrito de novo.
       //
-      //    A janela de 5 minutos É a revisão: silêncio aprova. E `pular_se_
-      //    responder` garante o resto — se o cliente OU um colega escrever no
-      //    grupo dentro da janela, a resposta não sai. Rascunho velho não fala,
-      //    e o tique seguinte redesenha em cima do que foi dito.
+      //    A janela É a revisão: silêncio aprova. E `pular_se_responder` garante
+      //    o resto — se o cliente OU um colega escrever no grupo dentro da
+      //    janela, a resposta não sai. Rascunho velho não fala, e o tique
+      //    seguinte redesenha em cima do que foi dito.
+      //
+      //    A janela encolhe quando a conversa já está em andamento (ver o bloco
+      //    dos três números lá em cima). Encolher é seguro: o que protege é o
+      //    `pular_se_responder`, não o tamanho da espera — e numa conversa
+      //    quente a chance de alguém escrever por cima é maior, não menor.
       //
       //    Fica de fora, de propósito: grupo de reclamação (já foi para uma
       //    pessoa) e resposta que o próprio modelo marcou com [REVISAR] — nesses
@@ -1326,7 +1400,8 @@ Deno.serve(async (req) => {
       const pendenteId = (linhaFila as any)?.id ?? null;
       let agendadoPara: string | null = null;
       if (g.modo === "automatico" && !atendenteId && !motivo) {
-        const quando = new Date(Date.now() + ATRASO_MIN * 60 * 1000).toISOString();
+        const atrasoMin = conversaQuente.has(g.group_jid) ? atrasoSeguinte : atrasoPrimeira;
+        const quando = new Date(Date.now() + atrasoMin * 60 * 1000).toISOString();
         const { data: ag, error: errAg } = await supabase
           .from("whatsapp_mensagens_agendadas").insert({
             phone: g.group_jid,
@@ -1357,7 +1432,7 @@ Deno.serve(async (req) => {
           await supabase.from("dom_respostas_pendentes")
             .update({
               agendamento_id: (ag as any).id,
-              motivo_revisao: `sai sozinho em ${ATRASO_MIN} min — some se alguém escrever antes`,
+              motivo_revisao: `sai sozinho em ${atrasoMin} min — some se alguém escrever antes`,
             })
             .eq("id", pendenteId);
         }

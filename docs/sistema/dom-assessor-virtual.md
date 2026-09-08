@@ -128,7 +128,7 @@ Falta:
   consultado quando a conversa tem agente atribuído)
 - tela da fila `dom_respostas_pendentes` — sem ela o modo híbrido enfileira para
   ninguém
-- atraso de 5 min por fila agendada (ver abaixo)
+- atraso configurável por fila agendada (3 min na primeira, 2 nas seguintes — ver abaixo)
 - aviso proativo de movimentação nova (o Dom hoje só reage a mensagem)
 
 ## `dom-rascunho` — o piloto rodando sem tocar em produção
@@ -214,9 +214,10 @@ No painel, estas cinco (as quatro novas mais E16) ganharam chips **por código**
 na fileira "Olho nelas" — filtrar por letra E devolvia a desistência misturada
 com quem só perguntou de prazo.
 
-## Cron: `dom_rascunho_tick`, de 5 em 5 minutos
+## Cron: `dom_rascunho_tick`, de 2 em 2 minutos
 
-Agendado no Externo em 04/09/2026. O custo **não escala com a frequência,
+Agendado no Externo em 04/09/2026, de 5 em 5 minutos; apertado para 2 em 2 em
+08/09/2026 (ver *"O ritmo de quem responde sozinho"*, no fim). O custo **não escala com a frequência,
 escala com a conversa**: antes de qualquer chamada de modelo a função pula todo
 grupo cuja última mensagem já foi decidida — `dom_respostas_pendentes` cobre o
 rascunho gerado, `dom_decisoes` cobre o silêncio. Rodada em grupo parado é só
@@ -2685,3 +2686,92 @@ sozinho). Ali não houve aprovação, e a janela é a única proteção que exis
 **Rollback (< 1 min):** voltar `const quando` para
 `new Date(Date.now() + 5 * 60 * 1000).toISOString()`. Não há migration nem
 mudança de schema — é só código de front.
+
+## O ritmo de quem responde sozinho (08/09/2026)
+
+O modo automático esperava **cinco minutos**, sempre — constante no código
+(`ATRASO_MIN`). Duas coisas erradas nisso, e a segunda é a que importa.
+
+### 1. Atraso fixo é relógio, não pessoa
+
+Quem chega numa conversa parada demora: estava em outra coisa, precisa ler,
+lembrar do caso. Quem **já está** na conversa responde rápido — o celular está
+na mão. Responder sempre com o mesmo intervalo exato, na primeira e na décima
+mensagem, é a assinatura de uma máquina.
+
+Agora são dois números e uma janela:
+
+| | padrão | o que é |
+|---|---|---|
+| `auto_delay_first_minutes` | 3 min | primeira resposta de uma conversa parada |
+| `auto_delay_next_minutes` | 2 min | respostas seguintes, com a conversa quente |
+| `auto_conversation_window_minutes` | 180 (3h) | por quanto tempo a conversa segue sendo "a mesma" |
+
+A conta de "está quente?" é **uma consulta só, antes do laço** — não uma por
+grupo: um `in` nos jids automáticos contra `whatsapp_mensagens_agendadas`,
+coberto por `idx_wa_agendadas_conversa (phone, ...)`. A pergunta é *"o agente
+falou aqui dentro da janela?"*, e não *"alguém falou aqui?"*: mensagem do
+cliente não engatilha nada — o que faz a conversa estar em andamento é o agente
+já ter entrado nela. Mensagem de colega também não, porque aí vale a pausa de
+`human_reply_pause_minutes`, que é outra regra.
+
+**Por que 3h e não 24h.** Conversa de WhatsApp esfria em minutos, não em um dia.
+Com janela de 24h o cliente escreve às 9h, volta às 22h e recebe resposta em 2
+minutos — responder à noite na velocidade de quem estava com o celular na mão é
+o oposto de parecer gente. É configurável justamente porque isso é calibragem.
+
+### 2. O número não mandava no relógio — o cron mandava
+
+Esta é a parte que quase passou batido. O rascunho **só nasce na rodada do
+cron**, e o `dom_rascunho_tick` rodava de 5 em 5 minutos. Isso somava de 0 a 5
+minutos **antes** de o atraso começar a contar:
+
+| | mín | máx | média |
+|---|---|---|---|
+| antes (atraso 5, cron 5 min) | 5 | 11 | **~8 min** |
+| só baixar o atraso para 3 | 3 | 9 | **~6 min** |
+| **agora** (atraso 3, cron 2 min) | 3 | 6 | **~4,5 min** |
+| atraso 3, cron 1 min | 3 | 5 | ~4 min |
+
+Ou seja: trocar 5 por 3 sozinho tiraria 2 minutos de 8, e a diferença entre "3
+min" e "2 min" da escada **sumiria dentro do ruído do cron**. Configurar um
+ritmo que a máquina não consegue cumprir é escrever número decorativo — por isso
+o campo da tela avisa quando alguém digita menos que a rodada.
+
+**Por que 2 em 2 e não 1 em 1.** Medido nas 24h anteriores, em 297 execuções da
+`dom-rascunho`: mediana **4,6s**, p90 **11,4s**, pior caso **38,8s**. De minuto
+em minuto sobrariam 21s de margem no pior caso — rodadas encostando uma na
+outra em dia ruim. De 2 em 2 a margem é de 3x.
+
+**O custo não é 5x.** As invocações vão de 288 para 720 por dia, mas a função
+pula todo grupo cuja última mensagem já foi decidida **antes** de chamar
+qualquer modelo: rodada em grupo parado é só leitura de banco. O número de
+chamadas de modelo — a única linha cara — depende de quantas mensagens novas
+chegaram, não de quantas vezes olhamos.
+
+### O que a tela passou a dizer
+
+O painel dizia "5 minutos" em três lugares, escrito à mão. Texto que promete
+cinco quando o banco diz três é pior que texto nenhum: quem lê decide por ele e
+descobre a diferença pelo cliente reclamando. Agora o painel lê o ritmo do
+agente e escreve o número que vale.
+
+### Contexto de quando isto foi escrito
+
+**Nenhum grupo estava em modo automático** — 1.149 ativos, todos em `rascunho`.
+Isto é calibragem de algo que ainda não rodou em produção, e é exatamente por
+isso que virou configuração e não constante: os números vão precisar de ajuste
+quando o primeiro grupo ligar, e esse ajuste não pode depender de deploy.
+
+| arquivo | o que mudou |
+|---|---|
+| `20260908190000_ritmo_do_atendente_virtual.sql` | 3 colunas em `wjia_command_shortcuts` + cron para `*/2` |
+| `dom-rascunho/index.ts` | lê a config, decide o atraso pela conversa quente (uma query, fora do laço) |
+| `WhatsAppCommandConfig.tsx` | os três campos, com aviso quando o número é menor que a rodada |
+| `AtendenteVirtualPanel.tsx` | textos passam a citar o ritmo real |
+
+**Rollback (< 1 min, sem deploy):** `update wjia_command_shortcuts set
+auto_delay_first_minutes = 5, auto_delay_next_minutes = 5 where id =
+'d6ad8eee-d6a3-452c-b852-b94ef8dd54bf';` — volta ao fixo de cinco minutos. O
+cron volta com `cron.alter_job(..., schedule := '*/5 * * * *')`. Nenhum dos dois
+mexe em código.
