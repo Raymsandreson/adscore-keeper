@@ -30,6 +30,13 @@ import { useAbrirPecaDosAutos } from '@/hooks/useAbrirPecaDosAutos';
 export interface ContextoUsado {
   processos?: Array<{
     numero?: string | null;
+    /**
+     * De onde o processo entrou: 'lead' (está no cadastro do lead do grupo)
+     * ou 'citado_no_grupo' (a equipe citou o número numa notificação neste
+     * grupo e o número do caso bateu — regra de 08/09/2026). Rascunho antigo
+     * não traz a chave.
+     */
+    origem_vinculo?: 'lead' | 'citado_no_grupo' | null;
     titulo?: string | null;
     classe?: string | null;
     tribunal?: string | null;
@@ -83,6 +90,8 @@ export interface ContextoUsado {
      * sozinho esconde a duplicidade que causou o problema.
      */
     fichas_usadas?: number | null;
+    /** Processos que entraram porque a equipe os citou neste grupo. */
+    processos_citados?: number | null;
     ambiguo?: boolean | null;
   } | null;
 }
@@ -147,13 +156,19 @@ function Vazio({ children }: { children: React.ReactNode }) {
  * O aviso diz o que FAZER, não só que deu errado: cada caso tem um conserto
  * diferente, e nenhum deles é a máquina escolher uma ficha no chute.
  */
-function FichaNaoEncontrada({ fichas, ambiguo }: { fichas?: number | null; ambiguo?: boolean | null }) {
+function FichaNaoEncontrada({ fichas, ambiguo, processosCitados }: { fichas?: number | null; ambiguo?: boolean | null; processosCitados?: number }) {
   const n = typeof fichas === 'number' ? fichas : null;
+  // Desde 08/09/2026 o processo pode entrar SEM lead resolvido: a equipe o
+  // citou no grupo e o número do caso bateu. Aí "nada do processo entrou" é
+  // mentira — o que faltou foi só o que pende do lead (atividade, INSS).
+  const comProcesso = (processosCitados ?? 0) > 0;
   return (
     <div className="rounded border border-amber-300 bg-amber-50 p-2 space-y-1">
       <p className="text-[11px] font-medium text-amber-900 flex items-start gap-1.5">
         <UserX className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-        Não achei a ficha do cliente deste grupo. Nada do processo entrou no prompt.
+        {comProcesso
+          ? `Não achei o lead deste grupo — mas ${processosCitados === 1 ? '1 processo entrou' : `${processosCitados} processos entraram`} porque a equipe o citou aqui. O que ficou de fora é só o que pende do lead: atividade e INSS.`
+          : 'Não achei o lead deste grupo. Nada do processo entrou no prompt.'}
       </p>
       <p className="text-[10px] text-amber-800">
         {ambiguo && n
@@ -162,9 +177,11 @@ function FichaNaoEncontrada({ fichas, ambiguo }: { fichas?: number | null; ambig
             ? 'Nenhuma ficha aponta para este grupo. Cadastre o cliente ou ligue o grupo à ficha que já existe.'
             : 'O vínculo entre este grupo e a ficha do cliente não foi resolvido. Ligue o grupo à ficha para o assessor enxergar o caso.'}
       </p>
-      <p className="text-[10px] text-amber-800">
-        Os "(0)" abaixo são consequência disso — não são prova de que o processo está parado.
-      </p>
+      {!comProcesso && (
+        <p className="text-[10px] text-amber-800">
+          Os "(0)" abaixo são consequência disso — não são prova de que o processo está parado.
+        </p>
+      )}
     </div>
   );
 }
@@ -235,6 +252,9 @@ export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null 
     })));
 
   const soDoEmail = andamentos.length > 0 && andamentos.every(a => a.origem === 'email_push');
+  const citadosNoGrupo = processos
+    .filter(p => p.origem_vinculo === 'citado_no_grupo')
+    .map(p => p.numero || p.titulo || 'processo');
 
   // `tem_vinculo === false` é afirmação da RPC, não ausência de dado: rascunho
   // antigo, gravado antes desta chave existir, traz `undefined` e não dispara o
@@ -253,6 +273,7 @@ export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null 
         <FichaNaoEncontrada
           fichas={contexto.vinculo?.fichas_no_grupo}
           ambiguo={contexto.vinculo?.ambiguo}
+          processosCitados={citadosNoGrupo.length}
         />
       )}
       {!semFicha && contexto.vinculo?.fonte === 'fichas_do_mesmo_processo' && (
@@ -260,6 +281,22 @@ export function FontesDaResposta({ contexto }: { contexto: ContextoUsado | null 
           noGrupo={contexto.vinculo?.fichas_no_grupo}
           usadas={contexto.vinculo?.fichas_usadas}
         />
+      )}
+      {/* O processo entrou porque A EQUIPE o citou neste grupo (notificação
+          "Referente ao processo n° X") e o número do caso bateu. Não é o lead
+          do grupo que o traz — é a citação. Quem revisa precisa saber, porque
+          é sinal de que o processo está cadastrado em OUTRO lead (o CASO 398
+          nasceu assim) e vale juntar. */}
+      {citadosNoGrupo.length > 0 && (
+        <p className="text-[10px] text-sky-800 flex items-start gap-1 rounded border border-sky-200 bg-sky-50 p-2">
+          <ClipboardList className="h-3 w-3 mt-0.5 shrink-0" />
+          <span>
+            {citadosNoGrupo.length === 1
+              ? `O processo ${citadosNoGrupo[0]} entrou porque a equipe o citou neste grupo`
+              : `${citadosNoGrupo.length} processos entraram porque a equipe os citou neste grupo (${citadosNoGrupo.join(', ')})`}
+            {' '}— ele não está no lead do grupo. Se for do mesmo cliente, vale juntar os leads.
+          </span>
+        </p>
       )}
       {/* A conversa do grupo TAMBÉM entra no prompt, e de propósito não é copiada
           para cá: ela já existe inteira, ao vivo, no botão logo abaixo. Guardar
