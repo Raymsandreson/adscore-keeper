@@ -15,7 +15,7 @@
  * A última existe porque um atendente que nunca fala parece estar funcionando.
  * Sem ver o silêncio, não dá para saber se ele está calando demais ou de menos.
  */
-import { useCallback, useEffect, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { db, ensureExternalSession, externalFunctionUrl } from '@/integrations/supabase';
 import { Card, CardContent } from '@/components/ui/card';
@@ -96,12 +96,14 @@ function nomeDoAtendente(p: Pendente): string | null {
 const quando = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 
+type Filtro = { chave: string; rotulo: string; casa: (i: string | null) => boolean };
+
 /**
- * As 19 intenções em cinco famílias, que é como a decisão de fato é tomada:
+ * As intenções em cinco famílias, que é como a decisão de fato é tomada:
  * a letra manda, o número é detalhe. Filtrar por "E16" obrigaria a pessoa a
  * decorar códigos; filtrar por "Precisa de gente" é a pergunta que ela faz.
  */
-const FAMILIAS: { chave: string; rotulo: string; casa: (i: string | null) => boolean }[] = [
+const FAMILIAS: Filtro[] = [
   { chave: 'todas', rotulo: 'Todas', casa: () => true },
   { chave: 'A', rotulo: 'Perguntou algo', casa: (i) => (i || '').startsWith('A') },
   { chave: 'B', rotulo: 'Desabafo', casa: (i) => (i || '').startsWith('B') },
@@ -110,6 +112,27 @@ const FAMILIAS: { chave: string; rotulo: string; casa: (i: string | null) => boo
   { chave: 'E', rotulo: 'Precisa de gente', casa: (i) => (i || '').startsWith('E') },
   { chave: 'COBRANCA', rotulo: 'Cobrança', casa: (i) => i === 'COBRANCA' },
 ];
+
+/**
+ * Aqui a regra da família se inverte de propósito.
+ *
+ * Cinco falas mudam o dia de quem lê e desapareciam dentro da letra:
+ * reclamação e desistência viravam "Precisa de gente" junto com quem só
+ * perguntou de prazo, e elogio virava "Desabafo". Quem abre este painel de
+ * manhã não procura a letra E — procura quem falou em desistir.
+ *
+ * Por isso estes chips filtram por CÓDIGO, e vivem numa fileira separada: não
+ * são um recorte das famílias, são o que não pode passar batido.
+ */
+const OLHO_NELAS: Filtro[] = [
+  { chave: 'E20', rotulo: 'Desistência', casa: (i) => i === 'E20' },
+  { chave: 'E16', rotulo: 'Reclamação', casa: (i) => i === 'E16' },
+  { chave: 'E21', rotulo: 'Pede dinheiro', casa: (i) => i === 'E21' },
+  { chave: 'E22', rotulo: 'Indicação', casa: (i) => i === 'E22' },
+  { chave: 'B23', rotulo: 'Elogio', casa: (i) => i === 'B23' },
+];
+
+const FILTROS: Filtro[] = [...FAMILIAS, ...OLHO_NELAS];
 
 /**
  * Abre a conversa do grupo no painel de baixo pra cima — o mesmo drawer do
@@ -553,11 +576,30 @@ export function AtendenteVirtualPanel() {
   };
 
   /** O filtro de intenção vale para as três listas que têm intenção. */
-  const casa = FAMILIAS.find(f => f.chave === familia) ?? FAMILIAS[0];
+  const casa = FILTROS.find(f => f.chave === familia) ?? FILTROS[0];
   const filaF = fila.filter(p => casa.casa(p.intencao));
   const enviadasF = enviadas.filter(p => casa.casa(p.intencao));
   const comHumanoF = comHumano.filter(p => casa.casa(p.intencao));
   const silenciadasF = silenciadas.filter(d => casa.casa(d.intencao));
+
+  /**
+   * Quanto cada chip tem, somando as quatro listas que carregam intenção.
+   *
+   * Sem o número, chip zerado e chip cheio são idênticos até você clicar — e a
+   * pergunta "cadê a desistência?" não tem resposta na tela. Com o número, zero
+   * é uma resposta: ninguém falou nisso no que está carregado aqui.
+   */
+  const contagens = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    for (const f of FILTROS) {
+      mapa[f.chave] =
+        fila.filter(p => f.casa(p.intencao)).length +
+        enviadas.filter(p => f.casa(p.intencao)).length +
+        comHumano.filter(p => f.casa(p.intencao)).length +
+        silenciadas.filter(d => f.casa(d.intencao)).length;
+    }
+    return mapa;
+  }, [fila, enviadas, comHumano, silenciadas]);
 
   const vazio = (txt: string) => <p className="text-xs text-muted-foreground py-6 text-center">{txt}</p>;
 
@@ -633,19 +675,45 @@ export function AtendenteVirtualPanel() {
         </CardContent>
       </Card>
 
-      <div className="flex flex-wrap items-center gap-1">
-        <span className="text-[10px] text-muted-foreground mr-1">Intenção:</span>
-        {FAMILIAS.map(f => (
-          <Button
-            key={f.chave}
-            size="sm"
-            variant={familia === f.chave ? 'default' : 'outline'}
-            className="h-6 px-2 text-[10px]"
-            onClick={() => { setFamilia(f.chave); setMarcadas(new Set()); }}
-          >
-            {f.rotulo}
-          </Button>
-        ))}
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] text-muted-foreground mr-1">Intenção:</span>
+          {FAMILIAS.map(f => (
+            <Button
+              key={f.chave}
+              size="sm"
+              variant={familia === f.chave ? 'default' : 'outline'}
+              className="h-6 px-2 text-[10px]"
+              onClick={() => { setFamilia(f.chave); setMarcadas(new Set()); }}
+            >
+              {f.rotulo}
+              {f.chave !== 'todas' && (
+                <span className="ml-1 opacity-60">{contagens[f.chave] ?? 0}</span>
+              )}
+            </Button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] text-muted-foreground mr-1">Olho nelas:</span>
+          {OLHO_NELAS.map(f => (
+            <Button
+              key={f.chave}
+              size="sm"
+              variant={familia === f.chave ? 'default' : 'outline'}
+              className="h-6 px-2 text-[10px]"
+              onClick={() => { setFamilia(f.chave); setMarcadas(new Set()); }}
+            >
+              {f.rotulo}
+              <span className="ml-1 opacity-60">{contagens[f.chave] ?? 0}</span>
+            </Button>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          As de cima são as cinco famílias — a letra que decide o que o Dom faz. As de
+          baixo são falas específicas que não podem passar batido, e o número diz quantas
+          existem no que está carregado nas quatro abas.
+        </p>
       </div>
 
       <Tabs defaultValue="fila">

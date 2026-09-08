@@ -172,7 +172,7 @@ ruído — cliente não usa esse número.
 O cron **não foi criado** por causa do item 1: um tick de 2 em 2 minutos hoje
 encheria a fila de resposta para "obrigada".
 
-## Como ele decide: as 19 intenções
+## Como ele decide: as 23 intenções
 
 `dom-rascunho` classifica a última mensagem do cliente num modelo barato
 (flash-lite) ANTES de gastar o modelo bom, e o grupo da intenção decide a ação:
@@ -180,13 +180,39 @@ encheria a fila de resposta para "obrigada".
 | Grupo | O que ele faz | Intenções |
 |---|---|---|
 | A | responde a pergunta | A1 andamento, A2 explicação, A3 problema prático, A4 o que ele precisa fazer |
-| B | acolhe, **sem falar de processo** | B5 desabafo, B6 notícia boa, B7 notícia ruim |
+| B | acolhe, **sem falar de processo** | B5 desabafo, B6 notícia boa, B7 notícia ruim, B23 elogio |
 | C | confirma curto | C8 entregando dado, C9 documento, C10 agendamento, C11 fato novo |
 | D | **cala** | D12 cumprimento, D13 agradecimento, D14 fora do caso, D15 mensagem da equipe |
-| E | chama humano | E16 reclamação, E17 dinheiro/prazo, E18 quer pessoa, E19 assunto novo |
+| E | chama humano | E16 reclamação, E17 dinheiro/prazo do caso, E18 quer pessoa, E19 assunto novo, E20 desistência, E21 pede dinheiro adiantado, E22 indicação de cliente |
 
 Mais `conversa_encerrada`: quando a última mensagem só reconhece o que já foi
 dito, ninguém responde de volta. O Dom é convidado na conversa, não dono dela.
+
+### E20 a E22 e B23 — o que as 19 primeiras engoliam calado (08/09/2026)
+
+As quatro entraram depois, cada uma tapando um buraco medido nos dados, não
+imaginado:
+
+- **E20 (desistência)** era **B5**. "Falar em desistir" é desabafo pela forma e
+  emergência pelo conteúdo — e B acolhe **sozinho**, sem avisar ninguém. Em
+  04/09/2026 o Caso 341 mandou *"eu já tô desistindo, já não tô aguentando
+  mais"* e o único rascunho vivo do grupo era **C9**, sobre uma foto do dia
+  seguinte. Ninguém foi acionado.
+- **E21 (pede dinheiro adiantado)** era **E17**, junto com "quando cai meu
+  dinheiro". Vai para humano nos dois casos, mas a resposta que o Dom escreve
+  enquanto o humano não chega é outra: em E21 é proibido citar valor, prazo ou
+  dizer sim ou não.
+- **E22 (indicação de cliente)** era **D14** (assunto fora do caso) → **silêncio**.
+  Cliente oferecendo cliente e o sistema não registrava nada.
+- **B23 (elogio)** era **D13** → silêncio. D13 sozinho gerou 115 silêncios.
+
+O classificador ganhou junto uma **ordem de prioridade explícita**
+(`E20 > E16 > E21 > E22 > E17 > E18 > E19 > A > C > B > D`), porque estas falas
+quase nunca chegam puras: vêm dentro de um bom-dia com pergunta de andamento.
+
+No painel, estas cinco (as quatro novas mais E16) ganharam chips **por código**,
+na fileira "Olho nelas" — filtrar por letra E devolvia a desistência misturada
+com quem só perguntou de prazo.
 
 ## Cron: `dom_rascunho_tick`, de 5 em 5 minutos
 

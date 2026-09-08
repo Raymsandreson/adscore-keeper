@@ -142,10 +142,18 @@ function descricaoDeMidia(tipo: string): string {
   return "";
 }
 
-// As 19 intenções levantadas sobre 45 dias de mensagem real dos grupos do
-// piloto. O agrupamento é o que decide a ação, não o rótulo:
+// As intenções levantadas sobre mensagem real dos grupos do piloto. O
+// agrupamento é o que decide a ação, não o rótulo:
 //   A responde | B acolhe sem falar de processo | C confirma curto
 //   D silêncio | E humano
+//
+// 20 a 23 entraram depois, sobre o que os 19 primeiros engoliam calado:
+// desistência caía em B5 (o Dom acolhia sozinho e NINGUÉM era avisado de que o
+// cliente falou em largar o caso), pedido de dinheiro adiantado ia junto com
+// "quando cai meu dinheiro" na E17, indicação de cliente novo caía em D14 e
+// virava silêncio, e elogio morria na D13. Medido em 04/09/2026: o Caso 341
+// mandou "eu já tô desistindo, já não tô aguentando mais" e o único rascunho
+// vivo do grupo era C9, sobre uma foto.
 const INTENCOES = `
 A1  pergunta sobre andamento do processo
 A2  pedido de explicação de algo que já foi dito
@@ -162,10 +170,14 @@ D12 só cumprimento, sem pedido junto
 D13 agradecimento ou fechamento de conversa
 D14 assunto fora do caso (corrente, figurinha, bom-dia religioso)
 D15 mensagem da própria equipe
-E16 reclamação, insatisfação, ameaça de sair
-E17 pergunta sobre dinheiro ou prazo
+E16 reclamação ou insatisfação com o atendimento, com a demora ou com a equipe
+E17 pergunta sobre dinheiro ou prazo DO PRÓPRIO CASO (quanto sai, quando cai)
 E18 quer falar com uma pessoa específica
 E19 assunto jurídico novo, fora deste processo
+E20 fala em desistir, largar, cancelar ou encerrar o caso, revogar a procuração, ou em sair do grupo
+E21 pede dinheiro adiantado, empréstimo, antecipação de valor ou ajuda financeira
+E22 indica cliente novo, oferece o caso de outra pessoa, passa contato de conhecido
+B23 elogio ou reconhecimento do trabalho ("vocês são ótimos", "Deus abençoe vocês")
 `.trim();
 
 async function gemini(model: string, systemPrompt: string, historico: any[], maxTokens: number, temperatura: number) {
@@ -201,6 +213,20 @@ async function classificar(pergunta: string, ultimasTrocas: string) {
     "",
     "Códigos possíveis:",
     INTENCOES,
+    "",
+    "QUANDO A MENSAGEM TEM MAIS DE UMA COISA, vale a mais grave, nesta ordem:",
+    "  E20 > E16 > E21 > E22 > E17 > E18 > E19 > A > C > B > D",
+    "Isto não é sugestão. Os erros que esta regra conserta são reais:",
+    "  · desabafo que fala em DESISTIR, largar, cancelar, revogar ou sair é E20,",
+    "    NUNCA B5 — mesmo quando vem embrulhado em bom-dia e pergunta de",
+    "    andamento (\"bom dia, como tá o processo? eu já tô desistindo\" = E20);",
+    "  · pedir dinheiro ADIANTADO, empréstimo ou antecipação é E21, não E17.",
+    "    E17 é ele perguntando do dinheiro DELE no caso; E21 é ele pedindo",
+    "    dinheiro agora, que é assunto de pessoa e não do processo;",
+    "  · indicar conhecido, oferecer caso de terceiro ou mandar contato é E22,",
+    "    não D14 nem E19 — D14 vira silêncio e a indicação se perde;",
+    "  · elogio é B23, não D13. D13 é fechamento de conversa (\"ok\", \"obrigada\");",
+    "    B23 é ele reconhecendo o trabalho, e isso merece resposta.",
     "",
     "conversa_encerrada = true quando a última mensagem do cliente só reconhece o",
     "que já foi dito (obrigada, ok, tá bom, 👍) e não pede nada novo. Nesse caso a",
@@ -247,6 +273,61 @@ async function classificar(pergunta: string, ultimasTrocas: string) {
 // impede o relatório de processo de aparecer em cima de um desabafo.
 function instrucaoDaIntencao(cod: string, panorama = false): string {
   const g = cod.charAt(0);
+
+  // Estes três são da família E (vão para humano de qualquer jeito), mas a
+  // frase que o Dom escreve enquanto o humano não chega é diferente em cada um
+  // — e no E20 e no E21 a frase errada custa caro. Por isso vêm ANTES do bloco
+  // genérico de E, que fala em "reclamação, dinheiro, prazo".
+  if (cod === "E20") {
+    return [
+      "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
+      "O cliente falou em DESISTIR, largar, cancelar o caso ou sair. Isto é o",
+      "assunto mais sério que chega aqui, e não é seu para resolver.",
+      "Responda em duas ou três frases: reconheça o cansaço dele pelo nome que ele",
+      "deu (demora, falta de resposta, dificuldade), diga que alguém da equipe vai",
+      "falar com ele, e nada além disso.",
+      "É PROIBIDO tentar convencer, argumentar que vale a pena, citar prazo, valor,",
+      "fase do processo, ou explicar consequência de desistir. Quem faz isso é",
+      "advogado, falando com ele.",
+      "=== FIM ===",
+    ].join("\n");
+  }
+  if (cod === "E21") {
+    return [
+      "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
+      "O cliente está pedindo DINHEIRO ADIANTADO — empréstimo, antecipação, ajuda.",
+      "Não é pergunta sobre o caso dele: é pedido de dinheiro agora.",
+      "Responda curto e sem constranger: diga que entendeu o pedido e que a equipe",
+      "vai falar com ele sobre isso.",
+      "É PROIBIDO dizer sim, dizer não, citar valor, citar prazo de pagamento, ou",
+      "explicar como funcionaria. Prometer dinheiro que não é seu para prometer é",
+      "o pior erro possível nesta conversa.",
+      "=== FIM ===",
+    ].join("\n");
+  }
+  if (cod === "E22") {
+    return [
+      "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
+      "O cliente está INDICANDO alguém — um conhecido com um caso, um contato.",
+      "Agradeça em uma ou duas frases, com a confiança que isso significa, e diga",
+      "que alguém da equipe entra em contato para ouvir o caso.",
+      "É PROIBIDO pedir CPF, documento ou detalhe do caso do terceiro aqui: este",
+      "grupo é do caso do cliente, e dado de outra pessoa não entra nele.",
+      "Nada de andamento de processo nesta resposta.",
+      "=== FIM ===",
+    ].join("\n");
+  }
+  if (cod === "B23") {
+    return [
+      "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
+      "O cliente ELOGIOU o trabalho. Agradeça em uma ou duas frases, simples e sem",
+      "cerimônia, e devolva o crédito para a equipe que cuida do caso dele.",
+      "É PROIBIDO emendar andamento, prazo, cobrança ou pedido de qualquer tipo —",
+      "responder elogio com relatório transforma o agrado em atendimento.",
+      "=== FIM ===",
+    ].join("\n");
+  }
+
   if (g === "B") {
     return [
       "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
@@ -933,7 +1014,18 @@ Deno.serve(async (req) => {
       if (grupoIntencao === "E") {
         const { data: pick } = await supabase.rpc("pick_dom_atendente", { p_escopo: "reclamacao" });
         atendenteId = (pick as any) || null;
-        motivo = motivo || `intenção ${cls.intencao}: precisa de atendente humano`;
+        // O motivo é o que a pessoa lê na fila antes de abrir. "precisa de
+        // atendente humano" serve para E17 ou E18; para quem falou em desistir,
+        // ele esconde a única informação que faz alguém largar o que está
+        // fazendo e ir olhar.
+        const MOTIVO_POR_INTENCAO: Record<string, string> = {
+          E20: "falou em DESISTIR do caso — falar com ele hoje",
+          E21: "pediu dinheiro adiantado — só a equipe responde isso",
+          E22: "indicou um cliente novo — alguém precisa ligar",
+        };
+        motivo = motivo
+          || MOTIVO_POR_INTENCAO[cls.intencao]
+          || `intenção ${cls.intencao}: precisa de atendente humano`;
       }
 
       const { data: linhaFila, error: errFila } = await supabase.from("dom_respostas_pendentes").insert({
