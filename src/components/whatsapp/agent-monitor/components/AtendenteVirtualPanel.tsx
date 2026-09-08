@@ -30,7 +30,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2, Search, AlertTriangle } from 'lucide-react';
+import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2, Search, AlertTriangle, UserX } from 'lucide-react';
 import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 import { ContagemAteEnvio } from '@/components/whatsapp/ContagemAteEnvio';
 
@@ -56,6 +56,25 @@ interface Pendente {
 }
 interface GrupoPiloto {
   group_jid: string; group_name: string | null; modo: string; ativo: boolean;
+}
+/**
+ * Grupo do piloto cuja FICHA DE CLIENTE não foi encontrada — a view
+ * `vw_dom_grupo_sem_ficha` no Externo.
+ *
+ * Por que virou aba (08/09/2026): o assessor respondia esses grupos sem um
+ * dado do processo, e isso não aparecia em lugar nenhum. Quem revisava lia o
+ * "(0)" das fontes como processo parado. Consertar o vínculo dos que dava
+ * (166 grupos, uma ficha só cada) resolveu a metade automática; estes aqui
+ * exigem uma pessoa decidir, e por isso precisam de um lugar para serem vistos.
+ */
+interface SemFicha {
+  group_jid: string;
+  group_name: string | null;
+  situacao: 'ambiguo' | 'sem_ficha';
+  fichas_no_cadastro: number;
+  rascunhos_no_escuro: number;
+  ultimo_rascunho_em: string | null;
+  o_que_fazer: string | null;
 }
 interface Decisao {
   id: string; group_name: string | null; group_jid: string; intencao: string | null;
@@ -162,6 +181,7 @@ export function AtendenteVirtualPanel() {
   const [comHumano, setComHumano] = useState<Pendente[]>([]);
   const [silenciadas, setSilenciadas] = useState<Decisao[]>([]);
   const [grupos, setGrupos] = useState<GrupoPiloto[]>([]);
+  const [semFicha, setSemFicha] = useState<SemFicha[]>([]);
   const [trocandoModo, setTrocandoModo] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [familia, setFamilia] = useState('todas');
@@ -239,7 +259,7 @@ export function AtendenteVirtualPanel() {
     try {
       await ensureExternalSession();
       const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, audio_velocidade, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, contexto_usado, dom_atendentes(nome)';
-      const [f, e, h, s, gp] = await Promise.all([
+      const [f, e, h, s, gp, sf] = await Promise.all([
         // "Na fila" é tudo que AINDA NÃO SAIU — inclusive o que alguém já
         // aprovou. Filtrar só por 'pendente' fazia a resposta aprovada sumir
         // das quatro abas: não estava mais na fila, nunca chegou em enviadas,
@@ -263,12 +283,20 @@ export function AtendenteVirtualPanel() {
         dbAny.from('dom_grupos_piloto')
           .select('group_jid, group_name, modo, ativo')
           .eq('ativo', true).eq('modo', 'automatico').order('group_name'),
+        // Os que o assessor atende sem saber de quem são. Ordenados pelo
+        // ESTRAGO já feito — quantas respostas saíram no escuro — e não por
+        // nome: a fila de conserto começa por onde já custou caro.
+        dbAny.from('vw_dom_grupo_sem_ficha')
+          .select('group_jid, group_name, situacao, fichas_no_cadastro, rascunhos_no_escuro, ultimo_rascunho_em, o_que_fazer')
+          .order('rascunhos_no_escuro', { ascending: false })
+          .order('group_name'),
       ]);
       setFila((f.data as unknown as Pendente[]) || []);
       setEnviadas((e.data as unknown as Pendente[]) || []);
       setComHumano((h.data as unknown as Pendente[]) || []);
       setSilenciadas((s.data as unknown as Decisao[]) || []);
       setGrupos((gp.data as unknown as GrupoPiloto[]) || []);
+      setSemFicha((sf.data as unknown as SemFicha[]) || []);
 
       const { count } = await dbAny.from('dom_grupos_piloto')
         .select('group_jid', { count: 'exact', head: true }).eq('ativo', true);
@@ -596,7 +624,7 @@ export function AtendenteVirtualPanel() {
       </div>
 
       <Tabs defaultValue="fila">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="fila" className="text-xs gap-1">
             <Inbox className="h-3.5 w-3.5" />Na fila
             {filaF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filaF.length}</Badge>}
@@ -615,6 +643,13 @@ export function AtendenteVirtualPanel() {
           </TabsTrigger>
           <TabsTrigger value="conversas" className="text-xs gap-1">
             <Search className="h-3.5 w-3.5" />Nas conversas
+          </TabsTrigger>
+          {/* A sexta é a que dói: grupos que ele atende sem saber de quem são. */}
+          <TabsTrigger value="semficha" className="text-xs gap-1">
+            <UserX className="h-3.5 w-3.5" />Sem ficha
+            {semFicha.length > 0 && (
+              <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{semFicha.length}</Badge>
+            )}
           </TabsTrigger>
         </TabsList>
 
@@ -767,6 +802,58 @@ export function AtendenteVirtualPanel() {
                   <strong>Cliente:</strong> {d.pergunta}
                 </p>
                 <p className="text-[10px] text-muted-foreground italic">Não respondeu — {d.motivo}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </TabsContent>
+
+        {/* ── Sem ficha ──────────────────────────────────────────────────
+            Não é lista de erro do assessor: é fila de cadastro. Ele responde
+            esses grupos sem UM dado do processo, e continuará respondendo até
+            alguém ligar o grupo à ficha. O número de respostas já escritas no
+            escuro fica visível de propósito — é o custo de adiar. */}
+        <TabsContent value="semficha" className="space-y-2 pt-3">
+          {semFicha.length === 0
+            ? vazio('Todo grupo do piloto tem ficha de cliente. Nada a consertar aqui.')
+            : (
+              <p className="text-[11px] text-muted-foreground">
+                {semFicha.length} grupos que o assessor atende sem achar a ficha do cliente.
+                Nesses, a resposta sai sem movimentação, sem peça e sem a atividade da equipe —
+                e o painel de fontes mostra "(0)" por falta de ficha, não por processo parado.
+              </p>
+            )}
+          {semFicha.map(g => (
+            <Card key={g.group_jid}>
+              <CardContent className="p-3 space-y-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-medium flex-1 truncate">{g.group_name || g.group_jid}</p>
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] ${g.situacao === 'ambiguo'
+                      ? 'border-amber-400 text-amber-700'
+                      : 'border-rose-300 text-rose-700'}`}
+                  >
+                    {g.situacao === 'ambiguo' ? `${g.fichas_no_cadastro} fichas` : 'sem ficha'}
+                  </Badge>
+                  <Button
+                    size="icon" variant="ghost" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-primary"
+                    title="Abrir a conversa do grupo"
+                    onClick={() => abrirConversa(g.group_jid, null, g.group_name)}
+                  >
+                    <MessagesSquare className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                {g.o_que_fazer && (
+                  <p className="text-[11px] text-muted-foreground">{g.o_que_fazer}</p>
+                )}
+                {g.rascunhos_no_escuro > 0 && (
+                  <p className="text-[10px] text-rose-700 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                    {g.rascunhos_no_escuro === 1
+                      ? '1 resposta já foi escrita sem o processo.'
+                      : `${g.rascunhos_no_escuro} respostas já foram escritas sem o processo.`}
+                  </p>
+                )}
               </CardContent>
             </Card>
           ))}
