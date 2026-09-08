@@ -2100,3 +2100,85 @@ comentário podem diferir do arquivo do repositório. Reconciliar quando o
 `SUPABASE_PAT` existir — a raiz é a mesma: **quatro transcrições manuais da
 mesma função num único dia**, cada uma com risco de erro, que o deploy
 automático elimina.
+
+---
+
+## 08/09/2026 — A peça citada no painel passa a abrir
+
+### O que faltava
+
+O painel "De onde saiu (para conferir)" lista, em **Documento lido**, as peças
+que entraram no prompt com o resumo feito pela IA. Eram texto morto. Quem
+revisava conferia a resposta da máquina contra **outro texto de máquina** — o
+resumo — que é conferir uma coisa contra ela mesma. O documento, que é a prova,
+ficava a dois cliques e uma tela de distância (aba Documentos do processo).
+
+Agora o título da peça é botão: abre o PDF no `MediaLightbox`, com zoom, por
+cima do painel. Fechar devolve o revisor exatamente onde ele estava — mesmo
+visualizador e mesmo caminho da aba Documentos do processo, de propósito.
+
+### A armadilha: título + data não identificam um documento
+
+O contexto é um retrato gravado junto com o rascunho
+(`dom_rascunhos.contexto_usado`) e guardava, por peça, só título, data e resumo.
+Medido no Supabase externo em 08/09/2026, sobre os 9.151 documentos com leitura:
+
+| medida | valor |
+|---|---|
+| chaves `(processo_cnj, titulo, data_documento)` distintas | 8.630 |
+| chaves repetidas | 251 |
+| documentos dentro de chave repetida | 772, em 48 processos |
+| pior caso (mesmo título, mesma data) | **17 documentos** |
+
+Casar por título+data abriria a peça errada em cerca de **6% dos cliques**, sem
+avisar. Peça errada ao lado de um resumo é prova falsa — pior que botão nenhum,
+porque tem cara de conferência.
+
+### O conserto, na fonte
+
+`dom_contexto_processual` passou a emitir, em cada item de
+`processos[].documentos[]`, o `id` e o `arquivo` (`jm_documentos.storage_path`)
+— migration `20260908150000_a_peca_do_dom_pode_ser_aberta.sql`. Com isso o
+clique abre **a** peça, não uma parecida.
+
+Duas coisas que a mudança **não** faz:
+
+- **não mexe no prompt.** Quem monta o system prompt é a `dom-contexto`, e de
+  cada documento ela lê apenas `data`, `peca` e `resumo`. Chave nova em JSON que
+  ninguém lê não vira token.
+- **não expõe arquivo.** `arquivo` é o caminho dentro do bucket privado
+  `jm-autos`. Abrir exige sessão autenticada e a policy do bucket, que assina
+  uma URL de 10 minutos. O caminho sozinho não dá acesso a nada.
+
+Rota de fuga: `dom_contexto_processual_antes_peca_clicavel` guarda a versão
+anterior, criada pela própria migration antes de alterar. Remover só após 24h
+verdes.
+
+### Rascunho antigo: procura, e não chuta
+
+Rascunho gravado antes disso não tem `id` nem `arquivo` — o retrato já foi
+tirado. Nesses, o front procura a peça em `jm_documentos` por processo, título e
+data (`acharPecaDoContexto`, em `src/lib/pecaDoContexto.ts`) e:
+
+- **um** candidato com arquivo → abre;
+- **dois ou mais** → não abre, e diz quantas peças têm aquele mesmo título e
+  aquela mesma data, mandando para a aba Documentos do processo;
+- **nenhum**, ou peça sem arquivo baixado → diz qual dos dois é.
+
+Nunca some com o botão e nunca abre "a mais parecida". Nove testes em
+`src/lib/__tests__/pecaDoContexto.test.ts` seguram isso — em especial o caso de
+duas peças homônimas na mesma data, que é o que quebra se alguém "simplificar"
+o desempate para pegar o primeiro candidato.
+
+### Onde ficou
+
+| arquivo | papel |
+|---|---|
+| `src/lib/pecaDoContexto.ts` | decide qual peça é, ou por que não dá para saber |
+| `src/hooks/useAbrirPecaDosAutos.ts` | consulta sob demanda + URL assinada (10 min) |
+| `FontesDaResposta.tsx` | título vira botão; erro aparece embaixo da própria peça |
+| `20260908150000_a_peca_do_dom_pode_ser_aberta.sql` | a RPC passa a dizer qual peça é |
+
+A busca é **sob demanda, uma peça por clique**. Carregar o acervo inteiro de
+cada processo listado (140 peças no caso 88) para talvez abrir uma seria pagar
+adiantado por algo que quase sempre não acontece.
