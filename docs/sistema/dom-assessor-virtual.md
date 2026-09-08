@@ -2319,25 +2319,41 @@ Rota de fuga: `dom_contexto_processual_antes_peca_clicavel` guarda a versão
 anterior, criada pela própria migration antes de alterar. Remover só após 24h
 verdes.
 
-**Aplicada em 08/09/2026.** Conferido nos 25 primeiros grupos do piloto com peça
-lida, contra a cópia anterior: 0 diferenças fora de `processos`, 0 diferenças
-nos 39 processos fora do bloco `documentos`, 0 mudanças na contagem de
-documentos, e nos 93 documentos nada mudou depois de tirar `id` e `arquivo` —
-que vieram preenchidos em todos.
+**Aplicada em produção em 08/09/2026** (Externo `kmedldlepwiityjsdahz`), com
+autorização do dono. Conferido contra o banco real:
+
+| conferência | resultado |
+|---|---|
+| peças do grupo `120363405106042327` | 6 de 6 com `id` e `arquivo` |
+| `arquivo` que existe em `storage.objects` (bucket `jm-autos`) | 6 de 6 |
+| 25 grupos com peça lida — chaves fora de `processos` | 0 diferenças |
+| 39 processos — tudo fora do bloco `documentos` | 0 diferenças |
+| contagem de documentos por processo | 0 mudanças |
+| 93 documentos, tirando `id` e `arquivo` | **0 diferenças** |
+| documentos sem `id` ou sem `arquivo` | 0 |
+
+A penúltima linha é a que importa para dormir tranquilo: fora as duas chaves
+novas, o contexto que vai para o prompt é byte a byte o mesmo de antes. Nenhuma
+outra chave, CTE ou ordenação mudou de comportamento.
 
 ### A rota de fuga que quase não existiu
 
-O bloco que copia a função para `_antes_peca_clicavel` rodou uma segunda vez
-**depois** da alteração e sobrescreveu a cópia com o corpo novo. Por alguns
-minutos o "rollback" era uma cópia da própria versão nova — nenhum rollback,
-com cara de rollback.
+Essa conferência só vale porque foi refeita. O bloco que copia a função para
+`_antes_peca_clicavel` rodou uma segunda vez **depois** da alteração e
+sobrescreveu a cópia com o corpo novo. Por alguns minutos o "rollback" era uma
+cópia da própria versão nova — nenhum rollback, com cara de rollback. E uma
+comparação contra ela, tirando `id` e `arquivo` dos **dois** lados, dá "0
+diferenças" sem ter comparado nada.
 
-Só apareceu porque a conferência de não-regressão acusou **86 de 86 documentos
-divergentes**: os dois lados emitiam `arquivo`. Um número absurdo é sinal de que
-o teste está errado, não de que o mundo está. A cópia foi refeita aplicando o
-replace inverso sobre a função viva, e o tamanho confirma que é a versão certa —
-13.066 = 13.046 (a função medida antes de qualquer alteração) + 20 do nome mais
-longo.
+Só apareceu porque a não-regressão acusou **86 de 86 documentos divergentes**:
+os dois lados emitiam `arquivo`. Número absurdo é sinal de que o teste está
+errado, não de que o mundo está — e vale sempre parar para olhar em vez de
+ajustar o teste até fechar.
+
+A cópia foi refeita aplicando o replace inverso sobre a função viva, e o tamanho
+confirma que é a versão certa: **13.066 = 13.046** (a função medida antes de
+qualquer alteração) **+ 20** do nome mais longo. Só então a tabela acima foi
+levantada.
 
 O passo 0 da migration agora tem guarda: se a função viva já emite `arquivo`, a
 cópia não é tocada. **Rota de fuga que se sobrescreve sozinha é pior que rota de
