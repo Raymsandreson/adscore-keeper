@@ -1033,17 +1033,39 @@ Deno.serve(async (req) => {
 
       // 1. Deduplica pelo id da mensagem no WhatsApp — a mesma mensagem chega
       //    uma vez por número nosso que está no grupo.
-      const vistos = new Set<string>();
+      const vistos = new Map<string, any>();
       const lista: any[] = [];
       for (const m of brutas ?? []) {
         const msg = (m.metadata as any)?.message ?? {};
         const mid = String(msg.messageid || msg.id || `${m.created_at}|${m.message_text}`);
-        if (vistos.has(mid)) continue;
-        vistos.add(mid);
+        const texto = (m.message_text || "").trim();
+        const tipo = m.message_type || "text";
+
+        // As cópias da mesma mensagem NÃO são iguais, e ficar com a primeira
+        // (a mais recente, porque a busca vem em ordem decrescente) é sorteio.
+        // A instância que transcreveu o áudio traz o texto; a que não
+        // transcreveu traz vazio. A que recebeu `mediaType` vazio da UazAPI
+        // traz o tipo errado. Medido em 08/09/2026: dos áudios que tinham uma
+        // cópia boa e uma pobre em 7 dias, o sorteio deu a pobre em 4 de 4 —
+        // um deles o áudio do seu Manoel que virou "[o cliente enviou um
+        // documento]". Agora a cópia que tem conteúdo ganha da que chegou por
+        // último.
+        const jaVista = vistos.get(mid);
+        if (jaVista) {
+          if (!jaVista.texto && texto) {
+            jaVista.texto = texto;
+            jaVista.tipo = tipo;
+          } else if (!jaVista.texto && jaVista.tipo === "document" && tipo !== "document") {
+            // Sem texto de nenhum lado, vale o tipo mais específico: `document`
+            // é para onde o webhook joga o que não reconheceu.
+            jaVista.tipo = tipo;
+          }
+          continue;
+        }
         const remetente = so(msg.sender_pn || msg.sender);
-        lista.push({
-          texto: (m.message_text || "").trim(),
-          tipo: m.message_type || "text",
+        const linha = {
+          texto,
+          tipo,
           instancia: m.instance_name,
           criado: m.created_at,
           autor: msg.senderName || m.contact_name || null,
@@ -1051,7 +1073,9 @@ Deno.serve(async (req) => {
           //    Quem não está na lista é tratado como cliente — errar respondendo
           //    um colega é visível; errar ignorando cliente é silencioso.
           daEquipe: msg.fromMe === true || (remetente !== "" && equipe.has(remetente)),
-        });
+        };
+        vistos.set(mid, linha);
+        lista.push(linha);
       }
       lista.reverse();
 
