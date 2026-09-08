@@ -35,6 +35,10 @@
 --   * A view continua a mesma; linha decidida some porque o status muda.
 --   * Nada toca lead_processes de outro lead.
 --
+-- APLICADO em 08/09/2026 com aval do Raym. Fila no momento: 191 citações
+-- (108 processo_orfao, 34 grupo_sem_cliente, 28 a_conferir, 21 caso_diferente).
+-- Testado antes em transação com rollback, um caso real de cada tipo.
+--
 -- ROTA DE FUGA
 --   update grupo_processo_detectado set status = 'eco_da_casa'
 --    where status in ('nao_e_do_grupo') ...;  (as decisões ficam no atualizado_em)
