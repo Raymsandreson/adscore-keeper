@@ -21,15 +21,38 @@ const GATEWAY = 'https://connector-gateway.lovable.dev/google_sheets/v4';
 
 const SKIP_TABS = new Set(['BASE_UNIFICADA']);
 
+/**
+ * Chamada ao Sheets que aguenta o 429.
+ *
+ * A cota do Sheets e POR MINUTO, e aqui ela e disputada por tres consumidores: o
+ * cron de 10 em 10 minutos, a varredura manual e as leituras de diagnostico. Em
+ * 09/09/2026 uma sincronizacao de status morreu logo na descoberta das abas com
+ * `discoverSheetTabs 429` — nada foi escrito, mas o trabalho todo se perdeu por
+ * um limite que passa sozinho em segundos.
+ *
+ * Espera crescente (2s, 6s, 14s) so no 429. Qualquer outro erro sobe na hora:
+ * insistir em 403 ou 404 e desperdicio.
+ */
+async function buscaComEspera(url: string, init: RequestInit, oQue: string): Promise<Response> {
+  const esperas = [2000, 4000, 8000];
+  for (let tentativa = 0; ; tentativa++) {
+    const resp = await fetch(url, init);
+    if (resp.status !== 429 || tentativa >= esperas.length) return resp;
+    await new Promise((r) => setTimeout(r, esperas[tentativa]));
+    console.warn(`[bpc-sheet-sync] 429 em ${oQue}: aguardando ${esperas[tentativa]}ms`);
+  }
+}
+
 async function discoverSheetTabs(
   spreadsheetId: string,
 ): Promise<{ lidas: { tab: string; operator: string }[]; ignoradas: string[] }> {
   const lovableKey = process.env.LOVABLE_API_KEY;
   const gsKey = process.env.GOOGLE_SHEETS_API_KEY;
   if (!lovableKey || !gsKey) throw new Error('Missing connector keys');
-  const resp = await fetch(
+  const resp = await buscaComEspera(
     `${GATEWAY}/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
     { headers: { Authorization: `Bearer ${lovableKey}`, 'X-Connection-Api-Key': gsKey } },
+    'descoberta das abas',
   );
   if (!resp.ok) throw new Error(`discoverSheetTabs ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
   const json: any = await resp.json();
@@ -57,6 +80,8 @@ interface ParsedRow {
   phone: string; // normalizado, só dígitos (com 55 quando aplicável)
   phone_key: string; // últimos 8 dígitos (chave de match)
   operator: string;
+  /** O que a EQUIPE escreveu na coluna `status da lead`. */
+  status_equipe: string;
   campaign_id: string;
   campaign_name: string;
   adset_id: string;
@@ -92,6 +117,9 @@ interface AbaLida {
   preenchidas_nas_descartadas: Record<string, number>;
   /** Linhas em que nome e telefone vieram trocados de coluna. */
   recuperadas_por_troca: number;
+  /** Valores da coluna de status preenchida pela equipe, e quantos tem id da Meta. */
+  status_na_planilha: Record<string, number>;
+  status_com_id_meta: Record<string, number>;
 }
 
 async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: string }): Promise<AbaLida> {
@@ -100,12 +128,11 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   if (!lovableKey || !gsKey) throw new Error('Missing connector keys (LOVABLE_API_KEY / GOOGLE_SHEETS_API_KEY)');
 
   const url = `${GATEWAY}/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(meta.tab)}'!A1:Z5000`;
-  const resp = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${lovableKey}`,
-      'X-Connection-Api-Key': gsKey,
-    },
-  });
+  const resp = await buscaComEspera(
+    url,
+    { headers: { Authorization: `Bearer ${lovableKey}`, 'X-Connection-Api-Key': gsKey } },
+    `aba "${meta.tab}"`,
+  );
   if (!resp.ok) {
     const txt = await resp.text();
     throw new Error(`sheet "${meta.tab}" ${resp.status}: ${txt.slice(0, 200)}`);
@@ -113,7 +140,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   const json = (await resp.json()) as { values?: any[][] };
   const values: any[][] = json.values || [];
   if (values.length < 2)
-    return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0, preenchidas_nas_descartadas: {}, recuperadas_por_troca: 0 };
+    return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0, preenchidas_nas_descartadas: {}, recuperadas_por_troca: 0, status_na_planilha: {}, status_com_id_meta: {} };
   const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
 
   const out: ParsedRow[] = [];
@@ -123,6 +150,11 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   let descTelefone = 0;
   let brutas = 0;
   const preenchidas: Record<string, number> = {};
+  // Distribuicao dos valores das colunas de status QUE A EQUIPE PREENCHE na
+  // planilha. Se houver "fechado" marcado ali que o CRM nao conhece, cada um e
+  // uma conversao real que nunca foi para a Meta.
+  const statusPlanilha: Record<string, number> = {};
+  const statusComIdMeta: Record<string, number> = {};
   let trocaDeColuna = 0;
   for (let i = 1; i < values.length; i++) {
     const r = values[i];
@@ -171,7 +203,18 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
       descTelefone += 1;
       continue;
     }
+    // CADA coluna separada. `lead_status` e campo da exportacao da Meta (vale
+    // sempre "created"); com `||` ele curto-circuita e a coluna que a EQUIPE
+    // preenche nunca era lida — foi o defeito da primeira medicao.
+    for (const col of ['lead_status', 'status da lead', 'status', 'observações', 'observacoes']) {
+      const v = String(o[col] || '').trim().toLowerCase();
+      if (!v) continue;
+      const chave = `${col} = ${v.slice(0, 40)}`;
+      statusPlanilha[chave] = (statusPlanilha[chave] || 0) + 1;
+      if (normalizaLeadIdMeta(o['id'])) statusComIdMeta[chave] = (statusComIdMeta[chave] || 0) + 1;
+    }
     out.push({
+      status_equipe: String(o['status da lead'] || '').trim().toLowerCase(),
       facebook_lead_id: normalizaLeadIdMeta(o['id']),
       created_at: o['created_time'] || '',
       name: name.trim(),
@@ -201,6 +244,8 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     descartadas_telefone: descTelefone,
     preenchidas_nas_descartadas: preenchidas,
     recuperadas_por_troca: trocaDeColuna,
+    status_na_planilha: statusPlanilha,
+    status_com_id_meta: statusComIdMeta,
   };
 }
 
@@ -240,10 +285,51 @@ function extrairIdDaPlanilha(url: string | null): string | null {
 }
 
 interface OpcoesSync {
+  /** Escreve no CRM o status que a equipe preencheu na planilha. */
+  aplicarStatus?: boolean;
+  /** Só sincroniza status: não cria lead nenhum. É assim que o cron horário roda. */
+  somenteStatus?: boolean;
+  /** Cria os marcados como "fechado" que não existem no CRM, ignorando a janela. */
+  criarFechadosAusentes?: boolean;
   spreadsheetIdOverride?: string;
   sinceDays: number;
   dryRun: boolean;
 }
+
+
+/**
+ * De-para do que a EQUIPE escreve na planilha para o status do CRM.
+ *
+ * O vocabulario do CRM (medido em 09/09/2026): no_response 19.251, closed 3.204,
+ * inviavel 390, refused 111, in_progress 6, cancelled 5.
+ *
+ * Tres sao juizo, nao traducao — estao marcados. Se estiverem errados, e trocar
+ * a linha aqui e rodar de novo.
+ */
+const MAPA_STATUS: Record<string, string> = {
+  fechado: 'closed',
+  cancelado: 'cancelled',
+  inviavel: 'inviavel',
+  'inviável': 'inviavel',
+  'sem resposta': 'no_response',
+  'em andamento': 'in_progress',
+  'primeiro contato': 'in_progress',
+  'aguar. doc': 'in_progress',
+  'aguar. assinat': 'in_progress',
+  'falar depois': 'in_progress',
+  // JUIZO 1: numero errado nao da para trabalhar -> inviavel
+  'n° errado': 'inviavel',
+  'n errado': 'inviavel',
+  'numero errado': 'inviavel',
+  // JUIZO 2: "viavel" e lead bom ainda em aberto -> in_progress
+  'viável': 'in_progress',
+  viavel: 'in_progress',
+  // JUIZO 3: bloqueou o atendente -> refused
+  bloqueado: 'refused',
+};
+
+/** Status que o CRM ja classificou: a planilha nao rebaixa nenhum deles. */
+const NAO_REBAIXAR = new Set(['closed', 'cancelled', 'inviavel', 'refused', 'in_progress']);
 
 async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Record<string, unknown>> {
   const boardId = board.id;
@@ -274,7 +360,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const cabecalhos = new Set<string>();
   const diagPorAba = new Map<
     string,
-    { cabecalho: string[]; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number }
+    { cabecalho: string[]; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
   >();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
@@ -291,6 +377,8 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
           dt: r.value.descartadas_telefone,
           preenchidas: r.value.preenchidas_nas_descartadas,
           troca: r.value.recuperadas_por_troca,
+          status: r.value.status_na_planilha,
+          statusId: r.value.status_com_id_meta,
         });
       } else {
         tabErrors.push({ tab: meta.tab, error: String(r.reason?.message || r.reason).slice(0, 200) });
@@ -324,11 +412,16 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   // nao e enfeite: sem ordem estavel a paginacao pula e repete linhas.
   const PAGINA_DEDUP = 1000;
   const existingKeys = new Set<string>();
+  // Mesma varredura, dois usos: o Set decide quem criar, o Map permite achar o
+  // lead pelo TELEFONE na hora de aplicar status. Casar so por
+  // `facebook_lead_id` deixava de fora quem entrou por outro caminho — eram 6
+  // fechamentos invisiveis so no BPC.
+  const porTelefone = new Map<string, { id: string; lead_status: string }>();
   let lidosDedup = 0;
   for (let inicio = 0; ; inicio += PAGINA_DEDUP) {
     const { data: pagina, error: existErr } = await ext
       .from('leads')
-      .select('id, lead_phone')
+      .select('id, lead_phone, lead_status')
       .eq('board_id', boardId)
       .not('lead_phone', 'is', null)
       .order('id', { ascending: true })
@@ -338,7 +431,12 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
     lidosDedup += linhas.length;
     for (const l of linhas) {
       const k = phoneKey(String(l.lead_phone || '').replace(/\D/g, ''));
-      if (k) existingKeys.add(k);
+      if (k) {
+        existingKeys.add(k);
+        if (!porTelefone.has(k)) {
+          porTelefone.set(k, { id: String((l as any).id), lead_status: String((l as any).lead_status || '') });
+        }
+      }
     }
     if (linhas.length < PAGINA_DEDUP) break;
     // Trava: board absurdo nao pode virar loop infinito dentro do cron.
@@ -346,7 +444,23 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   }
 
   // 4) Decide quem criar
-  const toCreate = uniqueRows.filter((r) => !existingKeys.has(r.phone_key));
+  // FECHADO NAO TEM JANELA.
+  //
+  // `recentRows` corta por data do formulario, e fechamento marcado pela equipe
+  // pode ser de lead antigo — sao 12 conversoes que ficaram de fora da importacao
+  // de 30 dias so por isso. Quando `criarFechadosAusentes` esta ligado, esses
+  // entram independente da janela: a conversao vale mais que a idade do lead.
+  const candidatosCriacao = opts.criarFechadosAusentes
+    ? [
+        ...uniqueRows,
+        ...sheetRows.filter(
+          (r) => r.status_equipe === 'fechado' && !uniqueRows.some((u) => u.phone_key === r.phone_key),
+        ),
+      ]
+    : uniqueRows;
+  const toCreate = opts.somenteStatus
+    ? []
+    : candidatosCriacao.filter((r) => !existingKeys.has(r.phone_key));
 
   // Contagem por aba. Sem ela, "li 8 abas" e promessa sem prova: uma aba pode
   // voltar vazia (renomeada, range errado, permissao) que o total geral nao
@@ -371,11 +485,116 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       cabecalho: d?.cabecalho ?? [],
       preenchidas_nas_descartadas: d?.preenchidas ?? {},
       recuperadas_por_troca: d?.troca ?? 0,
+      status_na_planilha: d?.status ?? {},
+      status_com_id_meta: d?.statusId ?? {},
       ...(brutas > 0 && linhas === 0
         ? { ALERTA: 'aba leu linhas e aproveitou ZERO — cabecalho ausente ou coluna com outro nome' }
         : {}),
     };
   });
+
+  // FECHADOS MARCADOS NA PLANILHA.
+  //
+  // A equipe escreve o desfecho na coluna `status da lead`, e o CRM nunca soube
+  // disso. Cada "fechado" ali e uma conversao real — e, diferente dos
+  // fechamentos que vem por webhook, esta TEM o id da Meta, que e o que casa a
+  // conversao com o formulario do anuncio.
+  const fechadosNaPlanilha = sheetRows.filter((r) => r.status_equipe === 'fechado');
+  let fechadosNoCrm = 0;
+  let fechadosAindaAbertos = 0;
+  let fechadosSemLeadNoCrm = 0;
+  if (fechadosNaPlanilha.length) {
+    const ids = fechadosNaPlanilha.map((r) => r.facebook_lead_id).filter(Boolean);
+    const achados = new Map<string, string>();
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data } = await ext
+        .from('leads')
+        .select('facebook_lead_id, lead_status')
+        .in('facebook_lead_id', ids.slice(i, i + 100));
+      for (const l of data || []) achados.set(String((l as any).facebook_lead_id), String((l as any).lead_status || ''));
+    }
+    for (const r of fechadosNaPlanilha) {
+      const st = achados.get(r.facebook_lead_id) ?? porTelefone.get(r.phone_key)?.lead_status;
+      if (st === undefined) fechadosSemLeadNoCrm += 1;
+      else if (st === 'closed') fechadosNoCrm += 1;
+      else fechadosAindaAbertos += 1;
+    }
+  }
+
+  // APLICA O STATUS DA PLANILHA NO CRM.
+  //
+  // Duas travas:
+  //  1. `closed` da planilha sempre vale (e a conversao, o dado mais caro).
+  //  2. Para o resto, so escreve se o CRM ainda estiver em `no_response` — o
+  //     padrao de quem nunca foi classificado. A planilha nao desfaz trabalho
+  //     que ja foi feito no CRM, porque ela pode estar desatualizada.
+  const statusAplicado: Record<string, number> = {};
+  const statusIgnorado: Record<string, number> = {};
+  let statusEscritos = 0;
+  if (opts.aplicarStatus) {
+    const comStatus = sheetRows.filter((r) => MAPA_STATUS[r.status_equipe]);
+    const atual = new Map<string, { id: string; lead_status: string }>();
+    const ids = comStatus.map((r) => r.facebook_lead_id).filter(Boolean);
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data } = await ext
+        .from('leads')
+        .select('id, facebook_lead_id, lead_status')
+        .in('facebook_lead_id', ids.slice(i, i + 100));
+      for (const l of data || []) {
+        atual.set(String((l as any).facebook_lead_id), {
+          id: String((l as any).id),
+          lead_status: String((l as any).lead_status || ''),
+        });
+      }
+    }
+    const porAlvo: Record<string, string[]> = {};
+    for (const r of comStatus) {
+      const alvo = MAPA_STATUS[r.status_equipe];
+      const atualLead = atual.get(r.facebook_lead_id) || porTelefone.get(r.phone_key);
+      if (!atualLead) {
+        statusIgnorado['lead nao existe no CRM'] = (statusIgnorado['lead nao existe no CRM'] || 0) + 1;
+        continue;
+      }
+      if (atualLead.lead_status === alvo) {
+        statusIgnorado['ja estava assim'] = (statusIgnorado['ja estava assim'] || 0) + 1;
+        continue;
+      }
+      if (alvo !== 'closed' && NAO_REBAIXAR.has(atualLead.lead_status)) {
+        statusIgnorado[`CRM ja classificou como ${atualLead.lead_status}`] =
+          (statusIgnorado[`CRM ja classificou como ${atualLead.lead_status}`] || 0) + 1;
+        continue;
+      }
+      if (opts.dryRun) {
+        statusAplicado[`${r.status_equipe} -> ${alvo}`] = (statusAplicado[`${r.status_equipe} -> ${alvo}`] || 0) + 1;
+        continue;
+      }
+      // Agrupa por status alvo em vez de gravar linha a linha. Uma escrita por
+      // lead eram 349 chamadas HTTP em sequencia: a requisicao passava de dez
+      // minutos e morria pela metade. Agrupado, sao 4.
+      (porAlvo[alvo] ||= []).push(atualLead.id);
+      statusAplicado[`${r.status_equipe} -> ${alvo}`] = (statusAplicado[`${r.status_equipe} -> ${alvo}`] || 0) + 1;
+    }
+
+    const hojeISO2 = new Date().toISOString().slice(0, 10);
+    for (const [alvo, idsAlvo] of Object.entries(porAlvo)) {
+      const patch: Record<string, unknown> = { lead_status: alvo };
+      // `became_client_date` = HOJE, e nao a data do formulario: a planilha nao
+      // guarda quando fechou, e a Meta descarta evento com mais de 7 dias. Com
+      // data antiga o Purchase seria recusado e a conversao se perderia.
+      if (alvo === 'closed') patch.became_client_date = hojeISO2;
+      // Lotes de 200: `in` com 300+ uuids estoura o tamanho da querystring.
+      for (let i = 0; i < idsAlvo.length; i += 200) {
+        const fatia = idsAlvo.slice(i, i + 200);
+        const { error: errUp } = await ext.from('leads').update(patch).in('id', fatia);
+        if (errUp) {
+          statusIgnorado[`erro: ${errUp.message.slice(0, 60)}`] =
+            (statusIgnorado[`erro: ${errUp.message.slice(0, 60)}`] || 0) + (fatia.length as number);
+        } else {
+          statusEscritos += fatia.length;
+        }
+      }
+    }
+  }
 
   const comum = {
     success: true,
@@ -396,6 +615,16 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
     // aqui antes de virar coluna vazia no banco.
     colunas_da_planilha: [...cabecalhos].sort(),
     com_facebook_lead_id: toCreate.filter((r) => r.facebook_lead_id).length,
+    status_aplicado: statusAplicado,
+    status_ignorado: statusIgnorado,
+    status_escritos: statusEscritos,
+    fechados_marcados_na_planilha: {
+      total: fechadosNaPlanilha.length,
+      com_id_da_meta: fechadosNaPlanilha.filter((r) => r.facebook_lead_id).length,
+      ja_fechados_no_crm: fechadosNoCrm,
+      abertos_no_crm: fechadosAindaAbertos,
+      sem_lead_no_crm: fechadosSemLeadNoCrm,
+    },
     // Quantos telefones o dedup realmente conhecia. Se isto vier redondo em
     // 1000 num board maior que isso, a paginacao quebrou de novo.
     dedup_leads_lidos: lidosDedup,
@@ -459,6 +688,11 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
             .filter(Boolean)
             .join('\n'),
           created_at: r.created_at || new Date().toISOString(),
+          // Ja nasce fechado quando a planilha diz que fechou — senao o lead
+          // entra aberto e a conversao so sairia na proxima sincronizacao.
+          ...(r.status_equipe === 'fechado'
+            ? { lead_status: 'closed', became_client_date: new Date().toISOString().slice(0, 10) }
+            : {}),
         })
         .select('id')
         .single();
@@ -504,10 +738,17 @@ export const handler: RequestHandler = async (req, res) => {
       spreadsheet_id?: string;
       since_days?: number;
       dry_run?: boolean;
+      aplicar_status?: boolean;
+      somente_status?: boolean;
+      criar_fechados_ausentes?: boolean;
     };
 
     const sinceDays = Math.max(1, Math.min(365, Number(since_days) || 7));
     const dryRun = !!dry_run;
+    // Fora do cron de proposito: o cron so cria lead, nunca reescreve status.
+    const aplicarStatus = !!(req.body as any)?.aplicar_status;
+    const somenteStatus = !!(req.body as any)?.somente_status;
+    const criarFechadosAusentes = !!(req.body as any)?.criar_fechados_ausentes;
     const COLUNAS = 'id, name, stages, sheet_source_url';
 
     // Um board: o formato da resposta e o de sempre, pra nao quebrar quem ja chama.
@@ -519,6 +760,9 @@ export const handler: RequestHandler = async (req, res) => {
         spreadsheetIdOverride: spreadsheet_id,
         sinceDays,
         dryRun,
+        aplicarStatus,
+        somenteStatus,
+        criarFechadosAusentes,
       });
       return ok(r);
     }
@@ -536,7 +780,7 @@ export const handler: RequestHandler = async (req, res) => {
 
     const resultados: Record<string, unknown>[] = [];
     for (const b of boards) {
-      resultados.push(await sincronizaBoard(b, { sinceDays, dryRun }));
+      resultados.push(await sincronizaBoard(b, { sinceDays, dryRun, aplicarStatus, somenteStatus, criarFechadosAusentes }));
       // A API do Sheets tem cota por minuto e ja devolveu 429 numa leitura
       // dupla: espacar os boards custa segundos e evita perder a varredura.
       if (boards.indexOf(b) < boards.length - 1) await new Promise((r) => setTimeout(r, 5000));

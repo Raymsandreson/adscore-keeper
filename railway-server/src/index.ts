@@ -306,6 +306,8 @@ app.get('/health', (_req, res) => {
     // Reconciliador da CAPI: mesma razao do bloco acima — rodada correta com
     // fila em dia nao cria nada e nao deixa rastro no banco.
     capi_reconcile: capiReconcileEstado,
+    // Status que a equipe escreve na planilha chegando ao CRM.
+    sheet_status_sync: sheetStatusEstado,
     // Webhook da UazAPI: entra sem credencial de proposito (servico externo).
     // Aqui se mede se da pra exigir o instance_token como prova de origem —
     // `sem_token_por_evento` e a lista que precisa esvaziar antes disso.
@@ -1030,6 +1032,73 @@ if (SHEET_SYNC_LIGADO) {
 } else {
   console.log('[cron:sheet-lead-sync] DESLIGADO (defina SHEET_LEAD_SYNC=on para ligar)');
 }
+
+// ============================================================
+// CRON: status da planilha -> CRM
+//
+// A equipe escreve o desfecho na coluna `status da lead` da planilha, e ate
+// 09/09/2026 o CRM nunca soube: 28 fechamentos marcados la, nenhum no CRM, e
+// portanto nenhuma conversao para a Meta — justamente os unicos com o id do
+// lead, que e o que casa a venda com o formulario do anuncio.
+//
+// SEPARADO do cron de 10 min, e nao embutido nele, por duas razoes:
+//
+//  1. JANELA. Criar lead so interessa no que e recente; status nao — a equipe
+//     marca "fechado" em lead de semanas atras. Aqui a janela e de 90 dias.
+//  2. COTA. O Sheets limita leitura por minuto e ja devolveu 429 com tres
+//     consumidores disputando. Ler a planilha inteira de 10 em 10 minutos
+//     esgotaria a cota do resto; de hora em hora, nao.
+//
+// `somente_status`: este cron NUNCA cria lead. Quem cria e o de 10 minutos.
+// ============================================================
+const SHEET_STATUS_INTERVAL_MS = 60 * 60 * 1000;
+const SHEET_STATUS_DIAS = 90;
+const sheetStatusEstado = {
+  execucoes: 0,
+  ultima_em: null as string | null,
+  ultimo_resultado: null as string | null,
+  status_escritos_acumulado: 0,
+};
+
+async function runSheetStatusSync() {
+  sheetStatusEstado.execucoes += 1;
+  sheetStatusEstado.ultima_em = new Date().toISOString();
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/bpc-sheet-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: JSON.stringify({
+        since_days: SHEET_STATUS_DIAS,
+        dry_run: false,
+        aplicar_status: true,
+        somente_status: true,
+      }),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    if (json?.error) {
+      console.error(`[cron:sheet-status] ${json.error}`);
+      sheetStatusEstado.ultimo_resultado = `erro: ${String(json.error).slice(0, 120)}`;
+      return;
+    }
+    const escritos = (json?.resultados || []).reduce(
+      (t: number, r: any) => t + Number(r?.status_escritos || 0),
+      0,
+    );
+    sheetStatusEstado.status_escritos_acumulado += escritos;
+    sheetStatusEstado.ultimo_resultado = `status_escritos=${escritos}`;
+    if (escritos > 0) console.log(`[cron:sheet-status] ${sheetStatusEstado.ultimo_resultado}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[cron:sheet-status] failed:', msg);
+    sheetStatusEstado.ultimo_resultado = `falha: ${msg.slice(0, 120)}`;
+  }
+}
+
+// 480s: depois do sheet-lead-sync (360s) e do capi-reconcile (420s), pra nao
+// disputar a cota do Sheets com a varredura que cria lead.
+setTimeout(runSheetStatusSync, 480_000);
+setInterval(runSheetStatusSync, SHEET_STATUS_INTERVAL_MS);
+console.log(`[cron:sheet-status] ligado — janela de ${SHEET_STATUS_DIAS} dias, a cada 60 min`);
 
 // ============================================================
 // CRON: reconciliador da Meta CAPI

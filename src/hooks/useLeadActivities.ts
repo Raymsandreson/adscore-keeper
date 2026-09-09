@@ -354,6 +354,12 @@ export function useLeadActivities() {
           // isto, atividade de pessoa e atividade de robô ficam indistinguíveis
           // no banco e a tela não teria como mostrar o símbolo do robô.
           action_source: ACTIVITY_SOURCE_MANUAL,
+          // QUAL evento pediu esta atividade, quando ela nasceu de um. O
+          // `action_source` acima continua 'manual' de propósito — quem criou
+          // foi gente, no formulário. Sem esta linha na whitelist, a marca
+          // seria descartada em silêncio, como já aconteceu com Solicitação,
+          // Resposta do juízo e a previsão de tempo.
+          action_source_detail: activity.action_source_detail || null,
           client_name_override: activity.client_name_override || null,
           workflow_id: activity.workflow_id || null,
           ...(extAssignedToIds ? {

@@ -280,10 +280,19 @@ COMO VOCÊ TRABALHA
 REGRA DURA — NUNCA ESCONDA DADO
 A tabela mostra exatamente o que está no banco. É PROIBIDO filtrar, zerar, capar ou omitir linha só porque o valor parece errado ou absurdo. Valor improvável CONTINUA no resultado e você APONTA no texto: qual registro, por que parece errado e qual é o conserto na origem (que campo/peça precisa ser preenchido e por quem). Filtrar troca um número errado por outro número errado e ainda esconde o registro que precisa de conserto.
 
+QUANDO A PERGUNTA VEM COM ANEXO (print, foto, PDF) OU FOI DITADA
+- O arquivo anexado é FONTE do que a pessoa está perguntando: leia o que está nele (número, nome, data, valor) e trate como o material que ela tem em mãos.
+- Anexo NÃO substitui o banco. Se a pergunta encosta em dado nosso, consulte também e compare: onde bate, onde não bate, e qual dos dois lados está desatualizado. Diga qual número veio do arquivo e qual veio do banco — nunca misture os dois como se fossem a mesma fonte.
+- Divergiu? A conclusão é o conserto na origem (qual campo/registro precisa ser atualizado e por quem), não "considere o valor do print".
+- Arquivo ilegível, cortado ou que não mostra o que a pergunta pede: diga isso em uma linha e peça o que falta, sem adivinhar o que estaria escrito.
+- Pergunta ditada por voz chega transcrita e pode ter palavra trocada. Siga a leitura mais provável, resolva e diga a suposição — não devolva a pergunta por causa de uma palavra.
+
 FORMATO DA RESPOSTA
 - Texto curto ou bullets. Sem título de relatório, sem tabela em markdown — a tabela do resultado já aparece sozinha na tela, logo abaixo da sua resposta.
 - Não transcreva a tabela em texto. Cite no máximo 3 exemplos concretos quando ajudar (nome do cliente, número do processo).
 - CPF, RG e conta bancária chegam até você já mascarados — mantenha assim, nunca tente reconstruir.
+- NUNCA escreva SQL na resposta. Nada de SELECT, JOIN, WHERE, nome de tabela ou de coluna crua, e nada de "rodei esta consulta: ...". Quem lê é a diretoria, não quer ver código, e a consulta já fica registrada sozinha no botão "Ver a consulta usada" embaixo da tabela. Fale do dado em português: "olhei os 229 BPC concluídos", não "rodei um COUNT(*) em inss_admin_processes".
+- Se quiser um recorte que você ainda não mediu, não escreva a consulta dele: ou rode (se ainda tiver rodada disponível), ou diga em uma linha, em português, qual pergunta valeria a próxima consulta.
 
 ${SCHEMA_CATALOG}
 
@@ -452,6 +461,170 @@ function titleFromQuestion(q: string): string {
   return t.length > 60 ? `${t.slice(0, 57)}…` : t;
 }
 
+// ============================================================
+// Anexos da pergunta — print, foto e PDF que vêm COM o pedido
+// ============================================================
+/**
+ * A pergunta pode chegar com material: print de planilha, foto de um extrato,
+ * PDF de uma peça. A IA LÊ o anexo e cruza com o banco ("esse extrato bate com
+ * o que está lançado?"). O anexo é FONTE, não substitui a consulta: a regra dura
+ * de não esconder dado continua valendo igual.
+ *
+ * O front sobe o arquivo no bucket e manda só a URL; quem baixa é aqui, pra
+ * manter o payload do request pequeno (mesmo desenho de transcribe-team-audio e
+ * de extract-activity-from-document).
+ */
+const MAX_ANEXOS = 4;
+const MAX_ANEXO_BYTES = 10 * 1024 * 1024;
+const MAX_ANEXOS_BYTES = 20 * 1024 * 1024;
+/** Só o que os DOIS providers leem: Opus (image/document) e Gemini (inlineData). */
+const MIMES_ANEXO = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf']);
+const EXT_MIME_ANEXO: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+  webp: 'image/webp', gif: 'image/gif', pdf: 'application/pdf',
+};
+
+interface AnexoDaPergunta {
+  url: string;
+  name: string;
+  mime: string;
+  size: number;
+  /** 'audio' é o ditado: o texto transcrito já é a pergunta, o áudio fica como prova. */
+  kind: 'image' | 'pdf' | 'audio';
+}
+
+/**
+ * De onde é aceitável baixar. A URL vem do cliente, e baixar URL arbitrária
+ * dentro do Railway é porta aberta pra rede interna (SSRF) — então só passa o
+ * Storage dos nossos dois projetos Supabase.
+ */
+function hostDeStorageConfiavel(url: string): boolean {
+  const permitidos = [
+    process.env.CLOUD_SUPABASE_URL || '',
+    CLOUD_FUNCTIONS_URL,
+    process.env.EXTERNAL_SUPABASE_URL || '',
+    process.env.REPORT_ANEXO_ORIGENS || '',
+  ]
+    .flatMap((v) => v.split(','))
+    .map((v) => v.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+  let host = '';
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') return false;
+    host = u.host.toLowerCase();
+  } catch {
+    return false;
+  }
+  return permitidos.some((base) => {
+    try { return new URL(base).host.toLowerCase() === host; } catch { return false; }
+  });
+}
+
+function mimeDoAnexo(url: string, informado: string): string {
+  const ext = (url.toLowerCase().split('?')[0].split('.').pop() || '');
+  // A extensão manda: o Storage devolve octet-stream pra print colado.
+  return EXT_MIME_ANEXO[ext] || (informado || '').toLowerCase().split(';')[0];
+}
+
+/**
+ * Baixa os anexos e devolve as partes multimodais + a ficha do que foi anexado.
+ * Anexo problemático NÃO derruba a pergunta: entra em `recusados` e a IA é
+ * avisada em texto de que aquele arquivo não pôde ser lido — melhor responder o
+ * que dá do que perder a pergunta inteira por causa de um arquivo.
+ */
+async function carregarAnexos(brutos: unknown): Promise<{
+  anexos: AnexoDaPergunta[];
+  partes: any[];
+  recusados: string[];
+}> {
+  const lista = Array.isArray(brutos) ? brutos.slice(0, MAX_ANEXOS) : [];
+  const anexos: AnexoDaPergunta[] = [];
+  const partes: any[] = [];
+  const recusados: string[] = [];
+  let total = 0;
+
+  for (const bruto of lista) {
+    const b: any = bruto || {};
+    const url = (b.url || '').toString().trim();
+    const name = (b.name || 'arquivo').toString().slice(0, 200);
+    if (!url) continue;
+
+    if (!hostDeStorageConfiavel(url)) {
+      recusados.push(`${name} (origem não permitida)`);
+      continue;
+    }
+
+    // Ditado: o áudio só fica registrado. O texto dele já virou a pergunta, e
+    // reenviar o áudio ao modelo custaria de novo pelo mesmo conteúdo.
+    if (b.kind === 'audio' || (b.mime || '').toString().startsWith('audio/')) {
+      anexos.push({
+        url, name,
+        mime: (b.mime || 'audio/webm').toString(),
+        size: Number(b.size) || 0,
+        kind: 'audio',
+      });
+      continue;
+    }
+
+    const mime = mimeDoAnexo(url, (b.mime || '').toString());
+    if (!MIMES_ANEXO.has(mime)) {
+      recusados.push(`${name} (tipo ${mime || 'desconhecido'} não é lido aqui — mande PNG, JPG, WEBP ou PDF)`);
+      continue;
+    }
+
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        recusados.push(`${name} (não baixou, HTTP ${resp.status})`);
+        continue;
+      }
+      const buffer = await resp.arrayBuffer();
+      if (buffer.byteLength > MAX_ANEXO_BYTES) {
+        recusados.push(`${name} (acima de ${Math.round(MAX_ANEXO_BYTES / 1024 / 1024)} MB)`);
+        continue;
+      }
+      total += buffer.byteLength;
+      if (total > MAX_ANEXOS_BYTES) {
+        recusados.push(`${name} (os anexos somados passaram de ${Math.round(MAX_ANEXOS_BYTES / 1024 / 1024)} MB)`);
+        continue;
+      }
+      partes.push({
+        type: 'image_url',
+        image_url: { url: `data:${mime};base64,${Buffer.from(buffer).toString('base64')}` },
+      });
+      anexos.push({
+        url, name, mime,
+        size: buffer.byteLength,
+        kind: mime === 'application/pdf' ? 'pdf' : 'image',
+      });
+    } catch (e) {
+      recusados.push(`${name} (${e instanceof Error ? e.message : 'falha ao baixar'})`);
+    }
+  }
+
+  return { anexos, partes, recusados };
+}
+
+/** Como o anexo é apresentado ao modelo, junto com a pergunta. */
+function textoDosAnexos(anexos: AnexoDaPergunta[], recusados: string[]): string {
+  const lidos = anexos.filter((a) => a.kind !== 'audio');
+  const linhas: string[] = [];
+  if (lidos.length) {
+    linhas.push(
+      `[MATERIAL ANEXADO À PERGUNTA — ${lidos.length} arquivo(s): ${lidos.map((a) => `${a.name} (${a.kind === 'pdf' ? 'PDF' : 'imagem'})`).join(', ')}]`,
+      'Leia o que está no arquivo e use como FONTE do que a pessoa está perguntando. Ele não substitui a consulta: se a pergunta envolve o que o banco tem, consulte o banco e compare com o arquivo, dizendo onde bate e onde não bate.',
+    );
+  }
+  if (anexos.some((a) => a.kind === 'audio')) {
+    linhas.push('[A pergunta foi DITADA por voz — o texto acima é a transcrição. Se alguma palavra parecer transcrita errada, siga a leitura mais provável e diga qual suposição fez.]');
+  }
+  if (recusados.length) {
+    linhas.push(`[Anexo que NÃO deu pra ler: ${recusados.join('; ')}. Responda com o que sobrou e avise em uma linha que esse arquivo não foi lido.]`);
+  }
+  return linhas.join('\n');
+}
+
 /** Confere que a conversa existe E é do próprio usuário (conversa é privada). */
 async function loadOwnConversation(conversationId: string, userId: string): Promise<boolean> {
   const { data } = await supabase
@@ -469,18 +642,37 @@ async function loadOwnConversation(conversationId: string, userId: string): Prom
  * quantos fecharam?") sem refazer o raciocínio do zero.
  */
 async function loadHistory(conversationId: string): Promise<Array<{ role: string; content: string }>> {
-  const { data } = await supabase
+  const buscar = (colunas: string) => supabase
     .from('report_messages')
-    .select('role, content, queries')
+    .select(colunas)
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: true })
     .limit(40);
+  // A coluna attachments é nova (migration 20260909130000). O código sobe no
+  // merge e a migration é passo manual, então a conversa não pode deixar de
+  // abrir se o banco ainda estiver sem ela.
+  let { data, error } = await buscar('role, content, queries, attachments');
+  if (error) ({ data } = await buscar('role, content, queries'));
   const msgs = (data || []).slice(-12);
   return msgs.map((m: any) => {
-    if (m.role !== 'assistant') return { role: 'user', content: m.content || '' };
+    if (m.role !== 'assistant') {
+      // O arquivo antigo NÃO é reenviado ao modelo (custaria de novo a cada
+      // pergunta da conversa); fica a menção de que existiu, que é o que
+      // sustenta o follow-up ("e no print que te mandei?" → peça de novo).
+      const antigos: any[] = Array.isArray(m.attachments) ? m.attachments : [];
+      const lidos = antigos.filter((a) => a?.kind && a.kind !== 'audio');
+      const nota = lidos.length
+        ? `\n\n[nesta pergunta a pessoa anexou ${lidos.map((a) => a.name || 'arquivo').join(', ')} — o conteúdo do arquivo não está mais nesta janela; se precisar dele de novo, peça pra reanexar]`
+        : '';
+      return { role: 'user', content: `${m.content || ''}${nota}` };
+    }
     const queries: any[] = Array.isArray(m.queries) ? m.queries : [];
+    // A SQL fica no histórico porque é ela que sustenta o follow-up ("e desses,
+    // quantos fecharam?") sem refazer o raciocínio. Mas ela vem ROTULADA como
+    // bastidor: sem o rótulo, o modelo lê a própria fala anterior como exemplo
+    // de formato e passa a escrever SELECT na resposta que a diretoria vê.
     const sqlNote = queries.length
-      ? `\n\nConsultas que rodei nessa resposta:\n${queries.map((q) => `-- ${q.purpose} (${q.count} linhas)\n${q.sql}`).join('\n')}`
+      ? `\n\n[bastidor — isto não aparece na tela e NUNCA se repete em resposta; é só a sua memória do filtro que você usou]\n${queries.map((q) => `-- ${q.purpose} (${q.count} linhas)\n${q.sql}`).join('\n')}`
       : '';
     return { role: 'assistant', content: `${m.content || ''}${sqlNote}` };
   });
@@ -491,8 +683,14 @@ async function loadHistory(conversationId: string): Promise<Array<{ role: string
 // ============================================================
 export const handler = async (req: Request, res: Response) => {
   const started = Date.now();
-  const question: string = (req.body?.question || '').toString().trim();
+  const perguntaDigitada: string = (req.body?.question || '').toString().trim();
   const conversationIdIn: string = (req.body?.conversation_id || '').toString().trim();
+  const anexosBrutos = req.body?.attachments;
+  const temAnexo = Array.isArray(anexosBrutos) && anexosBrutos.length > 0;
+  // Anexo sozinho já é um pedido ("olha isso aqui"): a pergunta em branco não
+  // pode barrar o envio, senão o botão de anexo vira enfeite.
+  const question: string = perguntaDigitada
+    || (temAnexo ? 'Olhe o material que eu anexei e me diga o que ele mostra e o que ele bate (ou não bate) com o que está no banco.' : '');
 
   const user = await verifyCloudJwt(req.headers['authorization'] as string | undefined);
   if (!user) {
@@ -508,7 +706,7 @@ export const handler = async (req: Request, res: Response) => {
   }
 
   if (!question) {
-    return res.status(400).json({ success: false, error: 'empty_question', message: 'Escreva o que você quer saber.' });
+    return res.status(400).json({ success: false, error: 'empty_question', message: 'Escreva (ou dite) o que você quer saber, ou anexe o material.' });
   }
 
   const limitMsg = await checkLimits(user.id, user.email);
@@ -538,22 +736,48 @@ export const handler = async (req: Request, res: Response) => {
 
   const priorMessages = await loadHistory(conversationId);
 
+  // Baixa o material anexado antes de gravar: o que não deu pra ler não entra
+  // na conversa como se tivesse entrado.
+  const { anexos, partes: partesDoAnexo, recusados } = await carregarAnexos(anexosBrutos);
+
   // Grava a pergunta ANTES de chamar a IA — se der erro no meio, a pergunta do
   // usuário não some da conversa.
-  const { data: userMsg } = await supabase
+  //
+  // O attachments vai no insert, mas com queda pro insert sem ele: a coluna é
+  // nova (migration 20260909130000) e o código sobe no merge, então um deploy
+  // antes da migration não pode fazer a pergunta se perder.
+  const gravarPergunta = async (comAnexo: boolean) => supabase
     .from('report_messages')
-    .insert({ conversation_id: conversationId, user_id: user.id, role: 'user', content: question })
+    .insert({
+      conversation_id: conversationId, user_id: user.id, role: 'user', content: question,
+      ...(comAnexo ? { attachments: anexos } : {}),
+    })
     .select('id, created_at')
     .single();
+  let { data: userMsg, error: userMsgErr } = await gravarPergunta(anexos.length > 0);
+  if (userMsgErr && anexos.length > 0) {
+    console.warn('[report-query] insert com attachments falhou, gravando sem:', userMsgErr.message);
+    ({ data: userMsg } = await gravarPergunta(false));
+  }
 
   const runs: QueryRun[] = [];
   let engineUsed = PRIMARY_MODEL;
 
   try {
+    const notaDoAnexo = textoDosAnexos(anexos, recusados);
+    // Com anexo a mensagem vira multimodal (texto + partes); sem anexo continua
+    // string, exatamente como era — os dois providers aceitam as duas formas.
+    const conteudoDaPergunta = partesDoAnexo.length || notaDoAnexo
+      ? [
+          { type: 'text', text: notaDoAnexo ? `${question}\n\n${notaDoAnexo}` : question },
+          ...partesDoAnexo,
+        ]
+      : question;
+
     const messages: any[] = [
       { role: 'system', content: buildSystemPrompt() },
       ...priorMessages,
-      { role: 'user', content: question },
+      { role: 'user', content: conteudoDaPergunta },
     ];
 
     let answer = '';
@@ -594,10 +818,27 @@ export const handler = async (req: Request, res: Response) => {
       // O conversor do gemini.ts só entende papéis user/assistant (não existe
       // papel "tool"), então o resultado volta como texto de usuário — funciona
       // igual nos dois providers.
-      messages.push({ role: 'assistant', content: `Rodei esta consulta (${purpose}):\n${sql}` });
+      //
+      // O eco NÃO repete a SQL. O modelo lê o próprio histórico como exemplo de
+      // como se fala aqui: com a SQL nesta linha ele copiava o formato e
+      // escrevia "Rodei esta consulta (...): SELECT ..." na resposta final —
+      // SQL cru na tela da diretoria. Ele não precisa reler a própria consulta,
+      // só saber que ela rodou e o que voltou. A SQL fica gravada no QueryRun
+      // (bloco "Ver a consulta usada"), que é onde ela pertence.
+      messages.push({
+        role: 'assistant',
+        content: `Rodei a consulta "${purpose}" — voltaram ${run.count} linha${run.count === 1 ? '' : 's'}. A tabela já apareceu na tela para quem perguntou.`,
+      });
+      // Na última rodada com ferramenta o modelo precisa SABER que acabou. Sem
+      // isso ele tenta a próxima consulta na rodada seguinte, não encontra a
+      // ferramenta, e escreve a SQL em texto como se estivesse rodando.
+      const acabaramAsConsultas = step >= MAX_SQL_STEPS - 1;
+      const fecho = acabaramAsConsultas
+        ? 'Esta foi a última consulta disponível nesta pergunta — não há mais rodada. Responda agora em português com o que você já tem em mãos. Se ficou faltando um recorte, diga em uma linha qual pergunta ele responderia, sem escrever a SQL dele.'
+        : 'Agora responda ao pedido original em português. Rode outra consulta só se ainda faltar dado.';
       messages.push({
         role: 'user',
-        content: `[resultado da consulta]\n${previewForModel(run)}\n\nAgora responda ao pedido original em português. Rode outra consulta só se ainda faltar dado.`,
+        content: `[resultado da consulta]\n${previewForModel(run)}\n\n${fecho}`,
       });
     }
 
@@ -640,7 +881,10 @@ export const handler = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       conversation_id: conversationId,
-      user_message: { id: userMsg?.id, role: 'user', content: question, created_at: userMsg?.created_at },
+      user_message: {
+        id: userMsg?.id, role: 'user', content: question,
+        attachments: anexos, created_at: userMsg?.created_at,
+      },
       message: {
         id: aiMsg?.id, role: 'assistant', content: answer,
         queries: runs, engine: engineUsed, created_at: aiMsg?.created_at,

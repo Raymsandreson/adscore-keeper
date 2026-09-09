@@ -9,12 +9,22 @@
  * funções report-query e report-conversations) — F5 não apaga nada e cada
  * pessoa pode ter várias conversas em paralelo. Conversa é privada de quem criou.
  *
+ * A pergunta pode vir com MATERIAL (print, foto, PDF) e pode ser DITADA por voz:
+ * o arquivo sobe no bucket do chat interno, o áudio vira texto na
+ * transcribe-team-audio (a mesma do chat da equipe) e os dois ficam gravados na
+ * mensagem — reabrir a conversa mostra a pergunta com o arquivo que a sustentou.
+ *
  * Nada aqui redireciona: a lista de conversas é uma coluna da própria tela (e
- * um Sheet lateral no celular), nunca uma rota nova.
+ * um Sheet lateral no celular), nunca uma rota nova. Anexo abre no
+ * MediaLightbox, por cima da conversa.
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/functionRouter';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -35,6 +45,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import {
   FileBarChart, Send, Loader2, Code2, AlertTriangle, Lock, Sparkles, Database,
   Plus, MessagesSquare, MoreVertical, Pencil, Trash2, Check, X,
+  Paperclip, Mic, Square, FileText, Image as ImageIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -50,15 +61,50 @@ interface QueryRun {
   error?: string | null;
 }
 
+/**
+ * Material que veio COM a pergunta: print, foto, PDF — e o áudio do ditado.
+ * Fica gravado na mensagem (report_messages.attachments), então reabrir a
+ * conversa depois mostra a pergunta junto com o arquivo que a sustentou.
+ */
+interface Anexo {
+  url: string;
+  name: string;
+  mime: string;
+  size: number;
+  kind: 'image' | 'pdf' | 'audio';
+}
+
 interface Msg {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  attachments?: Anexo[];
   queries?: QueryRun[];
   engine?: string;
   status?: string;
   loading?: boolean;
   forbidden?: boolean;
+}
+
+// ---- Anexo: limites e tipos aceitos --------------------------------------
+/** O mesmo bucket do chat interno da equipe — não vale abrir um segundo. */
+const BUCKET_ANEXO = 'team-chat-media';
+const MAX_ANEXOS = 4;
+const MAX_ANEXO_MB = 10;
+/** Só o que os dois modelos leem (Opus e Gemini). HEIC de iPhone fica fora. */
+const MIMES_ACEITOS = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf'];
+const ACCEPT_ANEXO = 'image/png,image/jpeg,image/webp,image/gif,application/pdf';
+
+/** Nome de arquivo virando chave de storage: acento e espaço não passam. */
+function nomeSeguro(nome: string): string {
+  return nome.normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80) || 'arquivo';
+}
+
+function tamanhoLegivel(bytes: number): string {
+  if (!bytes) return '';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 interface ConversationSummary {
@@ -178,12 +224,67 @@ function QueryBlock({ query }: { query: QueryRun }) {
   );
 }
 
-function MessageBubble({ msg }: { msg: Msg }) {
+/**
+ * O material anexado à pergunta, dentro da própria bolha.
+ *
+ * Clique em imagem ou PDF abre no MediaLightbox, por cima da conversa — nunca
+ * em aba nova, e o fechar devolve a pessoa na mesma altura do histórico.
+ * Áudio do ditado toca ali mesmo: o texto transcrito já é a pergunta, o áudio
+ * fica como prova do que foi falado.
+ */
+function AnexosDaMensagem({ anexos, onAbrirMidia }: { anexos: Anexo[]; onAbrirMidia: (url: string) => void }) {
+  if (!anexos.length) return null;
+  return (
+    <div className="space-y-2">
+      {anexos.map((a, i) => {
+        if (a.kind === 'audio') {
+          return (
+            <div key={i} className="flex items-center gap-2">
+              <Mic className="h-3.5 w-3.5 shrink-0 opacity-80" />
+              <audio controls preload="none" className="h-8 max-w-[240px]">
+                <source src={a.url} type={a.mime || 'audio/webm'} />
+              </audio>
+            </div>
+          );
+        }
+        if (a.kind === 'image') {
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onAbrirMidia(a.url)}
+              className="block overflow-hidden rounded-md border border-primary-foreground/20"
+              title={a.name}
+            >
+              <img src={a.url} alt={a.name} loading="lazy" className="max-h-40 max-w-full object-cover" />
+            </button>
+          );
+        }
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onAbrirMidia(a.url)}
+            className="flex items-center gap-2 rounded-md border border-primary-foreground/20 px-2 py-1.5 text-xs hover:opacity-90 max-w-full"
+            title={a.name}
+          >
+            <FileText className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{a.name}</span>
+            {a.size > 0 && <span className="opacity-70 shrink-0">{tamanhoLegivel(a.size)}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function MessageBubble({ msg, onAbrirMidia }: { msg: Msg; onAbrirMidia: (url: string) => void }) {
   if (msg.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="bg-primary text-primary-foreground rounded-lg px-3 py-2 max-w-[85%] whitespace-pre-wrap">
-          {msg.content}
+        <div className="bg-primary text-primary-foreground rounded-lg px-3 py-2 max-w-[85%] space-y-2">
+          <AnexosDaMensagem anexos={msg.attachments || []} onAbrirMidia={onAbrirMidia} />
+          {msg.content && <div className="whitespace-pre-wrap">{msg.content}</div>}
         </div>
       </div>
     );
@@ -224,8 +325,19 @@ function MessageBubble({ msg }: { msg: Msg }) {
 }
 
 export default function RelatoriosPage() {
+  const { user } = useAuthContext();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [anexos, setAnexos] = useState<Anexo[]>([]);
+  const [subindo, setSubindo] = useState(false);
+  const [gravando, setGravando] = useState(false);
+  const [segundos, setSegundos] = useState(0);
+  const [transcrevendo, setTranscrevendo] = useState(false);
+  const [midiaAberta, setMidiaAberta] = useState<string | null>(null);
+  const arquivoRef = useRef<HTMLInputElement>(null);
+  const gravadorRef = useRef<MediaRecorder | null>(null);
+  const pedacosRef = useRef<Blob[]>([]);
+  const cronometroRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -258,6 +370,7 @@ export default function RelatoriosPage() {
     if (data?.success) {
       setMessages((data.messages || []).map((m: any) => ({
         id: m.id, role: m.role, content: m.content,
+        attachments: Array.isArray(m.attachments) ? m.attachments : [],
         queries: Array.isArray(m.queries) ? m.queries : [],
         engine: m.engine, status: m.status,
       })));
@@ -268,27 +381,43 @@ export default function RelatoriosPage() {
   const newConversation = useCallback(() => {
     setActiveId(null);
     setMessages([]);
+    setAnexos([]);
     setSheetOpen(false);
   }, []);
 
   const ask = useCallback(async (question: string) => {
     const q = question.trim();
-    if (!q || busy) return;
+    // Anexo sozinho já é pedido: o servidor completa a pergunta ("olhe isso").
+    const anexosDoTurno = anexos;
+    if ((!q && !anexosDoTurno.length) || busy || subindo) return;
     setBusy(true);
     setInput('');
+    setAnexos([]);
     const tempId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
       ? crypto.randomUUID() : `t-${Date.now()}`;
 
     setMessages((prev) => [
       ...prev,
-      { id: `u-${tempId}`, role: 'user', content: q },
+      { id: `u-${tempId}`, role: 'user', content: q, attachments: anexosDoTurno },
       { id: tempId, role: 'assistant', content: '', loading: true },
     ]);
 
     try {
       const { data, error } = await cloudFunctions.invoke('report-query', {
-        body: { question: q, conversation_id: activeIdRef.current || undefined },
+        body: {
+          question: q,
+          conversation_id: activeIdRef.current || undefined,
+          ...(anexosDoTurno.length ? { attachments: anexosDoTurno } : {}),
+        },
       });
+
+      // A pergunta gravada volta do servidor (com o texto que ele completou
+      // quando só havia anexo) — a bolha passa a mostrar o que ficou no banco.
+      if (data?.user_message?.content) {
+        setMessages((prev) => prev.map((m) => (m.id === `u-${tempId}`
+          ? { ...m, content: data.user_message.content, attachments: data.user_message.attachments || anexosDoTurno }
+          : m)));
+      }
 
       if (data?.conversation_id && !activeIdRef.current) {
         setActiveId(data.conversation_id);
@@ -326,7 +455,141 @@ export default function RelatoriosPage() {
     } finally {
       setBusy(false);
     }
-  }, [busy, loadConversations]);
+  }, [anexos, busy, subindo, loadConversations]);
+
+  // ============================================================
+  // Anexo e voz — a pergunta pode vir com material, ou ser ditada
+  // ============================================================
+  /**
+   * Sobe um arquivo e devolve a URL pública.
+   *
+   * Bucket `team-chat-media`, o MESMO do chat interno da equipe (é de lá que a
+   * função de transcrição já sabe baixar). Prefixo `relatorios/<usuário>` só
+   * pra dar pra saber depois de onde cada arquivo veio.
+   */
+  const subirArquivo = useCallback(async (
+    corpo: Blob, nome: string, mime: string,
+  ): Promise<string | null> => {
+    const caminho = `relatorios/${user?.id || 'anon'}/${Date.now()}_${nomeSeguro(nome)}`;
+    const { error } = await supabase.storage.from(BUCKET_ANEXO)
+      .upload(caminho, corpo, { contentType: mime || 'application/octet-stream' });
+    if (error) {
+      toast.error(`O arquivo não subiu: ${error.message}`);
+      return null;
+    }
+    return supabase.storage.from(BUCKET_ANEXO).getPublicUrl(caminho).data.publicUrl;
+  }, [user?.id]);
+
+  const anexarArquivos = useCallback(async (lista: FileList | null) => {
+    if (!lista?.length) return;
+    const arquivos = Array.from(lista);
+    setSubindo(true);
+    try {
+      for (const arquivo of arquivos) {
+        // O teto de anexos é por pergunta: o estado é lido dentro do setState
+        // pra não estourar quando alguém marca 6 arquivos de uma vez.
+        let cabe = true;
+        setAnexos((prev) => { cabe = prev.length < MAX_ANEXOS; return prev; });
+        if (!cabe) {
+          toast.error(`Máximo de ${MAX_ANEXOS} arquivos por pergunta.`);
+          break;
+        }
+        if (!MIMES_ACEITOS.includes(arquivo.type)) {
+          toast.error(`${arquivo.name}: mande imagem (PNG, JPG, WEBP) ou PDF.`);
+          continue;
+        }
+        if (arquivo.size > MAX_ANEXO_MB * 1024 * 1024) {
+          toast.error(`${arquivo.name} passa de ${MAX_ANEXO_MB} MB.`);
+          continue;
+        }
+        const url = await subirArquivo(arquivo, arquivo.name, arquivo.type);
+        if (!url) continue;
+        setAnexos((prev) => [...prev, {
+          url, name: arquivo.name, mime: arquivo.type, size: arquivo.size,
+          kind: arquivo.type === 'application/pdf' ? 'pdf' : 'image',
+        }]);
+      }
+    } finally {
+      setSubindo(false);
+      if (arquivoRef.current) arquivoRef.current.value = '';
+    }
+  }, [subirArquivo]);
+
+  const removerAnexo = useCallback((url: string) => {
+    setAnexos((prev) => prev.filter((a) => a.url !== url));
+  }, []);
+
+  /**
+   * Ditar o pedido em vez de digitar.
+   *
+   * O caminho é o mesmo que o chat da equipe e o lançamento financeiro já usam:
+   * grava, sobe, e pede o texto à `transcribe-team-audio` (ElevenLabs Scribe com
+   * Gemini de reserva). Um segundo transcritor aqui seria manter duas coisas
+   * fazendo a mesma.
+   *
+   * O texto cai no campo pra pessoa CONFERIR antes de mandar — pergunta
+   * transcrita torto custa uma rodada de consulta ao banco. O áudio vai junto
+   * como anexo, então a conversa guarda o que foi falado de verdade.
+   */
+  const pararDitado = useCallback(() => {
+    if (gravadorRef.current && gravadorRef.current.state !== 'inactive') gravadorRef.current.stop();
+  }, []);
+
+  const ditar = useCallback(async () => {
+    if (gravando) { pararDitado(); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      const gravador = new MediaRecorder(stream, { mimeType: mime });
+      pedacosRef.current = [];
+      gravador.ondataavailable = (e) => { if (e.data.size) pedacosRef.current.push(e.data); };
+      gravador.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setGravando(false);
+        if (cronometroRef.current) clearInterval(cronometroRef.current);
+        setSegundos(0);
+        const blob = new Blob(pedacosRef.current, { type: mime });
+        if (blob.size < 1000) { toast.error('Gravação muito curta.'); return; }
+
+        setTranscrevendo(true);
+        try {
+          const ext = mime.includes('mp4') ? 'm4a' : 'webm';
+          const url = await subirArquivo(blob, `ditado.${ext}`, mime.split(';')[0]);
+          if (!url) return;
+          const { data } = await cloudFunctions.invoke<{ success?: boolean; transcription?: string; error?: string }>(
+            'transcribe-team-audio',
+            { body: { audio_url: url, audio_mime: mime.split(';')[0] } },
+          );
+          const texto = data?.transcription?.trim();
+          if (!texto) {
+            toast.error(data?.error || 'Não entendi o áudio. Tente falar mais perto do microfone.');
+            return;
+          }
+          setInput((prev) => (prev.trim() ? `${prev.trim()} ${texto}` : texto));
+          setAnexos((prev) => (prev.length < MAX_ANEXOS
+            ? [...prev, { url, name: `ditado.${ext}`, mime: mime.split(';')[0], size: blob.size, kind: 'audio' as const }]
+            : prev));
+          toast.success('Transcrito — confira e mande.');
+        } finally {
+          setTranscrevendo(false);
+        }
+      };
+      gravadorRef.current = gravador;
+      gravador.start();
+      setGravando(true);
+      setSegundos(0);
+      cronometroRef.current = setInterval(() => setSegundos((s) => s + 1), 1000);
+    } catch {
+      toast.error('Não consegui acessar o microfone.');
+    }
+  }, [gravando, pararDitado, subirArquivo]);
+
+  // Sair da tela gravando não deixa o microfone ligado.
+  useEffect(() => () => {
+    if (cronometroRef.current) clearInterval(cronometroRef.current);
+    if (gravadorRef.current && gravadorRef.current.state !== 'inactive') gravadorRef.current.stop();
+  }, []);
 
   const renameConversation = useCallback(async (id: string, title: string) => {
     const t = title.trim();
@@ -489,30 +752,93 @@ export default function RelatoriosPage() {
             </div>
           )}
 
-          {messages.map((m) => <MessageBubble key={m.id} msg={m} />)}
+          {messages.map((m) => (
+            <MessageBubble key={m.id} msg={m} onAbrirMidia={setMidiaAberta} />
+          ))}
           <div ref={bottomRef} />
         </div>
 
         <div className="border-t p-3">
+          {/* O que já subiu e vai junto com a próxima pergunta */}
+          {anexos.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {anexos.map((a) => (
+                <div key={a.url} className="flex items-center gap-1.5 rounded-md border bg-muted/40 pl-2 pr-1 py-1 text-xs max-w-[240px]">
+                  {a.kind === 'image' ? <ImageIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    : a.kind === 'pdf' ? <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    : <Mic className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                  <span className="truncate" title={a.name}>{a.kind === 'audio' ? 'Áudio do ditado' : a.name}</span>
+                  <Button
+                    variant="ghost" size="icon" className="h-5 w-5 shrink-0"
+                    onClick={() => removerAnexo(a.url)}
+                    title="Tirar este anexo"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex items-end gap-2">
+            <input
+              ref={arquivoRef}
+              type="file"
+              multiple
+              accept={ACCEPT_ANEXO}
+              className="hidden"
+              onChange={(e) => anexarArquivos(e.target.files)}
+            />
+            <Button
+              variant="outline" size="icon" className="shrink-0 h-11 w-11"
+              onClick={() => arquivoRef.current?.click()}
+              disabled={busy || subindo || anexos.length >= MAX_ANEXOS}
+              title={anexos.length >= MAX_ANEXOS ? `Máximo de ${MAX_ANEXOS} arquivos` : 'Anexar print, foto ou PDF'}
+            >
+              {subindo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+            </Button>
+
+            <Button
+              variant={gravando ? 'destructive' : 'outline'}
+              size="icon" className="shrink-0 h-11 w-11"
+              onClick={ditar}
+              disabled={busy || transcrevendo}
+              title={gravando ? 'Parar e transcrever' : 'Ditar a pergunta'}
+            >
+              {transcrevendo ? <Loader2 className="h-4 w-4 animate-spin" />
+                : gravando ? <Square className="h-4 w-4" />
+                : <Mic className="h-4 w-4" />}
+            </Button>
+
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Ex: me dê a relação dos processos que a Gisele é responsável"
+              placeholder={gravando ? `Gravando… ${segundos}s — toque no quadrado para parar`
+                : transcrevendo ? 'Transcrevendo o que você falou…'
+                : 'Ex: me dê a relação dos processos que a Gisele é responsável'}
               className="resize-none min-h-[44px] max-h-32"
               rows={1}
-              disabled={busy}
+              disabled={busy || gravando}
             />
-            <Button onClick={() => ask(input)} disabled={busy || !input.trim()} size="icon" className="shrink-0 h-11 w-11">
+            <Button
+              onClick={() => ask(input)}
+              disabled={busy || subindo || (!input.trim() && anexos.length === 0)}
+              size="icon" className="shrink-0 h-11 w-11"
+            >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </div>
           <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
             Somente leitura · CPF e dados bancários são mascarados · acesso restrito à diretoria e gestores
+            <br />
+            Anexo (print, foto, PDF até {MAX_ANEXO_MB} MB) e ditado por voz entram na pergunta — a IA lê e compara com o banco.
           </p>
         </div>
       </div>
+
+      {/* Anexo abre POR CIMA da conversa, nunca em aba nova */}
+      <MediaLightbox url={midiaAberta} title="Anexo da pergunta" onClose={() => setMidiaAberta(null)} />
 
       <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
         <AlertDialogContent>

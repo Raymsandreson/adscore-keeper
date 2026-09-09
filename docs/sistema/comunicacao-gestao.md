@@ -274,6 +274,17 @@ Isto é **leitura**. Para decidir por onde ENVIAR em grupo continua valendo `res
 
 Renomear as linhas órfãs para a instância atual **não** é a correção: "Bruno Wenner" (mesma pessoa, instância recriada em 31/07) não alcança aqueles grupos — quem alcança é "Raym". Quem resolve é a varredura, não o nome.
 
+#### Saiu do grupo: cliente sim, chip da casa não (09/09/2026)
+
+O webhook `whatsapp-group-exit` (Railway) grava toda saída de participante em `whatsapp_group_exits` (Externo), e a trigger `trg_create_activity_on_group_exit` transforma isso em atividade de prioridade **alta** para o responsável processual do lead ("⚠️ Cliente saiu do grupo: X").
+
+A trigger só olhava `lead_id`. Como as instâncias da firma também são membros dos grupos, **chip nosso saindo virava "cliente saiu"**: em 2 dias, **37 das 140 saídas (26%)** eram de número da casa — Raym, Analyne, Andressa SDR, Atendimento Previdenciário, e os chips antigos perdidos (Dom `558688437181`, WHATSJUD IA `558689027856`, `558681595991`), que estão sendo removidos de todos os grupos.
+
+- Quem classifica é o banco, no INSERT: trigger `trg_mark_group_exit_internal` chama `is_numero_da_casa(phone)` e grava `whatsapp_group_exits.is_internal`. Fonte da verdade do "número da casa": `dom_numeros_equipe` (ativo) ∪ `whatsapp_instances.owner_phone`, casado pelos **últimos 10 dígitos** (o mesmo critério que `dom_grupos_para_olhar` usa).
+- `is_internal = true` **não gera atividade nem push** e não aparece no card vermelho da ficha (`useGroupExits` filtra). O evento continua **registrado**: no monitor (`GroupExitsPanel`) ele aparece com o selo "chip da casa · não gera atividade", porque chip nosso sendo removido dos grupos é sinal que interessa — só não é tarefa do processual.
+- Chip perdido novo entra pelo cadastro: `insert into dom_numeros_equipe (phone, nome, origem, ativo) values ('55DDNNNNNNNNN', '...', 'manual', true)`. Não precisa mexer em código.
+- Migration: `supabase/migrations-external/20260909190000_chip_da_casa_nao_e_cliente_saindo_do_grupo.sql`.
+
 ---
 
 ## WhatsApp Cloud API (Meta oficial) — canal `cloud_gerencia`
@@ -554,7 +565,20 @@ Numa conversa pessoal (a esposa do dono da conta) a sugestão saía **"Entendi, 
 
 **Regra**: a IA aponta valor absurdo no texto, mas **nunca filtra ou esconde linha** do resultado. A tabela mostra o que está no banco; o conserto é na origem.
 
-**Fluxo recomendado**: clicar num exemplo ou perguntar direto → seguir a conversa com follow-up ("e desses, quantos fecharam?") → abrir "Ver a consulta usada" quando quiser conferir o número.
+### Anexo e ditado por voz na pergunta — desde 09/09/2026
+
+A pergunta não é só texto: dá pra **anexar** material e **ditar** em vez de digitar. Dois botões à esquerda do campo (clipe e microfone).
+
+- **Clipe (anexar)**: PNG, JPG, WEBP, GIF ou PDF — até 10 MB por arquivo e 4 por pergunta. O arquivo sobe no bucket `team-chat-media` (prefixo `relatorios/<usuário>`, o mesmo bucket do chat interno) e a tela manda só a URL; quem baixa e converte pro modelo é a `report-query`, que **só aceita URL do Storage dos nossos dois projetos** (baixar URL de fora seria porta pra rede interna). Anexo **sem pergunta escrita** já envia — o servidor completa com "olhe o material que eu anexei".
+- **Microfone (ditar)**: grava, sobe o áudio e pede o texto à `transcribe-team-audio` (ElevenLabs Scribe v2 → Gemini de reserva) — a mesma função do chat da equipe, não existe segundo transcritor. O texto cai **no campo, pra conferir antes de mandar** (pergunta transcrita torto custa uma rodada de consulta), e o áudio segue como anexo, então a conversa guarda o que foi falado.
+- **O anexo é fonte, não substitui o banco**: o prompt manda a IA ler o arquivo, consultar o banco e dizer onde bate e onde não bate, sempre separando qual número veio de qual lado. Divergência termina em conserto na origem, nunca em "considere o valor do print".
+- Fica gravado em `report_messages.attachments` (`[{url, name, mime, size, kind}]`, `kind` = `image` | `pdf` | `audio`) — reabrir a conversa mostra a pergunta **com** o arquivo. O conteúdo do arquivo antigo **não** é reenviado ao modelo nas perguntas seguintes (custaria de novo a cada turno): fica só a menção de que existiu; pra usar de novo, reanexar. Migration `supabase/migrations-external/20260909130000_anexos_na_conversa_do_relatorios.sql` (Externo).
+- Imagem e PDF abrem no `MediaLightbox`, por cima da conversa — nada de aba nova. O áudio toca na própria bolha.
+- Arquivo que não dá pra ler (tipo estranho, grande demais, download falhou) **não derruba a pergunta**: a IA é avisada em texto e responde com o que sobrou.
+- Custo: cada imagem/PDF entra em todas as rodadas daquela pergunta (a IA precisa dele pra escrever a consulta e depois analisar o resultado) — ordem de ~US$ 0,05–0,10 a mais por pergunta com anexo, além dos US$ 0,15–0,25 de sempre. Transcrição de áudio é centavos.
+- Limite: HEIC do iPhone fica fora (nem Opus nem Gemini leem) — o iPhone converte pra JPG ao anexar da galeria, mas foto original em HEIC é recusada na hora, com aviso.
+
+**Fluxo recomendado**: clicar num exemplo ou perguntar direto → seguir a conversa com follow-up ("e desses, quantos fecharam?") → abrir "Ver a consulta usada" quando quiser conferir o número. Com documento em mãos: anexar o print/PDF e pedir pra comparar com o banco.
 
 ---
 

@@ -46,6 +46,8 @@ import { ActivityHandoffSummary, ActivityMovementsPanel } from '@/components/act
 import { describeActivityAuthor } from '@/lib/activityHistory';
 import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
+import { loadActivityMessageOrigin, type ActivityMessageOrigin } from '@/lib/whatsappMessageActivities';
+import { carregarConversaDaNotaDaAtividade } from '@/lib/whatsappActivityNotes';
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -67,7 +69,7 @@ import {
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
   Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase, MoreVertical,
   Users, Pin, PinOff, Pencil, UserPlus, Mic, ChevronDown, Link, Landmark, DollarSign,
-  ArrowRightLeft, CheckSquare, CalendarClock, Bot,
+  ArrowRightLeft, CheckSquare, CalendarClock, Bot, MessageSquare,
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BulkReassignSheet } from '@/components/activities/BulkReassignSheet';
@@ -468,7 +470,32 @@ const ActivitiesPage = () => {
   const [showLeadSheet, setShowLeadSheet] = useState(false);
   // Aba inicial do sheet do lead: 'casos' quando aberto pelo botão Caso do workflow.
   const [leadSheetTab, setLeadSheetTab] = useState<string | undefined>(undefined);
-  const [waChatPreview, setWaChatPreview] = useState<{ phone: string; contact_name: string | null; instance_name: string | null; private_phone?: string | null } | null>(null);
+  const [waChatPreview, setWaChatPreview] = useState<{ phone: string; contact_name: string | null; instance_name: string | null; private_phone?: string | null; highlight_message_id?: string | null } | null>(null);
+
+  // Caminho inverso do selo "Virou atividade": de qual conversa do WhatsApp esta
+  // atividade nasceu. A ficha lateral (ActivityFullSheet) já tinha o atalho; aqui
+  // faltava, e a atividade nascida da conversa ficava sem volta — quem abria lia o
+  // trecho colado em Observações e não tinha como conferir o resto do contexto.
+  const [messageOrigin, setMessageOrigin] = useState<ActivityMessageOrigin | null>(null);
+  useEffect(() => {
+    if (sheetMode !== 'edit' || !selectedActivityId) { setMessageOrigin(null); return; }
+    let cancelled = false;
+    setMessageOrigin(null);
+    loadActivityMessageOrigin(selectedActivityId)
+      // Sem vínculo de mensagem, a atividade ainda pode ter nascido da conversa
+      // (menu do topo): o registro é a nota "Atividade Criada" no chat.
+      .then(async origin => {
+        if (origin) return origin;
+        const conversa = await carregarConversaDaNotaDaAtividade(selectedActivityId);
+        return conversa
+          ? { message_id: null, phone: conversa.phone, instance_name: conversa.instance_name, total: 0 }
+          : null;
+      })
+      .then(origin => { if (!cancelled) setMessageOrigin(origin); })
+      // A ficha funciona sem isso — só perde o atalho pra conversa.
+      .catch(e => console.warn('[ActivitiesPage] origem da atividade indisponível:', e));
+    return () => { cancelled = true; };
+  }, [sheetMode, selectedActivityId]);
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
   // Áudio da gravação (Preenchimento por Áudio) pendente pra envio direto no botão WA.
   const [pendingAudio, setPendingAudio] = useState<{ url: string; seconds: number } | null>(null);
@@ -3848,6 +3875,7 @@ const ActivitiesPage = () => {
         contactName={waChatPreview?.contact_name || null}
         instanceName={waChatPreview?.instance_name || null}
         privatePhone={waChatPreview?.private_phone || null}
+        highlightMessageId={waChatPreview?.highlight_message_id || null}
         hasLead={!!formLeadId}
         hasContact={false}
         wasResponded={false}
@@ -6426,6 +6454,30 @@ const ActivitiesPage = () => {
                 <p className="text-[11px] text-muted-foreground mt-1.5">
                   Nenhum lead vinculado. Vincule um lead existente no formulário ou crie um novo.
                 </p>
+              )}
+              {/* Nasceu de uma mensagem do WhatsApp: atalho de volta pra conversa,
+                  com a bolha de origem destacada. Painel de baixo pra cima por cima
+                  da ficha — fechar devolve a pessoa exatamente aqui. */}
+              {messageOrigin?.phone && (
+                <div className="mt-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-[10px] gap-1 border-green-600/40 text-green-700 dark:text-green-400 hover:bg-green-600/10"
+                    onClick={() => setWaChatPreview({
+                      phone: messageOrigin.phone!,
+                      contact_name: formLeadName || null,
+                      instance_name: messageOrigin.instance_name,
+                      highlight_message_id: messageOrigin.message_id,
+                    })}
+                    title={messageOrigin.message_id
+                      ? `Abrir aqui a conversa do WhatsApp na mensagem que gerou esta atividade${messageOrigin.total > 1 ? ` (${messageOrigin.total} mensagens de origem)` : ''}`
+                      : 'Abrir aqui a conversa do WhatsApp em que esta atividade foi criada'}
+                  >
+                    <MessageSquare className="h-3 w-3" />
+                    {messageOrigin.message_id ? 'Ver mensagem de origem' : 'Ver conversa de origem'}
+                  </Button>
+                </div>
               )}
               {/* Nome do cliente (override) — acima da barra de progresso */}
               <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-muted-foreground">

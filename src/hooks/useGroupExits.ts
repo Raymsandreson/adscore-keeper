@@ -15,6 +15,10 @@ export interface GroupExit {
 /**
  * Lê saídas de membros do grupo não-reconhecidas para um lead.
  * Atualiza em tempo real via Supabase Realtime.
+ *
+ * Saída de chip da casa (instância nossa ou número em dom_numeros_equipe) fica
+ * de fora: o banco marca `is_internal` no INSERT, e chip nosso saindo do grupo
+ * não é cliente saindo do grupo.
  */
 export function useGroupExits(leadId: string | null | undefined) {
   const [exits, setExits] = useState<GroupExit[]>([]);
@@ -30,6 +34,7 @@ export function useGroupExits(leadId: string | null | undefined) {
       .from('whatsapp_group_exits')
       .select('id, phone, contact_name, group_name, group_jid, exit_action, exited_at, acknowledged_at')
       .eq('lead_id', leadId)
+      .eq('is_internal', false)
       .is('acknowledged_at', null)
       .order('exited_at', { ascending: false });
     setExits((data || []) as GroupExit[]);
@@ -70,6 +75,7 @@ export function useGroupExits(leadId: string | null | undefined) {
       .from('whatsapp_group_exits')
       .update({ acknowledged_at: new Date().toISOString() })
       .eq('lead_id', leadId)
+      .eq('is_internal', false)
       .is('acknowledged_at', null);
     setExits([]);
   }, [leadId]);

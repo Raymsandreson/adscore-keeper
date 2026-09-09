@@ -66,12 +66,20 @@ export const handler = async (req: Request, res: Response) => {
     }
 
     if (action === 'messages') {
-      const { data, error } = await supabase
+      const buscar = (colunas: string) => supabase
         .from('report_messages')
-        .select('id, role, content, queries, engine, status, error_message, created_at')
+        .select(colunas)
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true })
         .limit(MAX_MESSAGES);
+      const COLUNAS = 'id, role, content, queries, engine, status, error_message, created_at';
+      // attachments é coluna nova (migration 20260909130000). Se o deploy chegar
+      // antes dela, a conversa continua abrindo — só sem os anexos.
+      let { data, error } = await buscar(`${COLUNAS}, attachments`);
+      if (error) {
+        console.warn('[report-conversations] sem coluna attachments, lendo sem ela:', error.message);
+        ({ data, error } = await buscar(COLUNAS));
+      }
       if (error) throw new Error(error.message);
       return res.status(200).json({ success: true, conversation: { id: conv.id, title: conv.title }, messages: data || [] });
     }

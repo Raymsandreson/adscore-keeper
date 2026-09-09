@@ -31,8 +31,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2, Search, AlertTriangle, UserX, Link2 } from 'lucide-react';
+import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2, Search, AlertTriangle, UserX, Link2, ClipboardList } from 'lucide-react';
 import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
+import { remapToCloud } from '@/integrations/supabase/uuid-remap';
+import type { ActivityDraft } from '@/components/activities/ActivityFullSheet';
 import { ContagemAteEnvio } from '@/components/whatsapp/ContagemAteEnvio';
 
 const dbAny = db as unknown as SupabaseClient;
@@ -54,6 +56,12 @@ const RITMO_PADRAO = { primeira: 3, seguinte: 2 };
  *  useLeads junto, e ninguem precisa disso ate clicar em vincular. */
 const LeadPainelPorId = lazy(() => import('@/components/leads/LeadPainelPorId'));
 
+/** O formulario COMPLETO de atividade, o mesmo da esteira. Lazy pelo mesmo
+ *  motivo do painel do lead: ele so aparece se alguem responder "sim" a
+ *  pergunta da atividade, e ate la nao ha razao para carrega-lo. */
+const ActivityFullSheet = lazy(() => import('@/components/activities/ActivityFullSheet')
+  .then(m => ({ default: m.ActivityFullSheet })));
+
 interface Pendente {
   id: string; group_jid: string; instance_name: string | null; agendamento_id: string | null;
   audio_url: string | null; audio_voz: string | null; audio_erro: string | null;
@@ -66,6 +74,9 @@ interface Pendente {
   audio_estilo: number | null;
   audio_pausa_ms: number | null;
   group_name: string | null; pergunta: string | null; pergunta_autor: string | null;
+  /** A ficha do grupo. Nulo em 31 dos rascunhos — e sem ela nao ha atividade
+   *  para criar: `createActivity` exige vinculo com lead, caso ou processo. */
+  lead_id: string | null;
   resposta_sugerida: string; resposta_final: string | null; intencao: string | null;
   motivo_revisao: string | null; status: string; criado_em: string; enviado_em: string | null;
   atendente_id: string | null;
@@ -77,7 +88,7 @@ interface Pendente {
    * Aceito os dois formatos porque depender do formato de hoje é o tipo de coisa
    * que quebra calada numa atualização de biblioteca.
    */
-  dom_atendentes?: { nome: string }[] | { nome: string } | null;
+  dom_atendentes?: { nome: string; user_id: string | null }[] | { nome: string; user_id: string | null } | null;
 }
 interface GrupoPiloto {
   group_jid: string; group_name: string | null; modo: string; ativo: boolean;
@@ -212,6 +223,29 @@ function nomeDoAtendente(p: Pendente): string | null {
   const r = p.dom_atendentes;
   if (!r) return null;
   return Array.isArray(r) ? (r[0]?.nome ?? null) : (r.nome ?? null);
+}
+
+/**
+ * O motivo que serve de assunto — ou nada.
+ *
+ * Os dois motivos de rotina ("modo rascunho: tudo passa por revisao", "modo
+ * automatico: entra na fila de envio") descrevem o CANO, nao o caso. Como
+ * assunto de atividade eles sao ruido: a lista fica com trinta linhas iguais e
+ * ninguem consegue escolher qual abrir.
+ */
+function motivoDoCaso(p: Pendente): string {
+  const m = (p.motivo_revisao || '').trim();
+  return m.startsWith('modo ') ? '' : m;
+}
+
+/** O assunto sugerido da atividade. Mesma frase na previa e no formulario —
+ *  previa que promete um assunto e entrega outro nao e previa. */
+function assuntoDaAtividade(p: Pendente): string {
+  const m = motivoDoCaso(p);
+  const t = m
+    ? `Conferir e voltar ao cliente: ${m}`
+    : `Conferir e voltar ao cliente no grupo ${p.group_name || ''}`.trim();
+  return t.slice(0, 200);
 }
 
 const quando = (iso: string) =>
@@ -446,6 +480,30 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState<Pendente | null>(null);
   const [texto, setTexto] = useState('');
+  /**
+   * A RESPOSTA SAIU — E ALGUEM PRECISA CUMPRIR O QUE ELA PROMETEU.
+   *
+   * O texto que o atendente virtual manda quase sempre termina em "ja estou
+   * acionando a equipe pra conferir e te responder aqui no grupo". Ate aqui
+   * essa frase nao virava tarefa de ninguem: das 7 respostas que ja tinham ido
+   * para a fila de envio, ZERO geraram atividade no momento do envio (medido
+   * em 09/09/2026). A promessa saia para o cliente e morria no painel.
+   *
+   * A pergunta vem DEPOIS do envio, e nao antes, porque sao duas decisoes
+   * diferentes: "esta resposta pode sair" ja foi tomada no botao; "isto exige
+   * alguem da equipe" nem sempre — resposta que so informa nao precisa de
+   * tarefa, e criar uma a cada envio encheria a esteira ate ninguem mais olhar.
+   * Por isso e PERGUNTA com o rascunho a vista, e nao criacao automatica.
+   *
+   * Guarda o ID do rascunho, nao o objeto: o `carregar()` que roda logo depois
+   * troca as listas, e comparar por id impede que a pergunta fique pendurada
+   * sobre outro rascunho.
+   */
+  const [perguntarAtv, setPerguntarAtv] = useState<string | null>(null);
+  /** O rascunho da atividade, montado aqui e revisado no formulario completo. */
+  const [atvDraft, setAtvDraft] = useState<ActivityDraft | null>(null);
+  const [atvAberta, setAtvAberta] = useState(false);
+  const [montandoAtv, setMontandoAtv] = useState(false);
   const [regerando, setRegerando] = useState(false);
 
   /**
@@ -552,7 +610,7 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
     setCarregando(true);
     try {
       await ensureExternalSession();
-      const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, audio_velocidade, audio_estabilidade, audio_estilo, audio_pausa_ms, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, contexto_usado, dom_atendentes(nome)';
+      const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, audio_velocidade, audio_estabilidade, audio_estilo, audio_pausa_ms, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, lead_id, contexto_usado, dom_atendentes(nome, user_id)';
       /**
        * O recorte da ficha, aplicado a toda consulta que tem `group_jid`.
        *
@@ -773,12 +831,109 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
     if (error) throw error;
   };
 
+  /**
+   * O RASCUNHO DA ATIVIDADE — montado aqui, decidido no formulario completo.
+   *
+   * Nada disto e gravado: o retorno vai para o `ActivityFullSheet` em modo
+   * criar, onde a pessoa le, troca o responsavel e so entao cria. E o mesmo
+   * formulario da esteira, nao uma segunda versao reduzida dele.
+   *
+   * O RESPONSAVEL SUGERIDO PASSA POR DUAS TRADUCOES, e ignorar a primeira ja
+   * custou caro: `dom_atendentes.user_id` guarda `profiles.id`, e nao o id de
+   * autenticacao. As 102 atividades que a `dom-rascunho` abriu ate 09/09/2026
+   * foram gravadas com esse valor, e NENHUMA bate com o `assigned_to` que o
+   * resto do sistema usa — 7.118 atividades dos ultimos 30 dias apontam para
+   * `profiles.user_id`. Depois dessa, a segunda: o formulario trabalha em UUID
+   * do Cloud e quem remapeia para o Externo e o `createActivity`, entao mandar
+   * o id do Externo daqui erraria de novo, na outra ponta.
+   *
+   * Sugestao, nao decisao: quem aprova troca no seletor do formulario.
+   */
+  const montarRascunhoDaAtividade = async (p: Pendente, corpo: string): Promise<ActivityDraft> => {
+    const at = Array.isArray(p.dom_atendentes) ? p.dom_atendentes[0] : p.dom_atendentes;
+
+    let assignedTo = '';
+    let assignedNome = at?.nome || '';
+    if (at?.user_id) {
+      // Aceita os dois lados da coluna de proposito: hoje ela guarda
+      // `profiles.id`, e um cadastro futuro pode guardar `profiles.user_id`.
+      const { data: perfil } = await dbAny.from('profiles')
+        .select('user_id, full_name')
+        .or(`id.eq.${at.user_id},user_id.eq.${at.user_id}`)
+        .maybeSingle();
+      const extUuid = (perfil as { user_id?: string } | null)?.user_id || null;
+      if (extUuid) {
+        assignedTo = (await remapToCloud(extUuid)) || '';
+        assignedNome = (perfil as { full_name?: string } | null)?.full_name || assignedNome;
+      }
+    }
+
+    let leadNome = '';
+    if (p.lead_id) {
+      const { data: lead } = await dbAny.from('leads')
+        .select('lead_name').eq('id', p.lead_id).maybeSingle();
+      leadNome = (lead as { lead_name?: string } | null)?.lead_name || '';
+    }
+
+    const motivo = motivoDoCaso(p);
+
+    // Dois dias. A pendencia aberta pela `dom-rascunho` usa tres, e ali cabe:
+    // ninguem prometeu nada ao cliente. Aqui uma pessoa acabou de dizer, no
+    // grupo, que a equipe volta — o prazo tem que ser menor que a paciencia.
+    const prazo = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+
+    return {
+      title: assuntoDaAtividade(p),
+      activity_type: 'acompanhamento',
+      priority: 'normal',
+      deadline: prazo,
+      assigned_to: assignedTo || undefined,
+      assigned_to_name: assignedNome || undefined,
+      lead_id: p.lead_id || undefined,
+      lead_name: leadNome || undefined,
+      current_status_notes: `O cliente escreveu no grupo ${p.group_name || ''}`
+        + `${p.pergunta_autor ? ` (${p.pergunta_autor})` : ''}:
+
+${p.pergunta || ''}`,
+      what_was_done: `O atendente virtual respondeu no grupo, aprovado a mao em `
+        + `${quando(new Date().toISOString())}.
+
+Texto que saiu:
+
+${corpo}`,
+      next_steps: motivo
+        ? `${motivo}. Conferir e responder ao cliente no proprio grupo.`
+        : 'Conferir e responder ao cliente no proprio grupo.',
+      // Marca a ligacao sem coluna nova nem migration: e por
+      // `action_source_detail` que se acha, depois, qual resposta gerou qual
+      // tarefa. Com prefixo porque o campo e livre — o id sozinho nao diz de
+      // onde veio, e daqui a um mes ninguem lembra.
+      action_source_detail: `atendente-virtual:${p.id}`,
+    };
+  };
+
+  /** "Sim, revisar" — monta o rascunho e abre o formulario completo por cima. */
+  const abrirRascunhoDaAtividade = async (p: Pendente, corpo: string) => {
+    setMontandoAtv(true);
+    try {
+      setAtvDraft(await montarRascunhoDaAtividade(p, corpo));
+      setAtvAberta(true);
+    } catch (e) {
+      toast.error('Nao consegui montar o rascunho: ' + ((e as Error)?.message || 'erro'));
+    } finally {
+      setMontandoAtv(false);
+    }
+  };
+
   const aprovarEEnviar = async (p: Pendente) => {
     setEnviando(true);
     try {
       await porNaFilaDeEnvio(p, texto);
-      setAberto(null);
       toast.success('Aprovada — sai no próximo minuto');
+      // O painel NAO fecha aqui. Fechar era a perda: a resposta prometia que a
+      // equipe volta ao cliente, e a promessa saia sem dono. A pergunta da
+      // atividade vive no lugar dos botoes, com o rascunho a vista.
+      setPerguntarAtv(p.id);
       carregar();
     } catch (e) {
       toast.error('Não consegui pôr na fila: ' + ((e as Error)?.message || 'erro'));
@@ -1406,7 +1561,7 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
       </Tabs>
 
       {/* Detalhe em painel lateral — nunca redireciona, nunca abre aba nova. */}
-      <Sheet open={!!aberto} onOpenChange={o => !o && setAberto(null)}>
+      <Sheet open={!!aberto} onOpenChange={o => { if (!o) { setAberto(null); setPerguntarAtv(null); } }}>
         <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
           <SheetHeader><SheetTitle className="text-sm">{aberto?.group_name || 'Rascunho'}</SheetTitle></SheetHeader>
           {aberto && (
@@ -1604,7 +1759,75 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
                 onClick={() => abrirConversa(aberto.group_jid, aberto.instance_name, aberto.group_name)}>
                 <MessagesSquare className="h-3.5 w-3.5" />Abrir a conversa do grupo
               </Button>
-              {aberto.status === 'enviada' ? (
+              {perguntarAtv === aberto.id ? (
+                // ACABOU DE SAIR — E A PERGUNTA QUE FALTAVA VEM AQUI.
+                //
+                // No lugar dos botoes de decisao, porque a decisao ja foi
+                // tomada: mostrar "aprovar" de novo poria uma segunda copia da
+                // mesma resposta na fila. O que sobra a decidir e outra coisa.
+                <div className="space-y-2">
+                  <div className="rounded border border-emerald-600/40 bg-emerald-600/5 p-2 text-center">
+                    <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                      Enviada — sai no próximo minuto
+                    </p>
+                  </div>
+                  <div className="rounded border p-2 space-y-2">
+                    <p className="text-xs font-medium flex items-center gap-1">
+                      <ClipboardList className="h-3.5 w-3.5" />
+                      Criar a atividade correspondente?
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      A resposta acabou de dizer ao cliente que a equipe volta. Sem atividade,
+                      essa promessa não fica com ninguém — e é assim que ela se perde.
+                    </p>
+                    {aberto.lead_id ? (
+                      <>
+                        <div className="rounded bg-muted p-2 space-y-1">
+                          <p className="text-[10px] text-muted-foreground">Assunto sugerido</p>
+                          <p className="text-[11px] font-medium break-words">{assuntoDaAtividade(aberto)}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            Responsável sugerido:{' '}
+                            <strong>{nomeDoAtendente(aberto) || 'ninguém ainda — você escolhe'}</strong>
+                            {' '}· prazo em 2 dias
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" className="text-xs gap-1 flex-1" disabled={montandoAtv}
+                            onClick={() => abrirRascunhoDaAtividade(aberto, texto)}>
+                            {montandoAtv
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <ClipboardList className="h-3.5 w-3.5" />}
+                            Revisar e criar
+                          </Button>
+                          <Button size="sm" variant="outline" className="text-xs"
+                            onClick={() => { setPerguntarAtv(null); setAberto(null); }}>
+                            Agora não
+                          </Button>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          Abre o <strong>formulário completo</strong> de atividade, o mesmo da
+                          esteira, já preenchido com a pergunta do cliente e o texto que saiu. O
+                          responsável se escolhe lá, e nada é criado antes de você clicar em criar.
+                        </p>
+                      </>
+                    ) : (
+                      // Sem ficha nao ha atividade: o `createActivity` recusa
+                      // atividade sem lead, caso ou processo. Dizer isso aqui e
+                      // melhor que abrir o formulario e ele falhar no fim.
+                      <>
+                        <p className="text-[11px] text-amber-700">
+                          Este grupo não tem ficha, e o sistema não cria atividade sem lead.
+                          Vincule a ficha primeiro — a resposta já saiu de qualquer jeito.
+                        </p>
+                        <Button size="sm" variant="outline" className="w-full text-xs"
+                          onClick={() => { setPerguntarAtv(null); setAberto(null); }}>
+                          Fechar
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : aberto.status === 'enviada' ? (
                 // Não há decisão a tomar sobre o que já foi lido. Mostrar
                 // "Aprovar e enviar" aqui criaria uma segunda cópia da mesma
                 // resposta na fila — o botão certo é nenhum.
@@ -1717,6 +1940,32 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
           void carregar();
         }}
       />
+
+      {/* A atividade que a resposta prometeu. Formulario COMPLETO, empilhado
+          por cima do painel do rascunho — irmao, nao filho, senao fecharia
+          junto com ele. Nada foi gravado ate aqui: e o rascunho na tela. */}
+      {atvDraft && (
+        <Suspense fallback={null}>
+          <ActivityFullSheet
+            open={atvAberta}
+            mode="create"
+            draft={atvDraft}
+            activityId={null}
+            leadId={atvDraft.lead_id ?? null}
+            leadName={atvDraft.lead_name ?? null}
+            onOpenChange={o => {
+              // Fechar sem criar joga o rascunho fora: manter faria a proxima
+              // resposta herdar a pergunta e o texto desta.
+              if (!o) { setAtvAberta(false); setAtvDraft(null); }
+            }}
+            onCreated={() => {
+              setAtvAberta(false); setAtvDraft(null);
+              setPerguntarAtv(null); setAberto(null);
+              toast.success('Atividade criada — a promessa tem dono.');
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* A ficha do cliente: lead, caso e processos. É o LeadEditDialog de
           sempre, por id — nada de segunda versão do formulário do lead. */}

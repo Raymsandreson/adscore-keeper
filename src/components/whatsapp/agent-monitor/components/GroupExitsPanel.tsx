@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,8 @@ interface ExitRow {
   actor: string | null;
   exited_at: string;
   instance_name: string | null;
+  /** Quem saiu é chip da casa (instância nossa / número da equipe) — não é cliente. */
+  is_internal: boolean | null;
 }
 
 export function GroupExitsPanel() {
@@ -30,7 +32,7 @@ export function GroupExitsPanel() {
     try {
       const { data, error } = await (db as any)
         .from('whatsapp_group_exits')
-        .select('id, phone, group_jid, group_name, contact_name, lead_id, lead_name, exit_action, actor, exited_at, instance_name')
+        .select('id, phone, group_jid, group_name, contact_name, lead_id, lead_name, exit_action, actor, exited_at, instance_name, is_internal')
         .order('exited_at', { ascending: false })
         .limit(200);
       if (error) throw error;
@@ -47,6 +49,13 @@ export function GroupExitsPanel() {
     fetchData();
   }, []);
 
+  // Chip da casa saindo de grupo continua listado aqui (é sinal de chip perdido),
+  // mas não conta como cliente e não gera atividade — quem separa é o banco.
+  const { clientes, internos } = useMemo(() => ({
+    clientes: rows.filter(r => !r.is_internal).length,
+    internos: rows.filter(r => r.is_internal).length,
+  }), [rows]);
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -54,7 +63,12 @@ export function GroupExitsPanel() {
           <span className="flex items-center gap-2">
             <UserMinus className="h-4 w-4 text-destructive" />
             Clientes que saíram dos grupos
-            <Badge variant="secondary" className="text-[10px]">{rows.length}</Badge>
+            <Badge variant="secondary" className="text-[10px]">{clientes}</Badge>
+            {internos > 0 && (
+              <Badge variant="outline" className="text-[10px] font-normal">
+                +{internos} chip da casa
+              </Badge>
+            )}
           </span>
           <Button size="sm" variant="ghost" onClick={fetchData} disabled={loading} className="h-7 gap-1.5 text-xs">
             {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
@@ -91,6 +105,11 @@ export function GroupExitsPanel() {
                     >
                       {r.exit_action === 'remove' ? 'Removido' : 'Saiu'}
                     </Badge>
+                    {r.is_internal && (
+                      <Badge variant="outline" className="text-[10px] font-normal">
+                        chip da casa · não gera atividade
+                      </Badge>
+                    )}
                     {r.lead_name && r.contact_name && r.lead_name !== r.contact_name && (
                       <Badge variant="secondary" className="text-[10px]">Lead: {r.lead_name}</Badge>
                     )}
