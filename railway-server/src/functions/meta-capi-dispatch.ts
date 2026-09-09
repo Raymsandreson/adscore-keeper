@@ -445,13 +445,32 @@ export const handler: RequestHandler = async (req, res) => {
         };
       }
 
+      // `shared_accounts` EXIGE o parametro `business` — sem ele a Meta responde
+      // "(#100) The parameter business is required" e a pergunta "a conta esta
+      // ligada ao dataset?" fica sem resposta. E justamente essa a ligacao que o
+      // gestor de trafego faz no passo 1, e nenhum dos outros sinais a mede.
+      const contas = await g('me/adaccounts?fields=id,name,business{id,name}&limit=50');
+      const negocios = new Set<string>();
+      for (const c of (contas as any)?.data ?? []) {
+        if (c?.business?.id) negocios.add(String(c.business.id));
+      }
+      const compartilhamento: Record<string, unknown> = {};
+      for (const b of negocios) {
+        compartilhamento[b] = await g(`${CAPI_DATASET_ID}/shared_accounts?business=${b}&fields=id,name`);
+      }
+
       return res.status(200).json({
         modo: 'ligacoes',
         dataset: await g(
           `${CAPI_DATASET_ID}?fields=id,name,is_unavailable,data_use_setting,last_fired_time,creation_time`,
         ),
-        dataset_contas_compartilhadas: await g(`${CAPI_DATASET_ID}/shared_accounts?fields=id,name`),
-        dataset_paginas: await g(`${CAPI_DATASET_ID}/shared_pages?fields=id,name`),
+        negocios: Array.from(negocios),
+        contas_ligadas_ao_dataset: compartilhamento,
+        contas_do_token: ((contas as any)?.data ?? []).map((c: any) => ({
+          id: c.id,
+          nome: c.name,
+          negocio: c.business?.name ?? null,
+        })),
         paginas,
       });
     }
