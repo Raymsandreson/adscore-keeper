@@ -354,7 +354,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset' | 'separar_datasets';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -548,62 +548,6 @@ export const handler: RequestHandler = async (req, res) => {
         stats_evento: await g(`${CAPI_DATASET_ID}/stats?aggregation=event&start_time=1756684800`),
         stats_total: await g(`${CAPI_DATASET_ID}/stats?aggregation=event_total_counts`),
         fontes: await g(`${CAPI_DATASET_ID}/da_checks`),
-      });
-    }
-
-    // TEMPORARIO — sai do codigo logo apos o uso. Escreve em ativo da Meta e
-    // /functions/* esta sem autenticacao; nao fica de pe.
-    //
-    // Faz duas coisas:
-    //  1. devolve ao dataset do CURSO o nome original (eu o renomeei por engano:
-    //     validei o dono e nao o conteudo, e ele e o pixel do checkout Cakto);
-    //  2. cria um dataset proprio para as conversoes do CRM, para que fechamento
-    //     de contrato e venda de curso parem de dividir o mesmo `Purchase`.
-    if (modo === 'separar_datasets') {
-      const body = (req.body || {}) as { confirmar?: boolean; nome_novo?: string; nome_antigo?: string };
-      if (body.confirmar !== true) return res.status(400).json({ error: 'exige confirmar: true' });
-      const nomeAntigo = String(body.nome_antigo || 'COMPRA GUIA MÃES ATÍPICAS');
-      const nomeNovo = String(body.nome_novo || 'Conversões CRM — Casos Fechados');
-
-      const post = async (path: string, corpo: Record<string, unknown>) => {
-        const r = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...corpo, access_token: CAPI_TOKEN }),
-        });
-        const j: any = await r.json();
-        return j?.error ? { erro: j.error.message, codigo: j.error.code } : j;
-      };
-      const get = async (path: string) => {
-        const r = await fetch(
-          `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
-            `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(CAPI_TOKEN)}`,
-        );
-        const j: any = await r.json();
-        return j?.error ? { erro: j.error.message, codigo: j.error.code } : j;
-      };
-
-      const contas = await get('me/adaccounts?fields=business{id,name}&limit=1');
-      const businessId = String((contas as any)?.data?.[0]?.business?.id || '');
-      if (!businessId) return res.status(200).json({ ok: false, erro: 'nao achei o business do token' });
-
-      const devolveNome = await post(CAPI_DATASET_ID, { name: nomeAntigo });
-      const criado = await post(`${businessId}/adspixels`, { name: nomeNovo });
-
-      return res.status(200).json({
-        ok: true,
-        business_id: businessId,
-        dataset_do_curso: {
-          id: CAPI_DATASET_ID,
-          resposta: devolveNome,
-          conferencia: await get(`${CAPI_DATASET_ID}?fields=id,name`),
-        },
-        dataset_novo: {
-          resposta: criado,
-          conferencia: (criado as any)?.id
-            ? await get(`${(criado as any).id}?fields=id,name,owner_business{name}`)
-            : null,
-        },
       });
     }
 
