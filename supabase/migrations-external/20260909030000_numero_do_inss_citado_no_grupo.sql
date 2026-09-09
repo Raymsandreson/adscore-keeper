@@ -40,6 +40,13 @@
 -- 7. rodar_processos_citados_no_grupo: re-varre também grupo com mensagem
 --    nova que tenha número de 8–10 dígitos.
 --
+-- APLICADO em 09/09/2026 com aval do Raym. Re-varridos os 2.464 grupos de
+-- caso em 7 lotes. Resultado do INSS: 708 números em 632 grupos (592 PREV,
+-- 40 trabalhistas) — 553 já estavam no lead do grupo, 35 viraram processo do
+-- grupo sozinhos (32 grupos), 117 na fila humana, 2 citados pelo cliente
+-- (sugerido), 1 sem lead. CNJ sem regressão (422/187/205). Pontes automáticas
+-- acumuladas: 41. Fila total agora: 304 (187 CNJ + 117 INSS).
+--
 -- ROTA DE FUGA
 --   detectar_processos_em_grupos_antes_do_inss / dom_contexto_processual_antes_do_inss
 --   guardam as versões de antes. Linhas novas: tipo = 'inss'.
