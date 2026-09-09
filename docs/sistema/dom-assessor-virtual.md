@@ -3524,15 +3524,20 @@ da coluna, para o dia em que um cadastro novo guardar o id de auth) e a usar
 correspondente a atividade nasce sem dono e escreve no log — melhor na fila do
 escritório que invisível no colo de alguém.
 
-**Merge em `main` não publica isso.** O workflow `deploy-edge-externo.yml`
-falha sem `SUPABASE_PAT`; a `dom-rascunho` precisa de deploy explícito, e
-conferir com `get_edge_function` antes de dizer que subiu. Conferido em
-09/09/2026: repo e produção estavam **idênticos** (1.860 linhas, zero diff) —
-a divergência de 08/09 foi reconciliada.
+**O merge publicou sozinho — e isso é novidade.** O workflow
+`deploy-edge-externo.yml` falhava desde sempre por falta do secret
+`SUPABASE_PAT`; em 09/09/2026 o secret foi configurado e ele voltou a rodar.
+O run `34403124353` (20:47 UTC) deployou esta correção em 16 s, sem nenhuma
+ação manual, e a pendência criada 20:48 já nasceu com o código novo — o nome
+saiu como "Keliane Sousa Amorim Araújo" (`profiles.full_name`) em vez de
+"Keliane" (`dom_atendentes.nome`), que é a assinatura da versão nova.
 
-**As linhas já gravadas continuam erradas** — eram 102 às 16h de 09/09, 106 às
-17h30, e crescem a cada rodada do cron enquanto a edge antiga estiver no ar. O
-UPDATE de correção é um passo à parte:
+Continua valendo diferenciar antes de deployar à mão: repo e produção estavam
+idênticos às 17h42 (1.860 linhas, zero diff), e a divergência de 08/09 já
+tinha sido reconciliada.
+
+**As 107 linhas já gravadas foram corrigidas em 09/09/2026** — o UPDATE abaixo,
+rodado depois do deploy para o cron não criar linha errada nova no intervalo:
 
 ```sql
 UPDATE lead_activities a
@@ -3545,4 +3550,9 @@ UPDATE lead_activities a
 
 Sem FK em `assigned_to` e sem trigger de notificação nessa coluna (só
 `trg_activity_audit`, que guarda o antes/depois e serve de volta). O
-`updated_at` sobe nas linhas tocadas.
+`updated_at` sobe nas linhas tocadas. Todas as 107 eram do mesmo par
+(`744ce99b…` → `5b5ac716…`) e todas estavam abertas.
+
+**Depois:** 108 atividades do `dom-rascunho`, 108 com dono que a tela
+reconhece, 0 com o id errado, 0 sem dono. A 108ª é a que nasceu já certa,
+depois do deploy.

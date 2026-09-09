@@ -13,6 +13,8 @@
  * o arquivo sobe no bucket do chat interno, o áudio vira texto na
  * transcribe-team-audio (a mesma do chat da equipe) e os dois ficam gravados na
  * mensagem — reabrir a conversa mostra a pergunta com o arquivo que a sustentou.
+ * O arquivo entra por três portas com a MESMA validação: o clipe, o Ctrl+V
+ * (mesmo com o cursor fora do campo) e arrastar pra qualquer ponto da conversa.
  *
  * Nada aqui redireciona: a lista de conversas é uma coluna da própria tela (e
  * um Sheet lateral no celular), nunca uma rota nova. Anexo abre no
@@ -333,6 +335,7 @@ export default function RelatoriosPage() {
   const [gravando, setGravando] = useState(false);
   const [segundos, setSegundos] = useState(0);
   const [transcrevendo, setTranscrevendo] = useState(false);
+  const [arrastando, setArrastando] = useState(false);
   const [midiaAberta, setMidiaAberta] = useState<string | null>(null);
   const arquivoRef = useRef<HTMLInputElement>(null);
   const gravadorRef = useRef<MediaRecorder | null>(null);
@@ -480,7 +483,7 @@ export default function RelatoriosPage() {
     return supabase.storage.from(BUCKET_ANEXO).getPublicUrl(caminho).data.publicUrl;
   }, [user?.id]);
 
-  const anexarArquivos = useCallback(async (lista: FileList | null) => {
+  const anexarArquivos = useCallback(async (lista: FileList | File[] | null) => {
     if (!lista?.length) return;
     const arquivos = Array.from(lista);
     setSubindo(true);
@@ -518,6 +521,78 @@ export default function RelatoriosPage() {
   const removerAnexo = useCallback((url: string) => {
     setAnexos((prev) => prev.filter((a) => a.url !== url));
   }, []);
+
+  /**
+   * Colar (Ctrl+V) e arrastar o arquivo pra dentro da conversa.
+   *
+   * É o caminho mais curto pra quem já está com o print na mão: recorta a tela,
+   * cola aqui e pergunta. Passa pela MESMA validação do clipe (tipo, tamanho,
+   * teto de 4) — não existe porta de entrada com regra própria.
+   */
+  const anexarDoClipboard = useCallback((dados: DataTransfer | null): boolean => {
+    const arquivos: File[] = [];
+    for (const item of Array.from(dados?.items || [])) {
+      if (item.kind !== 'file') continue;
+      const arquivo = item.getAsFile();
+      if (!arquivo) continue;
+      // Print colado chega como "image.png" sempre igual — com hora no nome dá
+      // pra saber qual chip é qual quando se cola dois.
+      const ehPrintSemNome = /^image\.(png|jpe?g|webp)$/i.test(arquivo.name || '');
+      arquivos.push(ehPrintSemNome
+        ? new File([arquivo], `print-${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}.png`, { type: arquivo.type })
+        : arquivo);
+    }
+    if (!arquivos.length) return false;
+    void anexarArquivos(arquivos);
+    return true;
+  }, [anexarArquivos]);
+
+  const colarArquivos = useCallback((e: React.ClipboardEvent) => {
+    // Só engole o Ctrl+V quando REALMENTE veio arquivo: colar texto continua
+    // caindo no campo como sempre.
+    if (anexarDoClipboard(e.clipboardData)) e.preventDefault();
+  }, [anexarDoClipboard]);
+
+  /**
+   * Ctrl+V com o cursor fora do campo também anexa.
+   *
+   * Quem acabou de recortar a tela cola direto, sem clicar no campo antes — e
+   * sem isto o print ia pro vazio. Texto nunca é afetado: só age quando o
+   * clipboard traz arquivo. Fora o campo de renomear conversa, que é digitação.
+   */
+  useEffect(() => {
+    const aoColar = (e: ClipboardEvent) => {
+      const alvo = e.target as HTMLElement | null;
+      if (alvo?.tagName === 'TEXTAREA') return; // o próprio campo já trata
+      if (alvo?.closest('[data-sem-anexo-colado]')) return;
+      if (anexarDoClipboard(e.clipboardData)) e.preventDefault();
+    };
+    window.addEventListener('paste', aoColar);
+    return () => window.removeEventListener('paste', aoColar);
+  }, [anexarDoClipboard]);
+
+  const arrasteTemArquivo = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer?.types || []).includes('Files');
+
+  const aoArrastarSobre = useCallback((e: React.DragEvent) => {
+    if (!arrasteTemArquivo(e)) return;
+    e.preventDefault();
+    setArrastando(true);
+  }, []);
+
+  const aoSairDoArraste = useCallback((e: React.DragEvent) => {
+    // Sair pra um filho (o campo, um botão) não é sair da área — sem isso o
+    // realce fica piscando enquanto a pessoa atravessa a conversa.
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setArrastando(false);
+  }, []);
+
+  const aoSoltar = useCallback((e: React.DragEvent) => {
+    if (!arrasteTemArquivo(e)) return;
+    e.preventDefault();
+    setArrastando(false);
+    void anexarArquivos(e.dataTransfer.files);
+  }, [anexarArquivos]);
 
   /**
    * Ditar o pedido em vez de digitar.
@@ -641,6 +716,7 @@ export default function RelatoriosPage() {
             {editingId === c.id ? (
               <>
                 <Input
+                  data-sem-anexo-colado
                   value={editingTitle}
                   onChange={(e) => setEditingTitle(e.target.value)}
                   onKeyDown={(e) => {
@@ -693,7 +769,26 @@ export default function RelatoriosPage() {
         {ConversationList}
       </aside>
 
-      <div className="flex flex-col flex-1 min-w-0 max-w-4xl mx-auto w-full">
+      {/* Arrastar arquivo vale em QUALQUER ponto da conversa, não só na barra */}
+      <div
+        className={cn(
+          'flex flex-col flex-1 min-w-0 max-w-4xl mx-auto w-full relative',
+          arrastando && 'ring-2 ring-primary ring-inset bg-primary/5',
+        )}
+        onDragEnter={aoArrastarSobre}
+        onDragOver={aoArrastarSobre}
+        onDragLeave={aoSairDoArraste}
+        onDrop={aoSoltar}
+      >
+        {arrastando && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+            <div className="flex items-center gap-2 rounded-lg border bg-background/95 px-4 py-3 text-sm font-medium shadow-lg">
+              <Paperclip className="h-4 w-4 text-primary" />
+              Solte aqui pra anexar à pergunta
+            </div>
+          </div>
+        )}
+
         <div className="px-4 py-4 border-b flex items-center gap-2">
           {/* No celular a lista vira Sheet lateral — nada de rota nova */}
           <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
@@ -814,6 +909,7 @@ export default function RelatoriosPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
+              onPaste={colarArquivos}
               placeholder={gravando ? `Gravando… ${segundos}s — toque no quadrado para parar`
                 : transcrevendo ? 'Transcrevendo o que você falou…'
                 : 'Ex: me dê a relação dos processos que a Gisele é responsável'}
@@ -833,6 +929,7 @@ export default function RelatoriosPage() {
             Somente leitura · CPF e dados bancários são mascarados · acesso restrito à diretoria e gestores
             <br />
             Anexo (print, foto, PDF até {MAX_ANEXO_MB} MB) e ditado por voz entram na pergunta — a IA lê e compara com o banco.
+            Pode colar com Ctrl+V ou arrastar o arquivo pra cá.
           </p>
         </div>
       </div>
