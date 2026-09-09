@@ -445,11 +445,11 @@ export function ContactsListPage() {
   const [creatorFilter, setCreatorFilter] = useState<string>('all');
   // Larguras das colunas do modo auditoria (estilo planilha — usuário arrasta o limite direito)
   const [auditColW, setAuditColW] = useState<Record<string, number>>({
-    check: 36, leadN: 90, caseN: 70, groupName: 280, leadName: 220, processo: 190, createdAt: 130, createdBy: 220, actions: 60,
+    check: 36, leadN: 90, groupName: 280, leadName: 220, processo: 190, createdAt: 130, createdBy: 220, actions: 60,
   });
   // Filtros por coluna (texto livre, "contém") — estilo Google Sheets
   const [auditColFilter, setAuditColFilter] = useState<Record<string, string>>({
-    leadN: '', caseN: '', groupName: '', leadName: '', processo: '', createdAt: '', createdBy: '',
+    leadN: '', groupName: '', leadName: '', processo: '', createdAt: '', createdBy: '',
   });
   /** group_jid → processo (ver GrupoProcesso). Vazio até a aba Grupos abrir. */
   const [grupoProcesso, setGrupoProcesso] = useState<Map<string, GrupoProcesso>>(new Map());
@@ -2664,7 +2664,6 @@ export function ContactsListPage() {
                 const cellText = (g: typeof groups[number], col: string): string => {
                   switch (col) {
                     case 'leadN': return g.lead_number != null ? `LEAD-${g.lead_number}${g.product_case_prefix ? `(${g.product_case_prefix})` : ''}` : '';
-                    case 'caseN': return g.case_number || '';
                     case 'groupName': return g.group_name || '';
                     case 'leadName': return g.lead_name || '';
                     // Filtrar por processo tem que achar tanto "0000892-33.2016..."
@@ -2694,7 +2693,9 @@ export function ContactsListPage() {
                 const cappedAfterCols = colFilterActive ? visibleAfterCols.slice(0, RENDER_CAP) : capped;
 
                 // Grid template a partir das larguras (px). Última coluna em 1fr seria ruim aqui — manter px.
-                const cols = ['check', 'leadN', 'caseN', 'groupName', 'leadName', 'processo', 'createdAt', 'createdBy', 'actions'] as const;
+                // 'caseN' (leads.case_number) saiu daqui em 09/09/2026: o grupo É o caso, e o
+                // nome do grupo já carrega o número. O campo continua no lead e no lápis.
+                const cols = ['check', 'leadN', 'groupName', 'leadName', 'processo', 'createdAt', 'createdBy', 'actions'] as const;
                 const gridTemplate = cols.map(c => `${auditColW[c]}px`).join(' ');
                 const startResize = (col: string, e: React.MouseEvent) => {
                   e.preventDefault();
@@ -2747,7 +2748,7 @@ export function ContactsListPage() {
                 return (
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-3 px-1 text-xs text-muted-foreground">
-                      <span>{visibleAfterCols.length} caso(s) fechado(s)</span>
+                      <span>{visibleAfterCols.length} grupo(s)</span>
                       <span className="flex items-center gap-1">
                         <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                         {mismatched} divergente(s)
@@ -2799,7 +2800,7 @@ export function ContactsListPage() {
                           </Button>
                         )}
                         {colFilterActive && (
-                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setAuditColFilter({ leadN: '', caseN: '', groupName: '', leadName: '', processo: '', createdAt: '', createdBy: '' })}>
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setAuditColFilter({ leadN: '', groupName: '', leadName: '', processo: '', createdAt: '', createdBy: '' })}>
                             Limpar filtros de coluna
                           </Button>
                         )}
@@ -2808,7 +2809,6 @@ export function ContactsListPage() {
                     <div className="grid gap-2 px-3 py-2 border-b items-start" style={{ gridTemplateColumns: gridTemplate }}>
                       <div className="relative"><span></span></div>
                       {headerCell({ col: 'leadN', label: 'Nº lead', title: 'Sequência do lead (LEAD-N(PFX))' })}
-                      {headerCell({ col: 'caseN', label: 'Nº caso', title: 'Sequência de leads fechados (leads.case_number) — ex: PREV 1448. Editável pelo lápis.' })}
                       {headerCell({ col: 'groupName', label: 'Nome do grupo' })}
                       {headerCell({ col: 'leadName', label: 'Nome do lead', align: 'center' })}
                       {headerCell({ col: 'processo', label: 'Processo', title: 'CNJ do processo do grupo. Vem do lead quando já existe ficha; em âmbar é sugestão da jurimetria pelo nº do caso no nome do grupo (ainda sem ficha). Filtre com ou sem pontuação.' })}
@@ -2817,14 +2817,13 @@ export function ContactsListPage() {
                       <div className="relative"><span></span></div>
                     </div>
                     {cappedAfterCols.map(group => {
-                      const caseNum = group.case_number;
                       const ng = normalizeName(group.group_name);
                       const nl = normalizeName(group.lead_name);
                       const hasBoth = !!ng && !!nl;
                       const nameMatches = hasBoth && (ng.includes(nl) || nl.includes(ng));
                       // Confere se o nº do lead (sequência oficial) aparece no nome do grupo
                       const numericLead = group.lead_number != null ? String(group.lead_number) : null;
-                      const numericCase = caseNum ? caseNum.replace(/\D/g, '').replace(/^0+/, '') : null;
+                      const numericCase = group.case_number ? group.case_number.replace(/\D/g, '').replace(/^0+/, '') : null;
                       const groupDigits = (group.group_name || '').replace(/\D/g, '');
                       const numberMatches =
                         numericCase
@@ -2861,12 +2860,6 @@ export function ContactsListPage() {
                               : '—'}
                           </span>
                           <span
-                            className={`text-xs font-mono tabular-nums ${caseNum ? 'text-foreground' : 'text-muted-foreground'}`}
-                            title={caseNum ? `Nº de caso fechado: ${caseNum}` : 'Lead ainda sem nº de caso fechado (use o lápis para definir)'}
-                          >
-                            {caseNum || '—'}
-                          </span>
-                          <span
                             className="text-sm truncate cursor-pointer hover:underline pr-3"
                             title="Abrir conversa do grupo"
                             onClick={() => openGroupChat(group.group_jid)}
@@ -2895,17 +2888,24 @@ export function ContactsListPage() {
                             if (!p) {
                               return <span className="text-[11px] text-muted-foreground">—</span>;
                             }
-                            // Processo com ficha: clicável, abre por cima da lista.
+                            // Processos do grupo (do lead ∪ citados pela equipe): CADA número
+                            // é um chip clicável que abre a ficha do processo por cima da
+                            // lista. Antes só o primeiro abria e os outros viravam "+2" —
+                            // e "+2" não se consulta (09/09/2026).
                             if (p.cnj_do_lead) {
-                              const varios = p.cnj_do_lead.includes(',');
+                              const numeros = p.cnj_do_lead.split(',').map(n => n.trim()).filter(Boolean);
                               return (
-                                <span
-                                  className="text-[11px] font-mono truncate cursor-pointer hover:underline"
-                                  title={`Abrir processo${varios ? ` (${p.cnj_do_lead})` : ''}`}
-                                  onClick={(e) => { e.stopPropagation(); void openProcessoPorCnj(p.cnj_do_lead!); }}
-                                >
-                                  {p.cnj_do_lead.split(',')[0].trim()}
-                                  {varios && <span className="text-muted-foreground"> +{p.cnj_do_lead.split(',').length - 1}</span>}
+                                <span className="flex flex-wrap gap-1 max-w-full">
+                                  {numeros.map(n => (
+                                    <span
+                                      key={n}
+                                      className="text-[11px] font-mono cursor-pointer hover:underline rounded border px-1 leading-4"
+                                      title={`Abrir processo ${n}`}
+                                      onClick={(e) => { e.stopPropagation(); void openProcessoPorCnj(n); }}
+                                    >
+                                      {n}
+                                    </span>
+                                  ))}
                                 </span>
                               );
                             }
