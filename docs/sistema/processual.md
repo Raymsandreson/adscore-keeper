@@ -536,3 +536,42 @@ Custo zero de API — é tudo junção do que já está no banco.
 - **Processo sem lead** — segue com o botão âmbar "Sem lead e sem caso — criar agora (com grupo)" (`CriarCasoDoProcessoDialog`), que agora também atualiza o cabeçalho na hora, sem reabrir a ficha.
 
 **Empilha, não redireciona** (princípio de interface nº 1): quem abre é o `LeadPainelPorId` por cima da ficha do processo, e fechar devolve a pessoa exatamente onde estava. Para o "Abrir o caso" cair direto na aba certa, `LeadPainelPorId` passou a aceitar `aba` e repassar para o `initialTab` que o `LeadEditDialog` já tinha.
+
+## Alarme de saldo do Escavador (09/09/2026)
+
+**Por quê.** O saldo acaba em silêncio: as solicitações voltam `BLOQUEADO_SALDO`
+e os crons só param de trazer dado. Quem gasta hoje: `jm-esc` (documentos),
+`backfill-process-marcos` (movimentações + capa), o botão "Buscar no
+Escavador" da ficha e o cron `escavador-recem-vinculados` (09/09).
+
+**A leitura.** A API tem endpoint de créditos grátis, na v1:
+`GET /api/v1/quantidade-creditos` → `{"quantidade_creditos": 40825, "saldo": 408.25}`
+(`/api/v2/saldo` e `/api/v2/creditos` dão 404; medido 09/09). Lido pela ação
+`get` da edge `esc-autos`, sem deploy.
+
+**Peças (migration `20260909070000`, aplicada).**
+- `escavador_saldo`: uma leitura por hora (pedido → request do pg_net → saldo
+  confirmado no tick seguinte). O alerta enviado fica na linha que o gerou.
+- `vw_escavador_saldo`: saldo, gasto 24 h, média/dia (pelo histórico de saldo
+  quando ele tem ≥ 1 dia; até lá, pelo que `jm_esc_solicitacoes` registrou, que
+  é só parte do gasto), dias restantes, bloqueios por saldo nas 24 h,
+  `alerta` + `motivo`. Limiares: saldo < R$ 150 · < 7 dias · `BLOQUEADO_SALDO`
+  nas 24 h · sem leitura boa há 6 h (o alarme avisa quando não consegue ler).
+- `escavador_alertar_saldo(p_forcar)`: WhatsApp da instância "Dom" (uazapi
+  `/send/text`, mesmo contrato do railway) para o `owner_phone` da instância
+  "Raym", no máximo 1 por 24 h. `p_forcar = true` manda um teste.
+- cron `escavador-saldo` (`7 * * * *`, jobid 5137): ler, depois alertar.
+- Tela: painel do sino → cartão "Saldo do Escavador" (`EscavadorSaldoCard`),
+  vermelho em alerta com o motivo; "ainda não lido" enquanto não há leitura
+  (nunca R$ 0,00 fantasiado de dado).
+
+**Primeira leitura (09/09 20:49 UTC):** R$ 408,25 · ~R$ 17,69/dia · ~23 dias.
+
+**Armadilha registrada.** Chamar `escavador_ler_saldo()` e ler a view na MESMA
+instrução devolve saldo nulo: a confirmação e a leitura estão no mesmo
+snapshot. Em instruções separadas funciona. O cron faz ler → alertar em
+funções encadeadas, e o `alertar` lê a view depois do `update` do `ler`
+dentro da mesma transação — isso é visível (mesma transação, comando
+posterior); o que não é visível é dentro de um único SELECT.
+
+Rollback: cabeçalho da migration.

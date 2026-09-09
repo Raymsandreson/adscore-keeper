@@ -3499,6 +3499,28 @@ motivo que já limitava a `registrarPendencia`.
 O formulário é o **completo**, o mesmo da esteira. É lá que se escolhe o
 responsável: o painel sugere, não decide.
 
+**Quem cuida do cliente vem antes do rodízio.** O rodízio (`dom_atendentes`)
+é a fila do plantão, para reclamação que chega sem dono. Mas o grupo do caso
+que motivou isto se chama "PREV 1028 | BIANCA/ANUNCIO (AUX. MATERNIDADE) -
+KAROLYNE", e a ficha diz o mesmo: `acolhedor_user_id` é a Maria Karolyne.
+Sugerir o plantão ali joga fora a única informação que faz a atividade chegar
+em quem sabe do que se trata.
+
+Ordem: **acolhedora da ficha → responsável processual → rodízio**. Medido sobre
+os 362 rascunhos com ficha: 110 têm acolhedora, 95 têm responsável processual,
+174 (48%) têm um dos dois, e em **24 os dois existem e são pessoas diferentes**
+— é por isso que a ordem importa. Os outros 52% continuam no rodízio.
+`leads.assigned_to` ficou de fora: preenchido em **zero** das 362.
+
+A prévia diz **de onde** veio a sugestão ("acolhedora da ficha", "rodízio do
+atendente virtual"). Sem isso "Keliane" e "Karolyne" aparecem iguais na tela, e
+quem revisa não tem como discordar de uma sugestão cuja razão não está escrita.
+
+**E o botão avisa o que vem depois.** Na estreia da tela a pergunta não foi
+vista, porque ela só existe depois do clique: quem não a viu chegar concluiu
+que ela não existia. Agora há uma linha sob "Aprovar e enviar" dizendo que a
+pergunta vem em seguida, com o responsável já sugerido pela ficha.
+
 Grupo sem ficha não recebe o botão. `createActivity` recusa atividade sem
 lead, caso ou processo — dizer isso antes vale mais que abrir o formulário e
 falhar no fim.
@@ -3522,10 +3544,108 @@ esse valor direto para `assigned_to`. O resto do sistema grava
 `assigned_to_name` — e provavelmente não aparecem na tela de quem deveria
 executá-las.
 
-O painel já corrige do lado dele: traduz `profiles.id` → `profiles.user_id` e
+O painel corrige do lado dele: traduz `profiles.id` → `profiles.user_id` e
 depois para o UUID do Cloud, que é o que o `createActivity` remapeia de volta.
-**Falta corrigir a `dom-rascunho` e as 102 linhas já gravadas** — edge function
-e UPDATE em produção, os dois fora do que o merge publica.
+
+A `registrarPendencia` passou a fazer a mesma tradução (aceitando os dois lados
+da coluna, para o dia em que um cadastro novo guardar o id de auth) e a usar
+`profiles.full_name` no `assigned_to_name`, como o resto do sistema. Sem perfil
+correspondente a atividade nasce sem dono e escreve no log — melhor na fila do
+escritório que invisível no colo de alguém.
+
+**O merge publicou sozinho — e isso é novidade.** O workflow
+`deploy-edge-externo.yml` falhava desde sempre por falta do secret
+`SUPABASE_PAT`; em 09/09/2026 o secret foi configurado e ele voltou a rodar.
+O run `34403124353` (20:47 UTC) deployou esta correção em 16 s, sem nenhuma
+ação manual, e a pendência criada 20:48 já nasceu com o código novo — o nome
+saiu como "Keliane Sousa Amorim Araújo" (`profiles.full_name`) em vez de
+"Keliane" (`dom_atendentes.nome`), que é a assinatura da versão nova.
+
+Continua valendo diferenciar antes de deployar à mão: repo e produção estavam
+idênticos às 17h42 (1.860 linhas, zero diff), e a divergência de 08/09 já
+tinha sido reconciliada.
+
+**As 107 linhas já gravadas foram corrigidas em 09/09/2026** — o UPDATE abaixo,
+rodado depois do deploy para o cron não criar linha errada nova no intervalo:
+
+```sql
+UPDATE lead_activities a
+   SET assigned_to = p.user_id
+  FROM profiles p
+ WHERE a.assigned_to = p.id
+   AND p.id <> p.user_id
+   AND a.action_source = 'dom-rascunho';
+```
+
+Sem FK em `assigned_to` e sem trigger de notificação nessa coluna (só
+`trg_activity_audit`, que guarda o antes/depois e serve de volta). O
+`updated_at` sobe nas linhas tocadas. Todas as 107 eram do mesmo par
+(`744ce99b…` → `5b5ac716…`) e todas estavam abertas.
+
+**Depois:** 108 atividades do `dom-rascunho`, 108 com dono que a tela
+reconhece, 0 com o id errado, 0 sem dono. A 108ª é a que nasceu já certa,
+depois do deploy.
+
+---
+
+## Dinheiro tem dono próprio, e a config do Dom saiu do esconderijo (09/09/2026)
+
+### O atendente do financeiro
+
+O rodízio (`dom_atendentes`) nasceu com três escopos — `reclamacao`,
+`saida_de_grupo`, `geral` — e a `dom-rascunho` pedia sempre `reclamacao`.
+Então pergunta sobre valor caía na mesma fila da desistência e da reclamação.
+Dinheiro é a única família em que responder errado custa dinheiro de verdade, e
+quem responde valor quase nunca é quem acompanha o cliente no grupo.
+
+Agora há o escopo `financeiro` (migration `20260909230000`), e as intenções
+do dinheiro sorteiam nele:
+
+```
+E17  pergunta sobre dinheiro ou prazo ... 18
+E21  pediu dinheiro adiantado ..........  3
+COBRANCA ...............................  2
+                                        ----
+                                          23  de 394  (5,8%)
+```
+
+**Ressalva registrada:** E17 é "dinheiro **ou prazo**", e são 18 dos 23 —
+enquanto o classificador não separar as duas coisas, pergunta de prazo vai
+junto. Decidido com o custo à vista; o conserto é separar a intenção, não
+estreitar a lista.
+
+A lista vive em dois lugares que precisam andar juntos:
+`INTENCOES_DO_DINHEIRO` na `dom-rascunho` (escolhe o escopo do sorteio) e a
+homônima no `AtendenteVirtualPanel` (escolhe o responsável sugerido da
+atividade).
+
+**A ordem da sugestão passou a ser:** atendente do financeiro → acolhedora da
+ficha → responsável processual → rodízio. E o teste do primeiro degrau é pelo
+**escopo da pessoa sorteada**, não pela intenção sozinha: sem ninguém no
+`financeiro`, a `pick_dom_atendente` já cai no `geral`, e aí a atividade
+volta para quem conhece o caso em vez de ir para o plantão.
+
+A tela de atendentes ganhou o seletor de escopo — na linha de cada pessoa (dá
+para trocar sem apagar e recadastrar) e no cadastro. Antes ela gravava
+`'geral'` fixo, o que tornava a coluna `escopo` decorativa.
+
+### A configuração do Dom mudou de lugar
+
+Para mexer no rodízio era preciso: aba **Agentes IA** → achar
+"#DOM-Atendente Processual" entre nove → lápis → aba IA → rolar. A
+configuração do atendente virtual (quais grupos respondem sozinhos, a voz, o
+ritmo, a equipe que recebe as pendências) morava dentro do formulário de
+"editar agente", e o acompanhamento morava em outra aba.
+
+E os dois não são a mesma espécie: `#salariomaternidade`, `#Proc.BPC` e os
+outros são captação por instância; o Dom é o único que responde em grupo de
+caso fechado, com fila, revisão e rodízio.
+
+A aba "Fila do atendente" virou **"Atendente virtual"** e tem as duas metades:
+**como ele trabalha** (recolhido, porque configurar é raro) e **o que ele fez**
+(aberto, porque olhar é diário). O que é igual para todo agente — prompt,
+modelo, variação da escrita, limites de resposta — continua no formulário do
+agente, que é onde faz sentido. O que só existe no Dom saiu de lá.
 
 ---
 

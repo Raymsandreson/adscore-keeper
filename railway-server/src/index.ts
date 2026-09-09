@@ -300,6 +300,22 @@ app.get('/health', (_req, res) => {
       // estar vazia antes de ligar o enforce.
       observado: authStats(),
     },
+    // QUAL conjunto de dados esta em uso, e DE QUAL variavel ele veio.
+    //
+    // O codigo le `META_CAPI_DATASET_ID || FACEBOOK_PIXEL_ID`, e quem edita a
+    // segunda achando que trocou nao troca nada: a primeira tem precedencia e
+    // segue valendo, calada. Id de dataset nao e segredo — token e, e esse nao
+    // aparece aqui.
+    meta_dataset: {
+      em_uso: process.env.META_CAPI_DATASET_ID || process.env.FACEBOOK_PIXEL_ID || null,
+      veio_de: process.env.META_CAPI_DATASET_ID
+        ? 'META_CAPI_DATASET_ID'
+        : process.env.FACEBOOK_PIXEL_ID
+          ? 'FACEBOOK_PIXEL_ID'
+          : 'nenhuma variavel definida',
+      META_CAPI_DATASET_ID: process.env.META_CAPI_DATASET_ID || null,
+      FACEBOOK_PIXEL_ID: process.env.FACEBOOK_PIXEL_ID || null,
+    },
     // Cron da planilha de Lead Ads. `ligado` diz se a env var SHEET_LEAD_SYNC
     // pegou; `execucoes`/`ultima_em` provam que ele roda de verdade.
     sheet_lead_sync: sheetSyncEstado,
