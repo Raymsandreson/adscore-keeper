@@ -3094,3 +3094,40 @@ escrito pela equipe (`origem = 'equipe'`). O que o cliente escreve segue o fluxo
 antigo de sugestão (07/09: `sugerido` / `sem_lead` / `ambiguo_lead` /
 `divergente`, em `pendencias_vinculo`), sem botão. Em 09/09 eram 3 números do
 INSS nessa situação. Não é pendência — é decisão. Não "consertar".
+
+### A coluna Processo vale para todo grupo, e o grupo é o caso na tela (09/09/2026)
+
+**O que o Raym viu.** Na aba Grupos → Auditoria, grupos PREV e LEAD com lead e
+processo cadastrado mostravam "—" na coluna Processo; a coluna "Nº caso"
+ainda aparecia; e só o primeiro processo de cada linha era clicável (os
+outros viravam "+2").
+
+**Causa.** A `vw_grupo_processo_conciliacao` nasceu (07/09) como auditoria dos
+grupos "Caso N" e filtrava `contact_name ~* 'caso'`: 508 dos 6.671 grupos
+tinham linha; o resto lia "—".
+
+**O que mudou.**
+- Migration `20260909040000` (aplicada 09/09 com aval): o filtro de nome saiu.
+  A view cobre todo grupo do índice; `caso_no_nome` fica nulo quando o nome
+  não traz "Caso N", e a sugestão da jurimetria não se aplica. Resultado:
+  750 linhas (292 PREV, 302 CASO/FAMÍLIA, 156 outros), 291 ms.
+- `ContactsListPage` (Grupos/Auditoria): a coluna "Nº caso" (`leads.case_number`)
+  saiu da grade e o rótulo "caso(s) fechado(s)" virou "grupo(s)". O campo
+  continua no lead e no lápis; a checagem de divergência (nº no nome × nº do
+  lead) continua. Cada número da coluna Processo é um chip que abre a ficha
+  do processo por cima da lista (`openProcessoPorCnj`).
+
+**Limite honesto.** Número do INSS que só existe em `inss_admin_processes`
+(sem linha em `lead_processes`) aparece como chip, mas o clique avisa "ainda
+não tem ficha cadastrada". Não há ficha para abrir.
+
+**O que NÃO foi feito (decisão pendente do Raym).** "Caso" continua existindo
+como objeto: 1.983 `legal_cases` vivos, 334 cujo lead não tem grupo nenhum,
+816 grupos com número que não bate com caso algum, 656 processos sem caso, 52
+arquivos do front + 27 funções lendo `legal_cases`. Unificar "grupo = caso" é
+migração de dados em 3 passos (casar caso↔grupo pelo número e listar sobras →
+telas mostram o nome do grupo onde hoje mostram "Caso N" → só depois aposentar
+`legal_cases`/`case_number`), não rename. Não mexer sem o "pode" do passo 1.
+
+Rollback da view: recriar com `where g.contact_name ~* 'caso'` na CTE grupo
+(versão em `20260909030000`, seção 4).

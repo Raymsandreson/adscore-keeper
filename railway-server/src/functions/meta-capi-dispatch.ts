@@ -105,7 +105,10 @@ async function inventario() {
     return (await r.json()) as any;
   };
 
-  const contas = await g('me/adaccounts?fields=id,name,account_status&limit=50');
+  // `timezone_name` nao e enfeite: o `date_preset`/`time_range` do insights usa o
+  // fuso DA CONTA, e o painel agrupa lead por dia UTC. Se os dois diferirem, a
+  // barra de leads e a linha de gasto do grafico falam de janelas diferentes.
+  const contas = await g('me/adaccounts?fields=id,name,account_status,timezone_name,currency&limit=50');
   if (contas?.error) return { error: contas.error.message };
 
   const porPixel: Record<string, { anuncios: number; contas: string[]; eventos: string[] }> = {};
@@ -147,6 +150,7 @@ async function inventario() {
     resultado.push({
       conta: c.name,
       id: c.id,
+      fuso: c.timezone_name || null,
       status_conta: c.account_status,
       conjuntos_total: (ads?.data ?? []).length,
       conjuntos_ativos: ativos.length,
