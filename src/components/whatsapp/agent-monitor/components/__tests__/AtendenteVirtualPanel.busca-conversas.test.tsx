@@ -1,17 +1,21 @@
 /**
- * Aba "Nas conversas" do painel do assessor.
+ * Busca por texto do painel do assessor — o campo único embaixo das abas.
  *
  * Ela responde a uma pergunta diferente da busca por nome de grupo que já
  * existia no painel: aquela procura um grupo para LIGAR o atendente, esta
  * procura o que foi DITO nos grupos que já estão na fila esperando revisão.
  *
  * O que os testes travam:
- *  1. a busca chama a RPC recortada pela fila (`buscar_nas_conversas_da_fila`),
- *     e não uma consulta solta em whatsapp_messages — o recorte é o que deixa
- *     a busca em 200 ms numa tabela de 1,7 milhão de linhas;
- *  2. abaixo de 3 letras não chama nada, para a digitação não virar uma
- *     varredura por tecla;
- *  3. clicar num resultado abre a conversa em painel por cima, sem redirecionar.
+ *  1. o campo está sempre à mão, embaixo da fita de abas — não é preciso
+ *     entrar numa aba de busca para procurar;
+ *  2. a busca chama a RPC recortada pela fila (`buscar_nas_conversas_da_fila`),
+ *     e não uma consulta solta em whatsapp_messages;
+ *  3. abaixo de 3 letras não chama nada;
+ *  4. UMA consulta por termo, não uma por tecla. Em 09/09/2026 digitar
+ *     "imposto de renda" disparou 15 chamadas, todas estouraram o statement
+ *     timeout, e a tela virou uma pilha de erros vermelhos. É o teste que
+ *     impede a volta disso;
+ *  5. clicar num resultado abre a conversa em painel por cima, sem redirecionar.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -51,38 +55,57 @@ vi.mock('@/components/whatsapp/ContagemAteEnvio', () => ({ ContagemAteEnvio: () 
 
 import { AtendenteVirtualPanel } from '../AtendenteVirtualPanel';
 
-async function abrirAba() {
+/** Sem clicar em aba nenhuma: o campo tem que estar na tela assim que ela abre. */
+async function abrirPainel() {
   const user = userEvent.setup();
   render(<AtendenteVirtualPanel />);
-  await user.click(await screen.findByRole('tab', { name: /Nas conversas/i }));
   return { user, campo: await screen.findByPlaceholderText(/Procurar no que foi dito/i) };
 }
 
-describe('Painel do assessor - aba Nas conversas', () => {
+/** A consulta só sai meio segundo depois da última tecla. */
+const ESPERA = { timeout: 3000 };
+
+describe('Painel do assessor - busca nas conversas', () => {
   beforeEach(() => { rpcSpy.mockClear(); abrirConversa.mockClear(); });
 
+  it('o campo fica embaixo das abas, sem precisar entrar numa aba de busca', async () => {
+    await abrirPainel();
+    expect(screen.queryByRole('tab', { name: /Nas conversas/i })).not.toBeInTheDocument();
+  });
+
   it('busca pela RPC recortada pelos grupos da fila', async () => {
-    const { user, campo } = await abrirAba();
+    const { user, campo } = await abrirPainel();
     await user.type(campo, 'pericia');
     await waitFor(() => {
       expect(rpcSpy).toHaveBeenCalledWith('buscar_nas_conversas_da_fila',
         expect.objectContaining({ p_termo: 'pericia' }));
-    });
-    expect(await screen.findByText(/Izolete Muller/)).toBeInTheDocument();
-    expect(await screen.findByText(/nao fazem pericia/)).toBeInTheDocument();
+    }, ESPERA);
+    expect(await screen.findByText(/Izolete Muller/, {}, ESPERA)).toBeInTheDocument();
+    expect(await screen.findByText(/nao fazem pericia/, {}, ESPERA)).toBeInTheDocument();
   });
 
   it('nao chama o banco com menos de 3 letras', async () => {
-    const { user, campo } = await abrirAba();
+    const { user, campo } = await abrirPainel();
     await user.type(campo, 'pe');
     expect(rpcSpy).not.toHaveBeenCalledWith('buscar_nas_conversas_da_fila', expect.anything());
     expect(await screen.findByText(/ao menos 3 letras/i)).toBeInTheDocument();
   });
 
+  it('uma consulta por termo, nao uma por tecla', async () => {
+    const { user, campo } = await abrirPainel();
+    await user.type(campo, 'imposto de renda');
+    await waitFor(() => {
+      expect(rpcSpy).toHaveBeenCalledWith('buscar_nas_conversas_da_fila',
+        expect.objectContaining({ p_termo: 'imposto de renda' }));
+    }, ESPERA);
+    const chamadas = rpcSpy.mock.calls.filter(c => c[0] === 'buscar_nas_conversas_da_fila');
+    expect(chamadas).toHaveLength(1);
+  });
+
   it('clicar no resultado abre a conversa em painel, sem redirecionar', async () => {
-    const { user, campo } = await abrirAba();
+    const { user, campo } = await abrirPainel();
     await user.type(campo, 'pericia');
-    const linha = await screen.findByText(/Izolete Muller/);
+    const linha = await screen.findByText(/Izolete Muller/, {}, ESPERA);
     await user.click(linha);
     expect(abrirConversa).toHaveBeenCalledWith(expect.objectContaining({
       phone: '120363429440654066',
