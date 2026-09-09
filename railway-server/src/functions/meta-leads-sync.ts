@@ -60,16 +60,36 @@ function rotaDoFormulario(nome: string) {
   return ROTAS.find((r) => r.palavras.some((p) => lower.includes(p))) || null;
 }
 
-/** Campo do formulário por nome exato, senão por pedaço do nome. */
-function pegaCampo(campos: Record<string, string>, exatos: string[], pedacos: string[]): string {
+/**
+ * Campo do formulário por nome exato, senão por pedaço — com exclusões.
+ *
+ * A Meta nomeia os campos com UNDERSCORE (`nome_completo`, `phone_number`), e o
+ * mesmo formulário existe em duas línguas: os formulários do Israel usam
+ * `nome_completo`/`telefone`/`cidade`, os do Mateus usam
+ * `full_name`/`phone_number`/`city`. Procurar por "nome completo" com espaço
+ * não casava nenhum dos dois — foi o que descartou 817 leads no primeiro teste.
+ *
+ * `proibidos` existe porque casar frouxo é pior que não casar: o formulário do
+ * BPC tem `qual_o_nome_da_criança_?`, e um match por "nome" traria a criança no
+ * lugar do responsável — dado errado, no campo certo, sem nenhum erro.
+ */
+function pegaCampo(
+  campos: Record<string, string>,
+  exatos: string[],
+  pedacos: string[],
+  proibidos: string[] = [],
+): string {
   for (const e of exatos) if (campos[e]) return campos[e];
   for (const [k, v] of Object.entries(campos)) {
     if (!v) continue;
     const lk = k.toLowerCase();
+    if (proibidos.some((p) => lk.includes(p))) continue;
     if (pedacos.some((p) => lk.includes(p))) return v;
   }
   return '';
 }
+
+const NAO_E_O_TITULAR = ['criança', 'crianca', 'filho', 'filha', 'dependente', 'menor'];
 
 interface LeadDaMeta {
   meta_lead_id: string;
@@ -86,6 +106,7 @@ interface LeadDaMeta {
   ad_name?: string;
   formulario: string;
   operador: string | null;
+  telefone_divergente: boolean;
   respostas: Record<string, string>;
 }
 
@@ -139,17 +160,33 @@ async function leadsDoFormulario(
       for (const f of l.field_data ?? []) {
         campos[String(f.name)] = String((f.values ?? [])[0] ?? '');
       }
-      const telefone = normalizePhone(
-        pegaCampo(campos, ['phone_number'], ['telefone', 'contato', 'whats', 'phone', 'celular']),
+      // Prefilled da Meta primeiro (ela valida o formato), pergunta aberta depois.
+      const telPrefill = normalizePhone(pegaCampo(campos, ['phone_number', 'telefone', 'celular'], []));
+      const telPergunta = normalizePhone(
+        pegaCampo(campos, [], ['contato', 'whats', 'telefone', 'phone', 'celular'], NAO_E_O_TITULAR),
       );
-      const nome = pegaCampo(campos, ['full_name'], ['nome completo', 'seu nome']) || '';
+      const telefone = telPrefill || telPergunta;
+      // Os dois campos existem no mesmo formulário. Quando divergem, a planilha
+      // pode ter gravado um e a API o outro — e aí a mesma pessoa entra duas
+      // vezes, porque a chave de dedup são os 8 últimos dígitos.
+      const telefoneDivergente = Boolean(
+        telPrefill && telPergunta && phoneKey(telPrefill) !== phoneKey(telPergunta),
+      );
+      const nome =
+        pegaCampo(
+          campos,
+          ['full_name', 'nome_completo', 'nome'],
+          ['nome_completo', 'seu_nome', 'nome_do_respons'],
+          NAO_E_O_TITULAR,
+        ) || '';
       out.push({
         meta_lead_id: normalizaLeadIdMeta(l.id),
         criado_em: l.created_time,
         nome,
         telefone,
         email: pegaCampo(campos, ['email'], ['e-mail', 'email']),
-        cidade: pegaCampo(campos, ['city'], ['cidade']),
+        cidade: pegaCampo(campos, ['city', 'cidade'], ['cidade', 'municipio', 'município']),
+        telefone_divergente: telefoneDivergente,
         campaign_id: l.campaign_id,
         campaign_name: l.campaign_name,
         adset_id: l.adset_id,
@@ -222,6 +259,12 @@ export const handler: RequestHandler = async (req, res) => {
       const tokenPagina = tokens.get(f.page_id)!;
       const { leads, paginas, erro } = await leadsDoFormulario(f.id, f.nome, tokenPagina, desdeUnix);
       const validos = leads.filter((l) => l.telefone.length >= 10 && !isJunkName(l.nome));
+      // Formulario que le linha e aproveita ZERO nao e "sem lead novo": e
+      // mapeamento de campo quebrado. Foi assim que os dois formularios do
+      // Israel (817 leads) quase entraram como perda silenciosa. Devolve os
+      // nomes de campo junto, que e o que permite consertar sem adivinhar.
+      const campoQuebrado = leads.length > 0 && validos.length === 0;
+      const camposVistos = Array.from(new Set(leads.flatMap((l) => Object.keys(l.respostas))));
       porFormulario.push({
         formulario: f.nome,
         board: rota.rotulo,
@@ -229,7 +272,14 @@ export const handler: RequestHandler = async (req, res) => {
         lidos: leads.length,
         validos: validos.length,
         descartados_sem_telefone_ou_nome: leads.length - validos.length,
+        telefone_divergente: validos.filter((l) => l.telefone_divergente).length,
         paginas,
+        ...(campoQuebrado
+          ? {
+              ALERTA: 'formulario leu linhas e aproveitou ZERO — mapeamento de campo quebrado',
+              campos_do_formulario: camposVistos,
+            }
+          : {}),
         ...(erro ? { erro } : {}),
         ...(paginas >= TETO_PAGINAS_LEADS ? { aviso: 'teto de paginas atingido: rode de novo' } : {}),
       });
@@ -332,6 +382,8 @@ export const handler: RequestHandler = async (req, res) => {
       // precisa ser lido por gente, não adivinhado por palavra-chave.
       formularios_ignorados: ignorados,
       erros_de_pagina: errosDePagina,
+      // Se isto vier > 0, NAO rodar pra valer: tem formulario perdendo tudo.
+      formularios_com_alerta: porFormulario.filter((f: any) => f.ALERTA).length,
       por_formulario: porFormulario,
       resultados,
       criados: criadosTotal,
