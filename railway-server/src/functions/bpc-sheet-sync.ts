@@ -88,6 +88,8 @@ interface AbaLida {
   brutas: number;
   descartadas_nome: number;
   descartadas_telefone: number;
+  /** Onde nome/telefone aparecem nas linhas descartadas: `nome@20|tel@21|cols=26`. */
+  desalinho: { forma: string; qtd: number }[];
 }
 
 async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: string }): Promise<AbaLida> {
@@ -109,7 +111,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   const json = (await resp.json()) as { values?: any[][] };
   const values: any[][] = json.values || [];
   if (values.length < 2)
-    return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0 };
+    return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0, desalinho: [] };
   const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
 
   const out: ParsedRow[] = [];
@@ -118,6 +120,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   let descNome = 0;
   let descTelefone = 0;
   let brutas = 0;
+  const desalinho: Record<string, number> = {};
   for (let i = 1; i < values.length; i++) {
     const r = values[i];
     if (!r || !r.length) continue;
@@ -128,6 +131,16 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     const name = o['nome_completo'] || o['full_name'] || '';
     if (isJunkName(name)) {
       descNome += 1;
+      // ONDE o dado realmente esta na linha descartada. Sem isto, "sem nome" e
+      // um numero sem acao: pode ser linha vazia de verdade ou coluna trocada.
+      // So indices e contagens — nenhum valor de cliente sai daqui.
+      const iTel = r.findIndex((c: any) => normalizePhone(String(c ?? '')).length >= 12);
+      const iNome = r.findIndex((c: any) => {
+        const v = String(c ?? '').trim();
+        return v.length >= 5 && /^[A-Za-zÀ-ú][A-Za-zÀ-ú .'-]+$/.test(v) && v.includes(' ');
+      });
+      const chave = `nome@${iNome}|tel@${iTel}|cols=${r.length}`;
+      desalinho[chave] = (desalinho[chave] || 0) + 1;
       continue;
     }
     const phone = normalizePhone(rawPhone);
@@ -156,7 +169,18 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
       tab: meta.tab,
     });
   }
-  return { tab: meta.tab, headers, rows: out, brutas, descartadas_nome: descNome, descartadas_telefone: descTelefone };
+  return {
+    tab: meta.tab,
+    headers,
+    rows: out,
+    brutas,
+    descartadas_nome: descNome,
+    descartadas_telefone: descTelefone,
+    desalinho: Object.entries(desalinho)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([forma, qtd]) => ({ forma, qtd })),
+  };
 }
 
 // Garante a definição de um custom field do board (cria se não existir).
@@ -227,7 +251,10 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const sheetRows: ParsedRow[] = [];
   const tabErrors: { tab: string; error: string }[] = [];
   const cabecalhos = new Set<string>();
-  const diagPorAba = new Map<string, { cabecalho: string[]; brutas: number; dn: number; dt: number }>();
+  const diagPorAba = new Map<
+    string,
+    { cabecalho: string[]; brutas: number; dn: number; dt: number; desalinho: { forma: string; qtd: number }[] }
+  >();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
     const results = await Promise.allSettled(chunk.map((t) => fetchTab(spreadsheetId, t)));
@@ -241,6 +268,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
           brutas: r.value.brutas,
           dn: r.value.descartadas_nome,
           dt: r.value.descartadas_telefone,
+          desalinho: r.value.desalinho,
         });
       } else {
         tabErrors.push({ tab: meta.tab, error: String(r.reason?.message || r.reason).slice(0, 200) });
@@ -319,6 +347,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       // 'full_name'/'telefone', a aba nao tem linha de cabecalho e todo o resto
       // e lido deslocado — a uniao em `colunas_da_planilha` esconde isso.
       cabecalho: d?.cabecalho ?? [],
+      desalinho_das_descartadas: d?.desalinho ?? [],
       ...(brutas > 0 && linhas === 0
         ? { ALERTA: 'aba leu linhas e aproveitou ZERO — cabecalho ausente ou coluna com outro nome' }
         : {}),
