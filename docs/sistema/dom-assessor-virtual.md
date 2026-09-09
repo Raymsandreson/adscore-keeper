@@ -2982,10 +2982,14 @@ confirmação nossa.
 gravar (e antes do retorno do modo teste, para quem ajusta prompt ver o efeito
 real):
 
-- família **E**: nenhum valor em dinheiro ou porcentagem sai, nem o que está no
-  contexto;
-- demais intenções: passa só o valor cuja parte inteira aparece no bloco de
-  contexto (`R$ 1.621,00` casa com `1621`); porcentagem por extenso nunca casa;
+- passa o valor cuja parte inteira aparece no bloco de contexto (`R$ 1.621,00`
+  casa com `1621`); porcentagem por extenso nunca casa;
+- **não é "não fale de dinheiro"** (ajuste do Raym, 09/09/2026). A primeira
+  versão barrava qualquer valor quando a pergunta era de dinheiro, e engessava:
+  o Dom não podia nem repetir o que a carta de concessão dizia. Valor lido de
+  peça é fato e sai. O que cai é o deduzido — no caso que motivou o ajuste, um
+  benefício de R$ 1.660 virou "uns 880" por um desconto de Imposto de Renda que
+  não existe nesse benefício, que é isento. O 1.660 passa; o 880 não;
 - ao barrar, o texto do modelo é descartado inteiro, entra
   `RESPOSTA_SEM_VALOR`, e `motivo_revisao` registra o que caiu — a linha vira
   pendência com dono e prazo, como qualquer outra.

@@ -5,6 +5,16 @@ description: Use SEMPRE que um agente de IA for escrever resposta que chega no c
 
 # O agente não inventa fato
 
+**Isto não é "não fale de valores".** Valor que está na peça lida ou na nossa
+base é fato, e o agente pode e deve dizer, com a fonte junto ("na carta de
+concessão está R$ ..."). Esconder fato de quem está esperando dinheiro é o
+outro jeito de errar.
+
+O que não pode é inventar nem DEDUZIR. No caso que originou a regra, o
+benefício era R$ 1.660 e a resposta afirmou que o cliente receberia 880 e pouco
+"por causa do desconto de Imposto de Renda" — num benefício isento. O 1.660
+estava na peça e podia ser dito; o 880 saiu de uma conta que ninguém fez.
+
 Duas leis, as duas absolutas:
 
 1. **Fato tem que estar no contexto.** O que não está no bloco de andamento, na
@@ -25,9 +35,11 @@ invenção de fato sensível, escreva a trava em código; reforçar o texto do p
 é escrever a mesma regra em letra maior.
 
 A trava que existe: `dom-rascunho` → `valoresSemLastro()`, aplicada antes de
-gravar o rascunho. O texto barrado é descartado inteiro (tirar só o número
-deixa de pé a mesma invenção), e o caso vira pendência com dono — quem responde
-valor é gente, com a peça na mão.
+gravar o rascunho. Ela compara cada valor da resposta com o bloco de contexto:
+o que está lá passa, o que não está derruba o rascunho. O texto é descartado
+inteiro, e não só o número — "com o desconto o senhor recebe ___" sem o número
+continua sendo a mesma invenção. O caso vira pendência com dono, e quem
+responde o que faltou é gente, com a peça na mão.
 
 Detalhe do incidente e da verificação: `docs/sistema/dom-assessor-virtual.md`,
 seção "Valor inventado não vira rascunho (08/09/2026)".

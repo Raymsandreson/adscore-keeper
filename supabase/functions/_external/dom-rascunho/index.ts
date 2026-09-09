@@ -558,6 +558,10 @@ async function classificar(pergunta: string, ultimasTrocas: string) {
 // assim mesmo, em 3 dos 4 rascunhos daquela tarde. Por isso a trava está aqui,
 // em código: prompt é pedido, isto é impedimento.
 //
+// O QUE ELA NÃO FAZ: proibir o agente de falar de dinheiro. Valor que está na
+// peça lida ou na nossa base é fato, e o cliente tem direito de ouvir. A trava
+// separa o que foi LIDO do que foi DEDUZIDO — só o segundo cai.
+//
 // Isto NÃO é filtro de tela. O número não é escondido de ninguém: o texto do
 // modelo é descartado ANTES de virar rascunho, o motivo da fila diz o que foi
 // barrado, e o caso segue pela esteira que já existe — pendência com dono e
@@ -595,20 +599,24 @@ function valoresCitados(texto: string): { texto: string; chave: string }[] {
   return achados;
 }
 
-/** Os valores da resposta que NÃO têm lastro. Devolve vazio quando está tudo
- *  conferido — e é vazio na esmagadora maioria das respostas, que não falam de
- *  dinheiro.
+/** Os valores da resposta que NÃO têm lastro: os que não aparecem no bloco de
+ *  contexto, que é o que veio da nossa base e das peças já lidas. Devolve vazio
+ *  quando está tudo conferido.
  *
- *  Família E (dinheiro, prazo, reclamação) é o caso duro: ali NENHUM valor pode
- *  sair, nem um que esteja no contexto. Quem responde valor é gente, e essa
- *  conversa já está indo para um atendente de qualquer jeito.
+ *  A REGRA NÃO É "NÃO FALE DE DINHEIRO" (Raym, 09/09/2026). Valor que está na
+ *  peça é fato, e esconder fato do cliente é o outro erro. A primeira versão
+ *  desta função barrava QUALQUER valor quando a pergunta era de dinheiro, e
+ *  isso engessava o agente: ele não podia nem repetir o que a carta de
+ *  concessão dizia.
  *
- *  Nas outras intenções passa o valor que aparece no bloco de contexto — que é
- *  o que veio da nossa base e das peças já lidas. */
-function valoresSemLastro(resposta: string, blocos: string, familiaE: boolean): string[] {
+ *  O que ele não pode é INVENTAR ou DEDUZIR. No caso que originou a trava, o
+ *  benefício era de R$ 1.660 e a resposta afirmou que o cliente receberia 880 e
+ *  pouco "por causa do desconto de Imposto de Renda" — num benefício isento. O
+ *  1.660 estava na peça e podia ser dito; o 880 não existia em lugar nenhum.
+ *  É esse segundo que esta função pega. */
+function valoresSemLastro(resposta: string, blocos: string): string[] {
   const citados = valoresCitados(resposta);
   if (citados.length === 0) return [];
-  if (familiaE) return citados.map((c) => c.texto);
 
   const contexto = juntaMilhar(blocos);
   return citados
@@ -636,23 +644,28 @@ function instrucaoDaIntencao(cod: string, panorama = false): string {
       "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
       "O cliente perguntou de DINHEIRO ou PRAZO do caso dele: quanto vai receber,",
       "quanto já é dele, quanto o escritório fica, quando cai.",
-      "Responda em duas ou três frases: reconheça a dúvida pelo nome que ele deu,",
-      "diga que a equipe vai conferir os valores e falar com ele, e pare aí.",
+      "Responda em duas ou três frases, reconhecendo a dúvida pelo nome que ele deu.",
       "",
-      "É PROIBIDO, sem exceção:",
-      "  · escrever qualquer valor em dinheiro ou qualquer porcentagem;",
-      "  · repetir um número que o PRÓPRIO CLIENTE disse. O que ele mandou é o que",
-      "    ele entendeu, não é fato conferido — repetir de volta transforma a dúvida",
-      "    dele em confirmação nossa;",
-      "  · explicar de onde vem desconto, o que é bruto e o que é líquido, ou citar",
-      "    Imposto de Renda, contribuição ou qualquer tributo. Você NÃO leu o",
-      "    contracheque nem a carta de concessão dele, e o que \"geralmente acontece\"",
-      "    no INSS não é o que aconteceu com ele;",
-      "  · dizer o que está no contrato ou na procuração dele. Você não leu esses",
-      "    documentos.",
+      "VALOR QUE ESTÁ NO BLOCO DE ANDAMENTO VOCÊ PODE DIZER. Ele foi lido de uma",
+      "peça ou veio da nossa base, é fato, e esconder fato de quem está esperando",
+      "dinheiro é o outro jeito de errar. Diga o valor e diga de onde ele saiu",
+      "(\"na carta de concessão está R$ ...\").",
       "",
-      "Se o cliente citou um valor, trate como PERGUNTA, não como dado: \"sobre esse",
-      "valor que a senhora viu na carta, a equipe vai conferir e te explicar\".",
+      "O QUE É PROIBIDO, sem exceção:",
+      "  · INVENTAR ou DEDUZIR valor. Nada de calcular o líquido a partir do bruto,",
+      "    estimar quanto sobra, ou dizer quanto ele vai receber por mês. Se a conta",
+      "    não está escrita no bloco de andamento, ela não existe;",
+      "  · explicar de onde viria um desconto, o que é bruto e o que é líquido, ou",
+      "    citar Imposto de Renda, contribuição ou qualquer tributo. Você não leu o",
+      "    contracheque dele, e há benefício que é ISENTO — o que \"geralmente",
+      "    acontece\" no INSS não é o que aconteceu com ele;",
+      "  · repetir como FATO um número que o próprio cliente disse. O que ele mandou",
+      "    é o que ele entendeu, e ele está perguntando porque não tem certeza;",
+      "  · dizer o que está no contrato ou na procuração dele, incluindo a",
+      "    porcentagem do escritório. Você não leu esses documentos.",
+      "",
+      "Quando o número que ele quer não está no bloco, a resposta é dizer que a",
+      "equipe vai conferir — não é preencher com o que costuma ser verdade.",
       "=== FIM ===",
     ].join("\n");
   }
@@ -1560,7 +1573,7 @@ Deno.serve(async (req) => {
       // A TRAVA DO VALOR — vem ANTES do modo teste de propósito: quem está
       // ajustando o prompt precisa ver o que a trava faria de verdade, senão
       // testa um texto que nunca sairia assim.
-      const semLastro = valoresSemLastro(resposta, String(domCtx.blocos || ""), grupoIntencao === "E");
+      const semLastro = valoresSemLastro(resposta, String(domCtx.blocos || ""));
       if (semLastro.length > 0) {
         // O texto inteiro cai, não só o número. Tirar "R$ 1.621,00" da frase
         // "o valor de R$ 1.621,00 é o valor bruto" deixaria de pé a afirmação
