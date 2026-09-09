@@ -20,6 +20,7 @@ import { db } from '@/integrations/supabase';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RefreshCw, FileText, Radio, AlertTriangle, Mail, ChevronDown, ChevronRight } from 'lucide-react';
+import { EscavadorSaldoCard } from './EscavadorSaldoCard';
 
 const CHAVE_ABERTO = 'jm.captura-status.aberto';
 
@@ -150,6 +151,8 @@ export function CapturaStatusPanel() {
 
       {aberto && (
       <div className="mt-3 space-y-3">
+      {/* O saldo antes das filas: é ele que decide se as filas vão andar. */}
+      <EscavadorSaldoCard />
       {linhas.map((l) => {
         const emAndamento = l.na_fila > 0 || l.em_andamento > 0;
         return (

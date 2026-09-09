@@ -457,6 +457,9 @@ export function ContactsListPage() {
   });
   /** group_jid → processo (ver GrupoProcesso). Vazio até a aba Grupos abrir. */
   const [grupoProcesso, setGrupoProcesso] = useState<Map<string, GrupoProcesso>>(new Map());
+  /** Sobe a cada decisão nas filas: a coluna Processo recarrega em vez de ficar
+   *  com o mapa velho (09/09/2026: o vinculador ligou o processo, a tela seguiu "—"). */
+  const [versaoProcessos, setVersaoProcessos] = useState(0);
   /** Confirmação de "cadastrar a ficha deste processo" — nunca automático. */
   const [vincProcesso, setVincProcesso] = useState<{
     groupJid: string; groupName: string | null; leadId: string; cnj: string; detalhe: string | null;
@@ -475,7 +478,10 @@ export function ContactsListPage() {
   // linhas (uma por grupo com "Caso N" no nome), não vale carregar junto com a
   // lista de contatos. A view já entrega o grão certo — um grupo por linha.
   useEffect(() => {
-    if (activeTab !== 'groups' || grupoProcesso.size > 0) return;
+    // Recarrega toda vez que a aba abre e a cada decisão nas filas. Antes só
+    // carregava uma vez por sessão (guardado em `size > 0`): o banco mudava
+    // (vinculador, cron do Escavador, 1 clique) e a coluna ficava no "—" antigo.
+    if (activeTab !== 'groups') return;
     let cancelado = false;
     (async () => {
       try {
@@ -491,7 +497,7 @@ export function ContactsListPage() {
       }
     })();
     return () => { cancelado = true; };
-  }, [activeTab, grupoProcesso.size]);
+  }, [activeTab, versaoProcessos]);
 
   // Quantas citações esperam decisão. Só a contagem — a lista mora no Sheet.
   useEffect(() => {
@@ -3448,12 +3454,12 @@ export function ContactsListPage() {
       <FilaProcessosCitadosSheet
         open={filaAberta}
         onOpenChange={setFilaAberta}
-        onResolvido={() => setFilaCitacoes(n => Math.max(0, n - 1))}
+        onResolvido={() => { setFilaCitacoes(n => Math.max(0, n - 1)); setVersaoProcessos(v => v + 1); }}
       />
       <FilaCasoGrupoSheet
         open={conciliacaoAberta}
         onOpenChange={setConciliacaoAberta}
-        onResolvido={(q) => setConciliacaoPendentes(n => Math.max(0, n - q))}
+        onResolvido={(q) => { setConciliacaoPendentes(n => Math.max(0, n - q)); setVersaoProcessos(v => v + 1); }}
       />
       <ContactDetailSheet
         contact={detailContact}
