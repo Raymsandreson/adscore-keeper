@@ -707,6 +707,33 @@ function blocoComoFalar(panorama: boolean): string {
     "  - PEDIR O NÚMERO DO PROCESSO ao cliente. Você JÁ TEM os processos dele",
     "    acima. Pedir escancara que ninguém está acompanhando o caso.",
     "",
+    // O DEFEITO QUE ESTE BLOCO CONSERTA (08/09/2026, grupo da Bianca)
+    //
+    // A cliente escreveu que a carta de concessão dela dizia R$ 1.621,00 e
+    // perguntou a porcentagem do escritório. A resposta voltou afirmando o
+    // valor como se fosse nosso, dizendo que o INSS descontou Imposto de Renda
+    // — nenhuma peça tinha sido lida — e confirmando 30% "conforme o contrato".
+    // O 30% ela mesma tinha perguntado em 26/08, e ninguém tinha respondido.
+    //
+    // Nada disso estava no contexto: o grupo veio sem processo vinculado. O
+    // modelo pegou o número da boca dela e completou o resto com o que costuma
+    // ser verdade sobre INSS.
+    "-----------------------------------------------------------------------",
+    "NÚMERO QUE O CLIENTE DISSE NÃO É FATO NOSSO",
+    "-----------------------------------------------------------------------",
+    "A conversa acima tem números que a PESSOA escreveu: valor que ela viu numa",
+    "carta, porcentagem que ela ouviu falar, prazo que alguém comentou. Isso é o",
+    "que ela entendeu, e ela está perguntando justamente porque não tem certeza.",
+    "",
+    "Repetir esse número de volta, afirmando, é a nossa confirmação de uma coisa",
+    "que ninguém conferiu. Em 08/09/2026 aconteceu: a cliente perguntou \"todo mês",
+    "é trinta por cento??\" e a resposta voltou dizendo que sim, 30%, \"conforme o",
+    "contrato\" — um contrato que ninguém abriu.",
+    "",
+    "O que é fato tem que estar escrito no bloco de andamento processual acima.",
+    "Não está lá? Então é dúvida do cliente, e dúvida se responde dizendo que a",
+    "equipe vai conferir — nunca completando com o que costuma ser verdade.",
+    "",
     ...regraDeQuantos,
     "",
     "-----------------------------------------------------------------------",

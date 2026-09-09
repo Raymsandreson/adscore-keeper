@@ -541,15 +541,121 @@ async function classificar(pergunta: string, ultimasTrocas: string) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// VALOR QUE NÃO É NOSSO NÃO SAI DAQUI
+//
+// Em 08/09/2026, no grupo da Bianca, o Dom escreveu que o INSS descontou
+// IMPOSTO DE RENDA do benefício dela e que o escritório cobra 30% "conforme o
+// contrato que a gente assinou". Nada disso existia: o contexto daquele
+// rascunho veio com `processos: []` e `requerimentos_inss: []`, nenhuma peça
+// lida, e as 513 mensagens do grupo não têm a palavra "imposto" uma única vez.
+// O modelo completou a lacuna com o que COSTUMA ser verdade sobre INSS. O 30%
+// foi pior: ele pegou uma PERGUNTA que a própria cliente tinha feito em 26/08
+// ("Todo mês e trinta por cento??") e devolveu como confirmação nossa.
+//
+// A instrução já proibia. O bloco da família E diz "sem número, sem valor" e é
+// o ÚLTIMO do system prompt, a posição mais forte. O modelo passou por cima
+// assim mesmo, em 3 dos 4 rascunhos daquela tarde. Por isso a trava está aqui,
+// em código: prompt é pedido, isto é impedimento.
+//
+// Isto NÃO é filtro de tela. O número não é escondido de ninguém: o texto do
+// modelo é descartado ANTES de virar rascunho, o motivo da fila diz o que foi
+// barrado, e o caso segue pela esteira que já existe — pendência com dono e
+// prazo, a equipe confere o valor na peça e responde com o número certo.
+// ---------------------------------------------------------------------------
+
+/** "1.621" e "1 621" viram "1621" — só o ponto/espaço que separa milhar. */
+function juntaMilhar(s: string): string {
+  return s.replace(/(\d)[.\u00a0 ](?=\d{3}(?!\d))/g, "$1");
+}
+
+/** Chave de comparação de um valor: a parte inteira, sem separador nem centavo.
+ *  "R$ 1.621,00", "1.621" e "1621" devolvem todos "1621". */
+function chaveDoValor(v: string): string {
+  const m = juntaMilhar(v).match(/\d+/);
+  return m ? String(Number(m[0])) : "";
+}
+
+/** Dinheiro e porcentagem citados num texto. Porcentagem POR EXTENSO entra com
+ *  chave vazia de propósito: "trinta por cento" não tem dígito para conferir,
+ *  então nunca casa com o contexto e sempre cai como não conferida. */
+function valoresCitados(texto: string): { texto: string; chave: string }[] {
+  const achados: { texto: string; chave: string }[] = [];
+  const guarda = (bruto: string, chave: string) => {
+    // Tira a pontuação da frase que a captura levou junto: "R$ 1.443." vira
+    // "R$ 1.443". Só afeta o que a pessoa lê no motivo — a chave já foi tirada
+    // do primeiro número, sem depender disto.
+    const limpo = bruto.trim().replace(/[.,;:]+$/, "");
+    if (limpo && !achados.some((a) => a.texto === limpo)) achados.push({ texto: limpo, chave });
+  };
+  for (const m of texto.matchAll(/R\$\s*\d[\d.,]*/gi)) guarda(m[0], chaveDoValor(m[0]));
+  for (const m of texto.matchAll(/\d[\d.,]*\s*rea(?:l|is)\b/gi)) guarda(m[0], chaveDoValor(m[0]));
+  for (const m of texto.matchAll(/\d[\d.,]*\s*%/g)) guarda(m[0], chaveDoValor(m[0]));
+  for (const m of texto.matchAll(/\S+\s+por\s+cento\b/gi)) guarda(m[0], "");
+  return achados;
+}
+
+/** Os valores da resposta que NÃO têm lastro. Devolve vazio quando está tudo
+ *  conferido — e é vazio na esmagadora maioria das respostas, que não falam de
+ *  dinheiro.
+ *
+ *  Família E (dinheiro, prazo, reclamação) é o caso duro: ali NENHUM valor pode
+ *  sair, nem um que esteja no contexto. Quem responde valor é gente, e essa
+ *  conversa já está indo para um atendente de qualquer jeito.
+ *
+ *  Nas outras intenções passa o valor que aparece no bloco de contexto — que é
+ *  o que veio da nossa base e das peças já lidas. */
+function valoresSemLastro(resposta: string, blocos: string, familiaE: boolean): string[] {
+  const citados = valoresCitados(resposta);
+  if (citados.length === 0) return [];
+  if (familiaE) return citados.map((c) => c.texto);
+
+  const contexto = juntaMilhar(blocos);
+  return citados
+    .filter((c) => !c.chave || !new RegExp(`(?<!\\d)${c.chave}(?!\\d)`).test(contexto))
+    .map((c) => c.texto);
+}
+
+/** O que vai para o cliente quando o valor foi barrado. Não pede desculpa e não
+ *  promete prazo: diz que a conta certa vem de gente olhando a peça. */
+const RESPOSTA_SEM_VALOR = "A gente entende a sua dúvida sobre os valores, e essa é uma " +
+  "pergunta que merece o número certo, não um mais ou menos. Já estou acionando a equipe " +
+  "pra conferir isso na sua documentação e te responder aqui no grupo.";
+
 // Cada grupo de intenção manda uma ordem diferente para o modelo. É isto que
 // impede o relatório de processo de aparecer em cima de um desabafo.
 function instrucaoDaIntencao(cod: string, panorama = false): string {
   const g = cod.charAt(0);
 
-  // Estes três são da família E (vão para humano de qualquer jeito), mas a
+  // Estes quatro são da família E (vão para humano de qualquer jeito), mas a
   // frase que o Dom escreve enquanto o humano não chega é diferente em cada um
-  // — e no E20 e no E21 a frase errada custa caro. Por isso vêm ANTES do bloco
-  // genérico de E, que fala em "reclamação, dinheiro, prazo".
+  // — e no E17, no E20 e no E21 a frase errada custa caro. Por isso vêm ANTES
+  // do bloco genérico de E, que fala em "reclamação, dinheiro, prazo".
+  if (cod === "E17") {
+    return [
+      "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
+      "O cliente perguntou de DINHEIRO ou PRAZO do caso dele: quanto vai receber,",
+      "quanto já é dele, quanto o escritório fica, quando cai.",
+      "Responda em duas ou três frases: reconheça a dúvida pelo nome que ele deu,",
+      "diga que a equipe vai conferir os valores e falar com ele, e pare aí.",
+      "",
+      "É PROIBIDO, sem exceção:",
+      "  · escrever qualquer valor em dinheiro ou qualquer porcentagem;",
+      "  · repetir um número que o PRÓPRIO CLIENTE disse. O que ele mandou é o que",
+      "    ele entendeu, não é fato conferido — repetir de volta transforma a dúvida",
+      "    dele em confirmação nossa;",
+      "  · explicar de onde vem desconto, o que é bruto e o que é líquido, ou citar",
+      "    Imposto de Renda, contribuição ou qualquer tributo. Você NÃO leu o",
+      "    contracheque nem a carta de concessão dele, e o que \"geralmente acontece\"",
+      "    no INSS não é o que aconteceu com ele;",
+      "  · dizer o que está no contrato ou na procuração dele. Você não leu esses",
+      "    documentos.",
+      "",
+      "Se o cliente citou um valor, trate como PERGUNTA, não como dado: \"sobre esse",
+      "valor que a senhora viu na carta, a equipe vai conferir e te explicar\".",
+      "=== FIM ===",
+    ].join("\n");
+  }
   if (cod === "E20") {
     return [
       "=== O QUE ESTA MENSAGEM PEDE DE VOCÊ ===",
@@ -1451,6 +1557,22 @@ Deno.serve(async (req) => {
         })
         .replace(/\n{3,}/g, "\n\n").trim();
 
+      // A TRAVA DO VALOR — vem ANTES do modo teste de propósito: quem está
+      // ajustando o prompt precisa ver o que a trava faria de verdade, senão
+      // testa um texto que nunca sairia assim.
+      const semLastro = valoresSemLastro(resposta, String(domCtx.blocos || ""), grupoIntencao === "E");
+      if (semLastro.length > 0) {
+        // O texto inteiro cai, não só o número. Tirar "R$ 1.621,00" da frase
+        // "o valor de R$ 1.621,00 é o valor bruto" deixaria de pé a afirmação
+        // sobre bruto e desconto, que é a mesma invenção sem o número.
+        console.log(
+          `[dom-rascunho] valor sem lastro grupo=${g.group_jid} intencao=${cls.intencao} ` +
+          `barrados=${semLastro.length}`,
+        );
+        resposta = RESPOSTA_SEM_VALOR;
+        motivo = `valor sem lastro no processo (${semLastro.join(", ")}) — texto do modelo descartado`;
+      }
+
       // Fim do modo teste: nada entra na fila, nada é agendado, nada é falado.
       if (teste) {
         const c: any = domCtx.contexto ?? {};
@@ -1463,6 +1585,7 @@ Deno.serve(async (req) => {
           conversa_encerrada: cls.conversa_encerrada ?? null,
           panorama: cls.quer_panorama === true,
           precisa_revisao: motivo,
+          valores_barrados: semLastro,
           resposta,
           gravou: false,
         });

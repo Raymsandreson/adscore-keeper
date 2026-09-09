@@ -2953,3 +2953,75 @@ Testes: `src/components/contacts/__tests__/FilaProcessosCitadosSheet.test.tsx`
 (4). Migration `20260909020000`. Rollback: status de volta a `eco_da_casa`;
 pontes pelo log; processos cadastrados aqui têm título "Citado no grupo …"
 quando não vieram da jurimetria.
+
+## Valor inventado não vira rascunho (08/09/2026)
+
+No grupo `✅PREV 1028| BIANCA/ANUNCIO (AUX. MATERNIDADE)` o Dom escreveu que o
+INSS descontou **Imposto de Renda** do benefício da cliente e que o escritório
+cobra **30% "conforme o contrato que a gente assinou"**. As duas coisas eram
+invenção.
+
+Rastreadas as cinco fontes do system prompt daquele rascunho
+(`dom_respostas_pendentes.id = 69132b77-c9c4-4a65-8992-bcd192bab4af`), nenhuma
+tinha "imposto": o `prompt_instructions` do agente (4.867 chars), o
+`dom-contexto` no ar, o `contexto_usado` gravado (`processos: []`,
+`requerimentos_inss: []`, nenhuma peça lida), as 513 mensagens do grupo, e os
+exemplos (`dom_qa_pares` do grupo: zero). O IR saiu do treinamento do Gemini. O
+30% saiu de uma pergunta que a própria cliente fez em 26/08 ("Todo mês e trinta
+por cento??"), sem resposta da equipe — o modelo devolveu a dúvida dela como
+confirmação nossa.
+
+**A instrução já proibia e não bastou.** O bloco da família E de
+`instrucaoDaIntencao()` diz "sem prometer prazo, sem número, sem valor" e é o
+último do system prompt, a posição mais forte. O modelo passou por cima em 3 dos
+4 rascunhos daquela tarde. Por isso a trava principal é em código.
+
+### A trava
+
+`dom-rascunho` → `valoresSemLastro()`, aplicada depois de gerar e antes de
+gravar (e antes do retorno do modo teste, para quem ajusta prompt ver o efeito
+real):
+
+- família **E**: nenhum valor em dinheiro ou porcentagem sai, nem o que está no
+  contexto;
+- demais intenções: passa só o valor cuja parte inteira aparece no bloco de
+  contexto (`R$ 1.621,00` casa com `1621`); porcentagem por extenso nunca casa;
+- ao barrar, o texto do modelo é descartado inteiro, entra
+  `RESPOSTA_SEM_VALOR`, e `motivo_revisao` registra o que caiu — a linha vira
+  pendência com dono e prazo, como qualquer outra.
+
+`dom-contexto` ganhou o bloco **"NÚMERO QUE O CLIENTE DISSE NÃO É FATO NOSSO"**
+no `blocoComoFalar`, que vale para toda resposta e não só para E17. E o E17
+saiu do genérico da família E e tem instrução própria, proibindo citar tributo,
+bruto/líquido e conteúdo de contrato ou procuração.
+
+Regra permanente na skill `valor-sem-lastro-nao-sai`.
+
+### Verificação
+
+Funções extraídas do próprio arquivo, compiladas e rodadas contra os quatro
+textos reais que saíram para a Bianca: os quatro são barrados; uma resposta que
+cita valor presente na peça lida passa; "faz 10 dias" e "28/08/2026" não são
+confundidos com dinheiro.
+
+### Estado: no git, NÃO em produção
+
+Publicado em `main` (`902b4c0`) com build, `tsc --noEmit` e 1.930 testes verdes.
+O deploy **não aconteceu**: o run 13 do `deploy-edge-externo.yml` falhou às
+23:16 com `SUPABASE_PAT:` vazio, igual aos 12 anteriores. Enquanto o secret não
+existir de fato no repositório, o código está consertado no git e a função no ar
+segue a antiga — a divergência que aquele workflow foi escrito para acabar.
+
+Para deployar depois que o secret existir: `workflow_dispatch` com
+`slugs = "dom-rascunho dom-contexto"`. Não precisa de commit novo.
+
+### Dois itens em aberto que apareceram nesta investigação
+
+1. **Escala da temperatura.** `dom-rascunho` faz `(temperature ?? 70) / 100` e o
+   banco guarda `0.7` → temperatura efetiva **0,007**. Duas telas gravam na
+   mesma coluna em escalas diferentes: `WhatsAppAIAgents.tsx:577` (0–100) e
+   `WhatsAppCommandConfig.tsx:1292` (0–1).
+2. **`dom-contexto` com `verify_jwt = false` e sem validação compensatória.**
+   Ele lê `group_jid` do corpo e devolve andamento processual, com CORS `*`.
+   Quem souber a URL puxa dado de cliente sem credencial. O `dom-rascunho` já
+   chama com SERVICE_ROLE_KEY, então dá para fechar sem quebrar.
