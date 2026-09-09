@@ -1286,8 +1286,15 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
                       </SelectContent>
                     </Select>
                   </div>
+                  {/* O NÚMERO DAQUI É O QUE O AGENTE USA — passou a ser, em 09/09/2026.
+                      Até essa data a `dom-rascunho` dividia este valor por 100, então o
+                      Dom rodava a 0,007 enquanto a tela dizia 0,7: mexer no controle não
+                      mudava nada perceptível. O rótulo dizia só "Temperatura", que não
+                      diz a ninguém o que muda na resposta. */}
                   <div className="space-y-1">
-                    <Label className="text-xs">Temperatura: {form.temperature.toFixed(1)}</Label>
+                    <Label className="text-xs">
+                      Variação da escrita: {form.temperature.toFixed(1).replace('.', ',')}
+                    </Label>
                     <Slider
                       value={[form.temperature]}
                       onValueChange={([v]) => setForm(f => ({ ...f, temperature: v }))}
@@ -1295,7 +1302,17 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
                       className="mt-2"
                     />
                     <p className="text-[10px] text-muted-foreground">
-                      {form.temperature <= 0.3 ? 'Preciso e determinístico' : form.temperature >= 0.8 ? 'Criativo e variado' : 'Balanceado'}
+                      {form.temperature <= 0.3
+                        ? 'Escreve quase sempre do mesmo jeito — a mesma pergunta tende a receber a mesma resposta'
+                        : form.temperature >= 0.8
+                          ? 'Varia bastante a redação — duas respostas para a mesma pergunta saem diferentes'
+                          : 'Varia um pouco a redação, mantendo o mesmo conteúdo'}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Muda só o <strong>jeito de escrever</strong>, não o que ele sabe. Baixar isto
+                      não impede o agente de inventar: em 08/09/2026 ele afirmou um desconto de
+                      Imposto de Renda que não existia, rodando a 0,007. Quem impede invenção é a
+                      trava de valor sem lastro, não este controle.
                     </p>
                   </div>
                 </div>

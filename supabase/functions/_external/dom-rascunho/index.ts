@@ -51,6 +51,49 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+/**
+ * TEMPERATURA — o banco guarda 0 a 1, e este arquivo dividia por 100.
+ *
+ * `(agente.temperature ?? 70) / 100` só faz sentido numa coluna que guarda 0 a
+ * 100. A de `wjia_command_shortcuts` não é: o slider da tela de configuração vai
+ * de 0 a 1 com passo 0,1, o `wjia-agent` lê o mesmo campo e usa DIRETO
+ * (`matchedShortcut.temperature ?? 0.1`), e as 16 linhas da tabela, medidas em
+ * 09/09/2026, vão de 0,2 a 0,7. Não havia ambiguidade de escala: havia um
+ * divisor a mais aqui.
+ *
+ * O efeito: o Dom rodava a 0,007 — praticamente guloso — enquanto a tela dizia
+ * 0,7. Quem mexesse no slider não mudava nada perceptível, porque qualquer
+ * valor daquela faixa dividido por 100 dá quase zero.
+ *
+ * Isto NÃO era a causa do Imposto de Renda inventado. Temperatura baixa não
+ * impede invenção: ela só faz o modelo escolher sempre o caminho mais provável
+ * — e o caminho mais provável ERA a invenção, repetida em 3 dos 4 rascunhos.
+ * Quem impede é a trava do valor sem lastro.
+ *
+ * Fora da faixa não é aceito calado: um 70 gravado na mão viraria 70 no corpo
+ * da chamada, e o Gemini recusa acima de 2. Reescala e diz no log que reescalou.
+ */
+const TEMPERATURA_PADRAO = 0.3;
+
+function temperaturaDoAgente(valor: unknown): number {
+  // Coluna vazia é "ninguém configurou", e cai no padrão. Sem esta linha o
+  // `Number(null)` daria 0 — um valor legítimo da faixa — e uma coluna nula
+  // viraria o agente mais determinístico possível sem ninguém ter pedido.
+  // `0` gravado de propósito continua valendo 0.
+  if (valor === null || valor === undefined || valor === "") return TEMPERATURA_PADRAO;
+  const n = Number(valor);
+  if (!Number.isFinite(n) || n < 0) return TEMPERATURA_PADRAO;
+  if (n <= 1) return n;
+  if (n <= 100) {
+    console.warn(
+      `[dom-rascunho] temperatura ${n} está fora da faixa 0–1 do banco; ` +
+      `usando ${n / 100}. Corrija na tela de configuração do agente.`,
+    );
+    return n / 100;
+  }
+  return TEMPERATURA_PADRAO;
+}
+
 const DOM_AGENT_ID = "d6ad8eee-d6a3-452c-b852-b94ef8dd54bf";
 
 // A JANELA ENTRE ESCREVER E FALAR — E POR QUE ELA ENCOLHE
@@ -1554,7 +1597,7 @@ Deno.serve(async (req) => {
           systemPrompt,
           historico,
           Math.min(Math.max(agente.max_tokens || 1024, 256), 4096),
-          (agente.temperature ?? 70) / 100,
+          temperaturaDoAgente(agente.temperature),
         );
       } catch (e) {
         pulados.push({ grupo: g.group_jid, motivo: `modelo falhou: ${(e as Error).message}` });
