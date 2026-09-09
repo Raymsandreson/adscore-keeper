@@ -354,7 +354,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -412,6 +412,50 @@ export const handler: RequestHandler = async (req, res) => {
     // Lista os conjuntos ATIVOS com o que decide otimizacao, e o dono do
     // dataset. So leitura — serve para saber onde clicar e para conferir que o
     // dataset e do negocio certo antes de liga-lo em campanha que gasta.
+    // Sondagem so-leitura: o que existe de LIGACAO entre pagina e conjunto de
+    // dados. Nao ha um campo unico que responda "esta conectado?", entao aqui se
+    // tenta varios caminhos e se devolve inclusive os que a Meta recusa — o erro
+    // dela tambem e resposta, e melhor mostrar do que supor.
+    if (modo === 'ligacoes') {
+      const g = async (path: string) => {
+        const r = await fetch(
+          `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
+            `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+        );
+        const j: any = await r.json();
+        return j?.error ? { erro: j.error.message, codigo: j.error.code } : j;
+      };
+      const tokens = await tokensDePagina();
+      const gp = async (pageId: string, path: string) => {
+        const t = tokens.get(pageId);
+        if (!t) return { erro: 'sem token desta pagina' };
+        const r = await fetch(
+          `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
+            `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(t)}`,
+        );
+        const j: any = await r.json();
+        return j?.error ? { erro: j.error.message, codigo: j.error.code } : j;
+      };
+
+      const paginas: Record<string, unknown> = {};
+      for (const pageId of tokens.keys()) {
+        paginas[pageId] = {
+          basico: await gp(pageId, `${pageId}?fields=id,name,leadgen_tos_accepted`),
+          apps_inscritos: await gp(pageId, `${pageId}/subscribed_apps?fields=name,subscribed_fields`),
+        };
+      }
+
+      return res.status(200).json({
+        modo: 'ligacoes',
+        dataset: await g(
+          `${CAPI_DATASET_ID}?fields=id,name,is_unavailable,data_use_setting,last_fired_time,creation_time`,
+        ),
+        dataset_contas_compartilhadas: await g(`${CAPI_DATASET_ID}/shared_accounts?fields=id,name`),
+        dataset_paginas: await g(`${CAPI_DATASET_ID}/shared_pages?fields=id,name`),
+        paginas,
+      });
+    }
+
     if (modo === 'conjuntos') {
       const g = async (path: string) => {
         const r = await fetch(
