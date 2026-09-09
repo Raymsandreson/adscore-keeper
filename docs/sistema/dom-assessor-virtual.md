@@ -3216,8 +3216,12 @@ passo casa o que bate e lista o resto com evidência. Não apaga, não renomeia.
   leads 44 · caso_duplicado 26 · lead do caso noutro grupo 12 · caso_sem_lead 8
   · lado caso: 67 + 50 ("grupo ainda LEAD N") + 9.
 - `casar_caso_grupo(grupo?)`: ponte grupo → lead do caso nas classes casáveis
-  (`auto_linked = true`, log `casar_caso_grupo`). Em rollback: 125 pontes,
-  todas viram `casado`. **Ainda não rodou em produção.**
+  (`auto_linked = true`, log `casar_caso_grupo`). **Rodou em 09/09 (15:45 UTC)
+  com aval: 125 pontes, todas viraram `casado`; 928 linhas seguem na fila.**
+  Conferido no Dom: acha o lead pela ponte nos 125; processo em 31, INSS em 3;
+  os outros 91 grupos têm lead sem processo com número (52 leads só com linha
+  administrativa sem número). Vínculo resolvido; cadastro de processo é outra
+  esteira (fila AUTOS / "Atualizar Escavador").
 - `resolver_caso_grupo(grupo, 'ligar_ao_lead_do_caso')`: o 1 clique da fila
   (`auto_linked = false`, log `fila_caso_grupo`). A ponte mais nova vale; a
   antiga fica e o grupo mostra "2 leads" até alguém juntar os leads.

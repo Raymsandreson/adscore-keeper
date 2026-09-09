@@ -50,8 +50,14 @@
 -- 09/09 (explain analyze): 1,67 s, 2.603 linhas. Carrega ao abrir a fila e uma
 -- contagem ao abrir a aba Grupos.
 --
--- ESTADO EM 09/09/2026 (estrutura APLICADA com aval; casar_caso_grupo() ainda
--- NÃO rodou — aguarda o "pode" com a contagem na mão):
+-- ESTADO EM 09/09/2026 (estrutura APLICADA com aval). casar_caso_grupo() RODOU
+-- às 15:45 UTC com aval do Raym: 125 pontes (log casar_caso_grupo = 125, todas
+-- auto_linked, reversíveis pelo delete do rodapé); 928 linhas ficam na fila.
+-- Depois: casado 896, casável 0, nenhuma outra classe mudou. O Dom acha o lead
+-- pela ponte nos 125; traz processo em 31 e INSS em 3 — os outros 91 têm lead
+-- sem processo com número cadastrado (52 leads só com linha administrativa
+-- sem número). Isso é cadastro de processo, não vínculo.
+-- Contagem antes de rodar:
 --   lado grupo (2.477 grupos PREV/CASO/FAMÍLIA com número)
 --     casado 771 · lead_sem_caso 779 · leads_diferentes 272 · grupo_sem_lead 270
 --     grupo_com_varios_leads_sem_caso 101 · casavel_cadastro_bate 99
