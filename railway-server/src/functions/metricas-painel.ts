@@ -203,9 +203,16 @@ export const handler: RequestHandler = async (_req, res) => {
       gerado_em: new Date().toISOString(),
       janela: { de: corte30, ate: hoje },
       investimento: gasto,
+      // PAGO vs TOTAL, sempre os dois. Em 09/09/2026 o card "Leads hoje" dizia
+      // 171 e o gestor de trafego via 80: 99 dos 171 eram `google_alerts`
+      // (noticia raspada, que nao custou anuncio nenhum). Numero de lead total
+      // ao lado do investimento do dia convida a essa leitura errada, e o card
+      // de custo por lead ja usava so os pagos — o painel se contradizia.
       leads: {
         hoje: leadsHoje,
+        pagos_hoje: leadsPagos.filter((l) => diaDoInstante(l.created_at) === hoje).length,
         ultimos_7d: leads7,
+        pagos_7d: pagos7,
         ultimos_30d: leads.length,
         pagos_30d: leadsPagos.length,
         por_fonte: contaPor(leads, (l) => l.source || '(sem origem)').slice(0, 15),
