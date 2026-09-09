@@ -95,6 +95,15 @@ interface GrupoProcesso {
 /** Só os dígitos: CNJ é escrito com e sem pontuação em todo lugar. */
 const soDigitos = (s: string | null | undefined) => (s || '').replace(/\D/g, '');
 
+/**
+ * Identidade de um grupo = só os dígitos do jid. O índice guarda o jid antigo
+ * com traço ("558695590127-1603273064@g.us"), a ponte guarda só dígitos e às
+ * vezes sem "@g.us"; colar "@g.us" no fim não iguala os dois. Sem isto o mesmo
+ * grupo virava duas linhas e a coluna Processo casava só com uma (09/09/2026).
+ * É o mesmo que jid_chave() no banco.
+ */
+const chaveJid = (jid: unknown): string => String(jid || '').split('@')[0].replace(/\D/g, '');
+
 export function ContactsListPage() {
   const navigate = useNavigate();
   const [chatPreview, setChatPreview] = useState<{ phone: string; instance_name: string | null; contact_name: string | null } | null>(null);
@@ -490,7 +499,7 @@ export function ContactsListPage() {
           .from('vw_grupo_processo_conciliacao')
           .select('group_jid, cnj_do_lead, cnj_sugerido, sugestao_detalhe, qtd_sugerida, so_na_jurimetria');
         if (cancelado || error || !data) return;
-        setGrupoProcesso(new Map((data as GrupoProcesso[]).map(r => [r.group_jid, r])));
+        setGrupoProcesso(new Map((data as GrupoProcesso[]).map(r => [chaveJid(r.group_jid), r])));
       } catch (e) {
         // Falha aqui não pode derrubar a aba: a coluna simplesmente fica vazia.
         console.error('[ContactsListPage] conciliação grupo→processo falhou', e);
@@ -511,11 +520,14 @@ export function ContactsListPage() {
           .select('cnj', { count: 'exact', head: true });
         if (!cancelado) setFilaCitacoes(count || 0);
         // 'casado' e 'lead_sem_caso' não são pendência sob "o grupo é o caso".
-        const { count: pend } = await (db as any)
+        const { count: pend, error: errPend } = await (db as any)
           .from('vw_caso_grupo_conciliacao')
           .select('chave_txt', { count: 'exact', head: true })
           .not('classe', 'in', '(casado,lead_sem_caso)');
-        if (!cancelado) setConciliacaoPendentes(pend || 0);
+        if (errPend) console.error('[ContactsListPage] contagem caso↔grupo falhou', errPend);
+        // -1 = não consegui contar: o botão aparece mesmo assim, sem número. A
+        // entrada da fila não pode sumir porque uma contagem falhou.
+        if (!cancelado) setConciliacaoPendentes(errPend ? -1 : (pend || 0));
       } catch {
         // Sem contagem o botão simplesmente não aparece.
       }
@@ -672,8 +684,9 @@ export function ContactsListPage() {
         if (error) { console.error('fetchGroups index page error:', error); break; }
         const rows = (page as any[]) || [];
         for (const r of rows) {
-          if (!groupMap.has(r.group_jid)) {
-          groupMap.set(r.group_jid, {
+          const k = chaveJid(r.group_jid);
+          if (!groupMap.has(k)) {
+          groupMap.set(k, {
               group_jid: r.group_jid,
               group_name: r.contact_name ? String(r.contact_name).trim() : '',
               lead_name: '',
@@ -715,7 +728,7 @@ export function ContactsListPage() {
           // Sem normalizar, o mesmo grupo aparecia duplicado na listagem.
           const rawJid = String(g.group_jid || '');
           const normJid = rawJid.includes('@') ? rawJid : `${rawJid}@g.us`;
-          const existing = groupMap.get(normJid);
+          const existing = groupMap.get(chaveJid(rawJid));
           if (existing) {
             if (!existing.group_name && g.group_name) existing.group_name = g.group_name;
             if (!existing.lead_name && lead?.lead_name) existing.lead_name = lead.lead_name;
@@ -727,7 +740,7 @@ export function ContactsListPage() {
             if (!existing.product_service_id && lead?.product_service_id) existing.product_service_id = lead.product_service_id;
             if (!existing.case_number && lead?.case_number) existing.case_number = String(lead.case_number);
           } else {
-            groupMap.set(normJid, {
+            groupMap.set(chaveJid(rawJid), {
               group_jid: normJid,
               group_name: g.group_name || '',
               lead_name: lead?.lead_name || '',
@@ -854,7 +867,7 @@ export function ContactsListPage() {
             }
           });
           nameByJid.forEach((name, jid) => {
-            const g = groupMap.get(jid);
+            const g = groupMap.get(chaveJid(jid));
             if (g) g.group_name = name;
           });
         }
@@ -877,7 +890,7 @@ export function ContactsListPage() {
         if (error) { console.error('fetchGroups counts page error:', error); break; }
         const rows = (page as any[]) || [];
         for (const c of rows) {
-          const g = groupMap.get(c.whatsapp_group_id as string);
+          const g = groupMap.get(chaveJid(c.whatsapp_group_id));
           if (g) g.contact_count++;
         }
         if (rows.length < pageSize) break;
@@ -938,7 +951,7 @@ export function ContactsListPage() {
       // Híbrido: 1) tenta resolver AO VIVO pelo mapa de instâncias atuais
       //          2) cai no creator_instance_name gravado se o telefone não bater
       for (const s of snapshotRows) {
-        const g = groupMap.get(s.jid);
+        const g = groupMap.get(chaveJid(s.jid));
         if (!g) continue;
         if (s.group_created_at) g.created_at = s.group_created_at;
         const ownerPnRaw = String(s.owner_pn || '').split('@')[0].replace(/\D/g, '');
@@ -2527,7 +2540,7 @@ export function ContactsListPage() {
                 // processo quer justamente achar o grupo que ainda não tem ficha.
                 // Só a partir de 6 dígitos: "88" aparece dentro de quase todo CNJ
                 // (são 20 dígitos), e buscar caso 88 traria a base inteira.
-                const proc = grupoProcesso.get(g.group_jid);
+                const proc = grupoProcesso.get(chaveJid(g.group_jid));
                 const procDigits = soDigitos(`${proc?.cnj_do_lead || ''} ${proc?.cnj_sugerido || ''}`);
                 const haystack = norm([g.group_name, leadLabel, caseLabel].join(' '));
                 const textMatch = tokens.length > 0 && tokens.every(t => haystack.includes(t));
@@ -2563,7 +2576,7 @@ export function ContactsListPage() {
               });
 
               if (auditMode && auditOnlySemFicha) {
-                visible = visible.filter(g => grupoProcesso.get(g.group_jid)?.so_na_jurimetria);
+                visible = visible.filter(g => grupoProcesso.get(chaveJid(g.group_jid))?.so_na_jurimetria);
               }
 
               if (auditMode && auditOnlyMismatch) {
@@ -2663,7 +2676,7 @@ export function ContactsListPage() {
                   if (!ng || !nl) return true;
                   return !ng.includes(nl) && !nl.includes(ng);
                 }).length;
-                const semFicha = visible.filter(g => grupoProcesso.get(g.group_jid)?.so_na_jurimetria).length;
+                const semFicha = visible.filter(g => grupoProcesso.get(chaveJid(g.group_jid))?.so_na_jurimetria).length;
                 // Lista única de criadores (a partir dos grupos atualmente filtrados, antes do recorte por criador)
                 const creatorMap = new Map<string, string>();
                 for (const g of groups) {
@@ -2685,7 +2698,7 @@ export function ContactsListPage() {
                     // Filtrar por processo tem que achar tanto "0000892-33.2016..."
                     // quanto "000089233" — ninguém digita o CNJ pontuado.
                     case 'processo': {
-                      const p = grupoProcesso.get(g.group_jid);
+                      const p = grupoProcesso.get(chaveJid(g.group_jid));
                       if (!p) return '';
                       const cnj = p.cnj_do_lead || p.cnj_sugerido || '';
                       return `${cnj} ${soDigitos(cnj)}`;
@@ -2798,7 +2811,7 @@ export function ContactsListPage() {
                       )}
                       {/* Grupo "PREV N"/"Caso N" e o caso de número N que ainda não
                           apontam para o mesmo lead (passo 1 de "o grupo é o caso"). */}
-                      {conciliacaoPendentes > 0 && (
+                      {conciliacaoPendentes !== 0 && (
                         <button
                           type="button"
                           className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
@@ -2806,7 +2819,7 @@ export function ContactsListPage() {
                           title="Grupo de caso e caso com o mesmo número que apontam para leads diferentes, ou só um dos lados tem lead. Veja a evidência e ligue com 1 clique."
                         >
                           <Users className="h-3.5 w-3.5 text-emerald-600" />
-                          {conciliacaoPendentes} caso(s) ↔ grupo a conciliar
+                          {conciliacaoPendentes > 0 ? `${conciliacaoPendentes} caso(s) ↔ grupo a conciliar` : 'conciliar caso ↔ grupo'}
                         </button>
                       )}
                       <div className="flex items-center gap-2 ml-auto">
@@ -2913,7 +2926,7 @@ export function ContactsListPage() {
                               : (group.lead_id ? '(sem nome)' : '+ vincular lead')}
                           </span>
                           {(() => {
-                            const p = grupoProcesso.get(group.group_jid);
+                            const p = grupoProcesso.get(chaveJid(group.group_jid));
                             if (!p) {
                               return <span className="text-[11px] text-muted-foreground">—</span>;
                             }
