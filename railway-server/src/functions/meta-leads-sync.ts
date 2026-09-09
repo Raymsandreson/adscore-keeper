@@ -343,6 +343,8 @@ export const handler: RequestHandler = async (req, res) => {
       }
 
       const erros: Array<Record<string, unknown>> = [];
+      const porErro: Record<string, number> = {};
+      let totalErros = 0;
       let criados = 0;
       if (!dryRun) {
         for (const l of aCriar) {
@@ -380,7 +382,16 @@ export const handler: RequestHandler = async (req, res) => {
             created_at: l.criado_em || new Date().toISOString(),
           } as any);
           if (error) {
-            if (erros.length < 5) erros.push({ formulario: l.formulario, erro: error.message });
+            // Contar TUDO, amostrar 5. Antes o contador parava em 5 junto com a
+            // amostra: 195 falhas apareciam como "erros=5", que e um numero que
+            // mente na direcao confortavel.
+            totalErros += 1;
+            const msg = String(error.message || '');
+            const classe = msg.includes('idx_leads_phone_normalized_unique')
+              ? 'telefone ja existe em outro board (indice unico global)'
+              : msg.slice(0, 90);
+            porErro[classe] = (porErro[classe] || 0) + 1;
+            if (erros.length < 5) erros.push({ formulario: l.formulario, erro: msg });
           } else {
             criados += 1;
           }
@@ -395,7 +406,8 @@ export const handler: RequestHandler = async (req, res) => {
         a_criar: aCriar.length,
         criados,
         dedup_telefones_conhecidos: conhecidos.size,
-        erros: erros.length,
+        erros: totalErros,
+        erros_por_motivo: porErro,
         amostra_erros: erros,
       });
     }
