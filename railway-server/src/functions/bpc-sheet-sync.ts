@@ -84,6 +84,10 @@ interface AbaLida {
   tab: string;
   headers: string[];
   rows: ParsedRow[];
+  /** Linhas cruas da aba, antes de qualquer descarte. */
+  brutas: number;
+  descartadas_nome: number;
+  descartadas_telefone: number;
 }
 
 async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: string }): Promise<AbaLida> {
@@ -104,20 +108,33 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   }
   const json = (await resp.json()) as { values?: any[][] };
   const values: any[][] = json.values || [];
-  if (values.length < 2) return { tab: meta.tab, headers: [], rows: [] };
+  if (values.length < 2)
+    return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0 };
   const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
 
   const out: ParsedRow[] = [];
+  // Contar o descarte, e nao so o aproveitado: aba que le 40 linhas e aproveita
+  // 0 e indistinguivel de aba vazia sem isto — e as duas pedem acoes opostas.
+  let descNome = 0;
+  let descTelefone = 0;
+  let brutas = 0;
   for (let i = 1; i < values.length; i++) {
     const r = values[i];
     if (!r || !r.length) continue;
+    brutas += 1;
     const o = rowToObj(headers, r);
     const rawPhone =
       o['telefone'] || o['phone_number'] || o['número_do_whatsapp'] || o['qual_o_seu_número_de_contato_?'] || '';
     const name = o['nome_completo'] || o['full_name'] || '';
-    if (isJunkName(name)) continue;
+    if (isJunkName(name)) {
+      descNome += 1;
+      continue;
+    }
     const phone = normalizePhone(rawPhone);
-    if (phone.length < 10) continue;
+    if (phone.length < 10) {
+      descTelefone += 1;
+      continue;
+    }
     out.push({
       facebook_lead_id: normalizaLeadIdMeta(o['id']),
       created_at: o['created_time'] || '',
@@ -139,7 +156,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
       tab: meta.tab,
     });
   }
-  return { tab: meta.tab, headers, rows: out };
+  return { tab: meta.tab, headers, rows: out, brutas, descartadas_nome: descNome, descartadas_telefone: descTelefone };
 }
 
 // Garante a definição de um custom field do board (cria se não existir).
@@ -210,6 +227,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const sheetRows: ParsedRow[] = [];
   const tabErrors: { tab: string; error: string }[] = [];
   const cabecalhos = new Set<string>();
+  const diagPorAba = new Map<string, { cabecalho: string[]; brutas: number; dn: number; dt: number }>();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
     const results = await Promise.allSettled(chunk.map((t) => fetchTab(spreadsheetId, t)));
@@ -218,6 +236,12 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       if (r.status === 'fulfilled') {
         sheetRows.push(...r.value.rows);
         r.value.headers.forEach((h) => cabecalhos.add(h));
+        diagPorAba.set(meta.tab, {
+          cabecalho: r.value.headers,
+          brutas: r.value.brutas,
+          dn: r.value.descartadas_nome,
+          dt: r.value.descartadas_telefone,
+        });
       } else {
         tabErrors.push({ tab: meta.tab, error: String(r.reason?.message || r.reason).slice(0, 200) });
       }
@@ -278,13 +302,28 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   // voltar vazia (renomeada, range errado, permissao) que o total geral nao
   // denuncia. `recentes` e antes do dedup por telefone; `novos` e depois, e a
   // soma de `novos` fecha com would_create/created.
-  const porAba = SHEET_TABS.map((t) => ({
-    aba: t.tab,
-    operador: t.operator,
-    linhas: sheetRows.filter((r) => r.tab === t.tab).length,
-    recentes: recentRows.filter((r) => r.tab === t.tab).length,
-    novos: toCreate.filter((r) => r.tab === t.tab).length,
-  }));
+  const porAba = SHEET_TABS.map((t) => {
+    const d = diagPorAba.get(t.tab);
+    const linhas = sheetRows.filter((r) => r.tab === t.tab).length;
+    const brutas = d?.brutas ?? 0;
+    return {
+      aba: t.tab,
+      operador: t.operator,
+      brutas,
+      linhas,
+      descartadas_sem_nome: d?.dn ?? 0,
+      descartadas_sem_telefone: d?.dt ?? 0,
+      recentes: recentRows.filter((r) => r.tab === t.tab).length,
+      novos: toCreate.filter((r) => r.tab === t.tab).length,
+      // Cabecalho da PROPRIA aba. Se vier CPF, nome de gente ou data no lugar de
+      // 'full_name'/'telefone', a aba nao tem linha de cabecalho e todo o resto
+      // e lido deslocado — a uniao em `colunas_da_planilha` esconde isso.
+      cabecalho: d?.cabecalho ?? [],
+      ...(brutas > 0 && linhas === 0
+        ? { ALERTA: 'aba leu linhas e aproveitou ZERO — cabecalho ausente ou coluna com outro nome' }
+        : {}),
+    };
+  });
 
   const comum = {
     success: true,
