@@ -113,11 +113,11 @@ async function fetchGroupInvite(
       getRequestsParticipants: false,
       force: false,
     })
-    const res = await fetch(`${baseUrl}/group/info`, {
+    const res = await fetchWithTimeout(`${baseUrl}/group/info`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', token },
       body: JSON.stringify(uazBody),
-    })
+    }, INFO_TIMEOUT_MS)
     const text = await res.text()
     let data: any = null
     try { data = text ? JSON.parse(text) : null } catch { /* texto não-JSON */ }
