@@ -90,6 +90,8 @@ interface AbaLida {
   descartadas_telefone: number;
   /** Quantas linhas descartadas tinham valor em cada indice de coluna. */
   preenchidas_nas_descartadas: Record<string, number>;
+  /** Linhas em que nome e telefone vieram trocados de coluna. */
+  recuperadas_por_troca: number;
 }
 
 async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: string }): Promise<AbaLida> {
@@ -111,7 +113,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   const json = (await resp.json()) as { values?: any[][] };
   const values: any[][] = json.values || [];
   if (values.length < 2)
-    return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0, preenchidas_nas_descartadas: {} };
+    return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0, preenchidas_nas_descartadas: {}, recuperadas_por_troca: 0 };
   const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
 
   const out: ParsedRow[] = [];
@@ -121,14 +123,32 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   let descTelefone = 0;
   let brutas = 0;
   const preenchidas: Record<string, number> = {};
+  let trocaDeColuna = 0;
   for (let i = 1; i < values.length; i++) {
     const r = values[i];
     if (!r || !r.length) continue;
     brutas += 1;
     const o = rowToObj(headers, r);
-    const rawPhone =
+    // NOME E TELEFONE TROCADOS DE COLUNA.
+    //
+    // A mesma aba acumula exportacoes de duas versoes do formulario, com a
+    // ordem das colunas invertida entre elas. O cabecalho e o da primeira, e
+    // por isso as linhas da segunda traziam o telefone onde se lia `full_name`.
+    // Medido em 09/09/2026 na planilha do BPC: **1.851 linhas** descartadas por
+    // "nome sem letra nenhuma" — eram telefones. Somadas as duas abas sem
+    // cabecalho, a planilha tinha 3.295 linhas e o import lia 379.
+    //
+    // Conserto sem adivinhacao: o nome e o candidato QUE TEM LETRA, o telefone
+    // e o candidato QUE TEM DIGITO SUFICIENTE. Se as duas celulas se
+    // desmentirem, a troca e obvia; se nenhuma servir, a linha cai como antes.
+    const temLetra = (v: string) => /[a-zà-ú]/i.test(String(v || ''));
+    const celulaNome = o['nome_completo'] || o['full_name'] || '';
+    const celulaTelefone =
       o['telefone'] || o['phone_number'] || o['número_do_whatsapp'] || o['qual_o_seu_número_de_contato_?'] || '';
-    const name = o['nome_completo'] || o['full_name'] || '';
+    const trocado = !temLetra(celulaNome) && temLetra(celulaTelefone);
+    if (trocado) trocaDeColuna += 1;
+    const name = trocado ? celulaTelefone : celulaNome;
+    const rawPhone = trocado ? celulaNome : celulaTelefone;
     if (isJunkName(name)) {
       descNome += 1;
       // QUAL das regras de isJunkName reprovou. Classificacao pura: nenhum
@@ -180,6 +200,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     descartadas_nome: descNome,
     descartadas_telefone: descTelefone,
     preenchidas_nas_descartadas: preenchidas,
+    recuperadas_por_troca: trocaDeColuna,
   };
 }
 
@@ -253,7 +274,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const cabecalhos = new Set<string>();
   const diagPorAba = new Map<
     string,
-    { cabecalho: string[]; brutas: number; dn: number; dt: number; preenchidas: Record<string, number> }
+    { cabecalho: string[]; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number }
   >();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
@@ -269,6 +290,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
           dn: r.value.descartadas_nome,
           dt: r.value.descartadas_telefone,
           preenchidas: r.value.preenchidas_nas_descartadas,
+          troca: r.value.recuperadas_por_troca,
         });
       } else {
         tabErrors.push({ tab: meta.tab, error: String(r.reason?.message || r.reason).slice(0, 200) });
@@ -348,6 +370,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       // e lido deslocado — a uniao em `colunas_da_planilha` esconde isso.
       cabecalho: d?.cabecalho ?? [],
       preenchidas_nas_descartadas: d?.preenchidas ?? {},
+      recuperadas_por_troca: d?.troca ?? 0,
       ...(brutas > 0 && linhas === 0
         ? { ALERTA: 'aba leu linhas e aproveitou ZERO — cabecalho ausente ou coluna com outro nome' }
         : {}),
