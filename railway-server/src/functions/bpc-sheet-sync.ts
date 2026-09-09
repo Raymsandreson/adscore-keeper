@@ -89,7 +89,7 @@ interface AbaLida {
   descartadas_nome: number;
   descartadas_telefone: number;
   /** Quantas linhas descartadas tinham valor em cada indice de coluna. */
-  preenchidas_nas_descartadas: Record<number, number>;
+  preenchidas_nas_descartadas: Record<string, number>;
 }
 
 async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: string }): Promise<AbaLida> {
@@ -120,7 +120,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   let descNome = 0;
   let descTelefone = 0;
   let brutas = 0;
-  const preenchidas: Record<number, number> = {};
+  const preenchidas: Record<string, number> = {};
   for (let i = 1; i < values.length; i++) {
     const r = values[i];
     if (!r || !r.length) continue;
@@ -131,13 +131,19 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     const name = o['nome_completo'] || o['full_name'] || '';
     if (isJunkName(name)) {
       descNome += 1;
-      // Quais COLUNAS estao preenchidas nas linhas descartadas — contagem pura,
-      // sem interpretar valor. Detector esperto erra: `id` (l:108...) vira
-      // "telefone" ao tirar nao-digitos, e `form_name` ("MATEUS - BPC") casa
-      // como "nome". Contar celula preenchida por indice nao tem essa ambiguidade.
-      for (let c = 0; c < r.length; c++) {
-        if (String(r[c] ?? '').trim() !== '') preenchidas[c] = (preenchidas[c] || 0) + 1;
-      }
+      // QUAL das regras de isJunkName reprovou. Classificacao pura: nenhum
+      // valor de cliente sai daqui, so o motivo e um tamanho.
+      const t = String(name || '').trim();
+      const motivo = !t
+        ? 'celula vazia'
+        : t.length < 3
+          ? 'menos de 3 caracteres'
+          : t.startsWith('<test')
+            ? 'placeholder <test'
+            : /^\.+$/.test(t)
+              ? 'so pontos'
+              : 'sem letra latina';
+      preenchidas[motivo] = (preenchidas[motivo] || 0) + 1;
       continue;
     }
     const phone = normalizePhone(rawPhone);
@@ -247,7 +253,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const cabecalhos = new Set<string>();
   const diagPorAba = new Map<
     string,
-    { cabecalho: string[]; brutas: number; dn: number; dt: number; preenchidas: Record<number, number> }
+    { cabecalho: string[]; brutas: number; dn: number; dt: number; preenchidas: Record<string, number> }
   >();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
