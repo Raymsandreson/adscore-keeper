@@ -1,0 +1,33 @@
+-- Desliga a etiqueta de resultado na conversa. Decisão do Raym, 09/09/2026.
+--
+-- O gatilho `trg_lead_status_to_wa_label` chamava, a cada mudança de
+-- `leads.lead_status`, a edge function `apply-result-label-to-conversation`
+-- para pôr no WhatsApp a etiqueta do desfecho (fechado, recusado, inviável).
+--
+-- A função está MORTA. Medido em 09/09/2026, nos logs do projeto:
+--
+--   20/08/2026   16 chamadas, 16 erros 503
+--   04/09/2026   15 chamadas, 15 erros 503
+--   09/09/2026   14 chamadas, 14 erros 503
+--
+-- Sempre o mesmo erro de boot: `A remote specifier was requested:
+-- "https://esm.sh/@supabase/supabase-js@2", but --no-remote is specified`. Ou
+-- seja, ela subiu com dependência remota e o runtime não busca isso no boot.
+-- Está assim há pelo menos três semanas e ninguém sentiu falta da etiqueta.
+--
+-- O gatilho engolia o erro (`EXCEPTION WHEN OTHERS`) e o pg_net é assíncrono,
+-- então a falha nunca apareceu para ninguém: ~15 chamadas por dia batendo em
+-- porta fechada, em silêncio.
+--
+-- A função nunca esteve neste repositório — foi criada em 22/05/2026 direto no
+-- painel do Supabase, e nenhum código do projeto a menciona.
+--
+-- DISABLE e não DROP de propósito: se a etiqueta voltar a fazer sentido, um
+-- `ENABLE TRIGGER` traz tudo de volta. A função em plpgsql
+-- `notify_lead_result_label_change()` fica de pé pelo mesmo motivo.
+--
+-- Rollback:
+--   alter table public.leads enable trigger trg_lead_status_to_wa_label;
+-- (só faz sentido depois de a edge function voltar a subir)
+
+alter table public.leads disable trigger trg_lead_status_to_wa_label;
