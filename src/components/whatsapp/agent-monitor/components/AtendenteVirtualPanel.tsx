@@ -39,8 +39,11 @@ import { ContagemAteEnvio } from '@/components/whatsapp/ContagemAteEnvio';
 
 const dbAny = db as unknown as SupabaseClient;
 
-/** O agente Dom em `wjia_command_shortcuts` — o mesmo id que a `dom-rascunho` usa. */
-const DOM_AGENT_ID = 'd6ad8eee-d6a3-452c-b852-b94ef8dd54bf';
+/** O agente Dom em `wjia_command_shortcuts` — o mesmo id que a `dom-rascunho` usa.
+ *  Exportado porque a aba de configuracao monta a secao do Dom por este id:
+ *  antes ela so existia dentro do formulario de "editar agente", e a config
+ *  do atendente virtual ficava escondida numa lista de nove agentes. */
+export const DOM_AGENT_ID = 'd6ad8eee-d6a3-452c-b852-b94ef8dd54bf';
 
 /**
  * O ritmo do modo automático, como está configurado AGORA.
@@ -88,7 +91,8 @@ interface Pendente {
    * Aceito os dois formatos porque depender do formato de hoje é o tipo de coisa
    * que quebra calada numa atualização de biblioteca.
    */
-  dom_atendentes?: { nome: string; user_id: string | null }[] | { nome: string; user_id: string | null } | null;
+  dom_atendentes?: { nome: string; user_id: string | null; escopo: string | null }[]
+    | { nome: string; user_id: string | null; escopo: string | null } | null;
 }
 interface GrupoPiloto {
   group_jid: string; group_name: string | null; modo: string; ativo: boolean;
@@ -217,6 +221,20 @@ interface Decisao {
   id: string; group_name: string | null; group_jid: string; intencao: string | null;
   decisao: string; motivo: string | null; pergunta: string | null; criado_em: string;
 }
+
+/**
+ * AS INTENCOES DO DINHEIRO — o par da lista na `dom-rascunho`.
+ *
+ * E17 (pergunta sobre dinheiro ou prazo), E21 (pediu adiantado) e COBRANCA.
+ * Sao 23 dos 394 rascunhos ja gerados, 5,8%. A `dom-rascunho` usa esta mesma
+ * lista para sortear no escopo 'financeiro' em vez de 'reclamacao'; aqui ela
+ * decide quem a tela SUGERE como responsavel da atividade. Se uma mudar, a
+ * outra muda junto.
+ *
+ * Ressalva registrada: E17 e "dinheiro OU prazo", e sao 18 dos 23 — enquanto o
+ * classificador nao separar as duas coisas, pergunta de prazo vem junto.
+ */
+const INTENCOES_DO_DINHEIRO = new Set(['E17', 'E21', 'COBRANCA']);
 
 /** Lê o nome do atendente venha ele como objeto ou como array de um item. */
 function nomeDoAtendente(p: Pendente): string | null {
@@ -612,7 +630,7 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
     setCarregando(true);
     try {
       await ensureExternalSession();
-      const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, audio_velocidade, audio_estabilidade, audio_estilo, audio_pausa_ms, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, lead_id, contexto_usado, dom_atendentes(nome, user_id)';
+      const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, audio_velocidade, audio_estabilidade, audio_estilo, audio_pausa_ms, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, lead_id, contexto_usado, dom_atendentes(nome, user_id, escopo)';
       /**
        * O recorte da ficha, aplicado a toda consulta que tem `group_jid`.
        *
@@ -858,6 +876,18 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
    * que já tem quem o acompanhe joga fora a única informação que faz a
    * atividade chegar em quem sabe do que se trata.
    *
+   * DINHEIRO É A EXCEÇÃO, E VEM ANTES DE TODOS.
+   *
+   * A acolhedora acompanha o cliente; ela não é quem responde valor, parcela
+   * ou cobrança — e responder valor errado é a única falha aqui que custa
+   * dinheiro de verdade. Quando a intenção é de dinheiro (E17, E21, COBRANCA)
+   * e existe alguém cadastrado no escopo `financeiro`, a atividade é dele.
+   *
+   * Sem ninguém nesse escopo, a `pick_dom_atendente` já devolveu alguém do
+   * 'geral' — e aí a pessoa sorteada NÃO é do financeiro, então a tela desce
+   * para a ficha, que é quem conhece o caso. Por isso o teste é pelo escopo da
+   * pessoa sorteada, e não pela intenção sozinha.
+   *
    * Ordem: acolhedora da ficha → responsável processual → rodizio. Medido em
    * 09/09/2026 sobre os 362 rascunhos com ficha: 110 têm acolhedora, 95 têm
    * responsável processual, 174 (48%) têm um dos dois, e em 24 os dois existem
@@ -875,6 +905,23 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
     let origem = '';
     let leadNome = '';
 
+    const at = Array.isArray(p.dom_atendentes) ? p.dom_atendentes[0] : p.dom_atendentes;
+
+    // 0. Dinheiro tem dono próprio, e ele vem antes da ficha.
+    const ehDinheiro = INTENCOES_DO_DINHEIRO.has(String(p.intencao || ''));
+    if (ehDinheiro && at?.escopo === 'financeiro' && at.user_id) {
+      const { data: perfil } = await dbAny.from('profiles')
+        .select('user_id, full_name')
+        .or(`id.eq.${at.user_id},user_id.eq.${at.user_id}`)
+        .maybeSingle();
+      const ext = (perfil as { user_id?: string } | null)?.user_id || null;
+      if (ext) {
+        assignedTo = (await remapToCloud(ext)) || '';
+        assignedNome = (perfil as { full_name?: string } | null)?.full_name || at.nome || '';
+        origem = 'atendente do financeiro';
+      }
+    }
+
     // 1. A ficha do cliente: quem acolhe, senão quem cuida do processo. Os dois
     //    já são `profiles.user_id` (id de auth do Externo), então basta o
     //    remap para o Cloud, que é a moeda do formulário.
@@ -885,8 +932,10 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
       const l = lead as {
         lead_name?: string; acolhedor_user_id?: string; processual_responsible_id?: string;
       } | null;
+      // O nome do cliente vem sempre, mesmo com o responsável já decidido no
+      // passo 0: ele é o vínculo da atividade, não a sugestão de dono.
       leadNome = l?.lead_name || '';
-      const daFicha = l?.acolhedor_user_id || l?.processual_responsible_id || null;
+      const daFicha = !assignedTo ? (l?.acolhedor_user_id || l?.processual_responsible_id || null) : null;
       if (daFicha) {
         assignedTo = (await remapToCloud(daFicha)) || '';
         origem = l?.acolhedor_user_id ? 'acolhedora da ficha' : 'responsável processual da ficha';
@@ -904,7 +953,6 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
     //    Aceita os dois lados de proposito: um cadastro futuro pode guardar o
     //    id certo, e ai a linha achada e a mesma.
     if (!assignedTo) {
-      const at = Array.isArray(p.dom_atendentes) ? p.dom_atendentes[0] : p.dom_atendentes;
       assignedNome = at?.nome || '';
       if (at?.user_id) {
         const { data: perfil } = await dbAny.from('profiles')

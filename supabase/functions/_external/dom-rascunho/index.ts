@@ -1069,6 +1069,37 @@ async function gerarAudioDoRascunho(
 }
 
 /**
+ * DINHEIRO TEM DONO PRÓPRIO.
+ *
+ * O rodízio nasceu com um escopo só para o que precisa de gente
+ * ('reclamacao'), e pergunta sobre valor caía ali junto com tudo o mais. Mas
+ * dinheiro é a única família em que responder errado custa dinheiro de
+ * verdade, e quem responde valor quase nunca é quem acompanha o cliente no
+ * grupo.
+ *
+ * Medido em 09/09/2026 sobre os 394 rascunhos: E17 (dinheiro ou prazo) 18,
+ * E21 (pediu adiantado) 3, COBRANCA 2 — 23 no total, 5,8%.
+ *
+ * RESSALVA REGISTRADA: E17 é "dinheiro OU prazo", e são 18 dos 23. Enquanto o
+ * classificador não separar as duas coisas, pergunta de prazo vai para o
+ * financeiro junto. Foi decidido assim com o custo à vista; o conserto é
+ * separar a intenção, não estreitar esta lista.
+ *
+ * Sem ninguém cadastrado no escopo, a `pick_dom_atendente` cai sozinha no
+ * 'geral' — então isto nunca deixa uma pendência sem dono.
+ *
+ * Esta lista tem um par no front (`INTENCOES_DO_DINHEIRO` em
+ * AtendenteVirtualPanel.tsx), que decide o responsável sugerido da atividade.
+ * Se uma mudar, a outra muda junto.
+ */
+const INTENCOES_DO_DINHEIRO = new Set(["E17", "E21", "COBRANCA"]);
+
+/** O escopo do rodízio para esta intenção. */
+function escopoDaIntencao(intencao: string | null | undefined): string {
+  return INTENCOES_DO_DINHEIRO.has(String(intencao || "")) ? "financeiro" : "reclamacao";
+}
+
+/**
  * Pendência achada pelo atendente vira ATIVIDADE na esteira da equipe.
  *
  * O painel do Dom já mostrava a pendência, e mostrar não é encaminhar: quem
@@ -1099,6 +1130,7 @@ async function registrarPendencia(
     motivo: string;
     pergunta: string;
     atendenteId: string | null;
+    intencao: string | null;
   },
 ): Promise<string | null> {
   try {
@@ -1123,7 +1155,9 @@ async function registrarPendencia(
     // dele, senão a linha nasce sem ninguém que a enxergue na própria tela.
     let atendenteId = dados.atendenteId;
     if (!atendenteId) {
-      const { data: pick } = await supabase.rpc("pick_dom_atendente", { p_escopo: "reclamacao" });
+      const { data: pick } = await supabase.rpc("pick_dom_atendente", {
+        p_escopo: escopoDaIntencao(dados.intencao),
+      });
       atendenteId = (pick as any) || null;
     }
     let userId: string | null = null;
@@ -1721,7 +1755,9 @@ Deno.serve(async (req) => {
       //    rodízio. O envio do aviso é do dom-avisar-atendente.
       let atendenteId: string | null = null;
       if (grupoIntencao === "E") {
-        const { data: pick } = await supabase.rpc("pick_dom_atendente", { p_escopo: "reclamacao" });
+        const { data: pick } = await supabase.rpc("pick_dom_atendente", {
+          p_escopo: escopoDaIntencao(cls.intencao),
+        });
         atendenteId = (pick as any) || null;
         // O motivo é o que a pessoa lê na fila antes de abrir. "precisa de
         // atendente humano" serve para E17 ou E18; para quem falou em desistir,
@@ -1768,6 +1804,7 @@ Deno.serve(async (req) => {
           motivo,
           pergunta,
           atendenteId,
+          intencao: cls.intencao ?? null,
         });
         // Log sem texto de cliente: só o que dá para auditar.
         console.log(`[dom-rascunho] pendência grupo=${g.group_jid} atividade=${atvId ?? "nenhuma"}`);

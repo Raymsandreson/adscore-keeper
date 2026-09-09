@@ -26,7 +26,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { AtendenteVirtualPanel } from './agent-monitor/components/AtendenteVirtualPanel';
+import { AtendenteVirtualPanel, DOM_AGENT_ID } from './agent-monitor/components/AtendenteVirtualPanel';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { SuperPromptDiagnostic } from './SuperPromptDiagnostic';
 import { AgentTestChat } from './AgentTestChat';
@@ -279,7 +279,7 @@ export function WhatsAppCommandConfig({ focusAgentId }: WhatsAppCommandConfigPro
             <Bot className="h-3.5 w-3.5" /> IA Interna
           </TabsTrigger>
           <TabsTrigger value="fila" className="text-xs gap-1">
-            <Inbox className="h-3.5 w-3.5" /> Fila do atendente
+            <Inbox className="h-3.5 w-3.5" /> Atendente virtual
           </TabsTrigger>
         </TabsList>
 
@@ -301,7 +301,32 @@ export function WhatsAppCommandConfig({ focusAgentId }: WhatsAppCommandConfigPro
           />
         </TabsContent>
 
-        <TabsContent value="fila">
+        {/* O ATENDENTE VIRTUAL INTEIRO, NUM LUGAR SÓ.
+            Até 09/09/2026 a configuração dele (quais grupos respondem sozinhos,
+            a voz, o ritmo, e a equipe que recebe as pendências) morava DENTRO
+            do formulário de "editar agente", no meio de uma lista de nove — e o
+            acompanhamento morava aqui. Para mexer no rodízio era preciso saber
+            que ele estava escondido atrás de um lápis do "#DOM-Atendente
+            Processual".
+
+            E os dois não são a mesma espécie de coisa: os outros agentes são
+            captação por instância; o Dom é o único que responde em grupo de
+            caso fechado, com fila, revisão e rodízio. O que é igual para todo
+            agente (prompt, modelo, variação, limites) continua no formulário
+            dele; o que só existe no Dom passou a morar aqui.
+
+            "O que ele fez" fica aberto porque é o uso diário; "como ele
+            trabalha" fica recolhido porque configurar é raro. */}
+        <TabsContent value="fila" className="space-y-3">
+          <details className="rounded-lg border bg-muted/30">
+            <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium flex items-center gap-1.5">
+              <Settings2 className="h-3.5 w-3.5" />
+              Como ele trabalha — grupos, voz, ritmo e quem recebe as pendências
+            </summary>
+            <div className="px-3 pb-3">
+              <AtendenteDeCasoSection agentId={DOM_AGENT_ID} />
+            </div>
+          </details>
           <AtendenteVirtualPanel />
         </TabsContent>
       </Tabs>
@@ -1510,8 +1535,11 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', 
                     </div>
                   )}
                 </div>
-                {/* Respond in Groups + Audio Reply */}
-                <AtendenteDeCasoSection agentId={editingId} />
+                {/* A seção do atendente de caso (grupos do piloto, voz, ritmo,
+                    equipe do rodízio) saiu daqui em 09/09/2026: ela é do Dom e
+                    de mais ninguém, e ficava escondida no formulário de um
+                    agente qualquer. Mora agora na aba "Atendente virtual", ao
+                    lado da fila que ela explica. */}
 
                 <div className="space-y-2 border rounded-lg p-3">
                   <div className="flex items-center justify-between">

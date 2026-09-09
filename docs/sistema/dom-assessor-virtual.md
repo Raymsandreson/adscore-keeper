@@ -3578,3 +3578,64 @@ Sem FK em `assigned_to` e sem trigger de notificação nessa coluna (só
 **Depois:** 108 atividades do `dom-rascunho`, 108 com dono que a tela
 reconhece, 0 com o id errado, 0 sem dono. A 108ª é a que nasceu já certa,
 depois do deploy.
+
+---
+
+## Dinheiro tem dono próprio, e a config do Dom saiu do esconderijo (09/09/2026)
+
+### O atendente do financeiro
+
+O rodízio (`dom_atendentes`) nasceu com três escopos — `reclamacao`,
+`saida_de_grupo`, `geral` — e a `dom-rascunho` pedia sempre `reclamacao`.
+Então pergunta sobre valor caía na mesma fila da desistência e da reclamação.
+Dinheiro é a única família em que responder errado custa dinheiro de verdade, e
+quem responde valor quase nunca é quem acompanha o cliente no grupo.
+
+Agora há o escopo `financeiro` (migration `20260909230000`), e as intenções
+do dinheiro sorteiam nele:
+
+```
+E17  pergunta sobre dinheiro ou prazo ... 18
+E21  pediu dinheiro adiantado ..........  3
+COBRANCA ...............................  2
+                                        ----
+                                          23  de 394  (5,8%)
+```
+
+**Ressalva registrada:** E17 é "dinheiro **ou prazo**", e são 18 dos 23 —
+enquanto o classificador não separar as duas coisas, pergunta de prazo vai
+junto. Decidido com o custo à vista; o conserto é separar a intenção, não
+estreitar a lista.
+
+A lista vive em dois lugares que precisam andar juntos:
+`INTENCOES_DO_DINHEIRO` na `dom-rascunho` (escolhe o escopo do sorteio) e a
+homônima no `AtendenteVirtualPanel` (escolhe o responsável sugerido da
+atividade).
+
+**A ordem da sugestão passou a ser:** atendente do financeiro → acolhedora da
+ficha → responsável processual → rodízio. E o teste do primeiro degrau é pelo
+**escopo da pessoa sorteada**, não pela intenção sozinha: sem ninguém no
+`financeiro`, a `pick_dom_atendente` já cai no `geral`, e aí a atividade
+volta para quem conhece o caso em vez de ir para o plantão.
+
+A tela de atendentes ganhou o seletor de escopo — na linha de cada pessoa (dá
+para trocar sem apagar e recadastrar) e no cadastro. Antes ela gravava
+`'geral'` fixo, o que tornava a coluna `escopo` decorativa.
+
+### A configuração do Dom mudou de lugar
+
+Para mexer no rodízio era preciso: aba **Agentes IA** → achar
+"#DOM-Atendente Processual" entre nove → lápis → aba IA → rolar. A
+configuração do atendente virtual (quais grupos respondem sozinhos, a voz, o
+ritmo, a equipe que recebe as pendências) morava dentro do formulário de
+"editar agente", e o acompanhamento morava em outra aba.
+
+E os dois não são a mesma espécie: `#salariomaternidade`, `#Proc.BPC` e os
+outros são captação por instância; o Dom é o único que responde em grupo de
+caso fechado, com fila, revisão e rodízio.
+
+A aba "Fila do atendente" virou **"Atendente virtual"** e tem as duas metades:
+**como ele trabalha** (recolhido, porque configurar é raro) e **o que ele fez**
+(aberto, porque olhar é diário). O que é igual para todo agente — prompt,
+modelo, variação da escrita, limites de resposta — continua no formulário do
+agente, que é onde faz sentido. O que só existe no Dom saiu de lá.
