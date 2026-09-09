@@ -351,7 +351,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -403,6 +403,52 @@ export const handler: RequestHandler = async (req, res) => {
           platform: p0.platform ?? null,
           tamanho_do_lead_id: String(p0.id ?? '').length,
         },
+      });
+    }
+
+    // Lista os conjuntos ATIVOS com o que decide otimizacao, e o dono do
+    // dataset. So leitura — serve para saber onde clicar e para conferir que o
+    // dataset e do negocio certo antes de liga-lo em campanha que gasta.
+    if (modo === 'conjuntos') {
+      const g = async (path: string) => {
+        const r = await fetch(
+          `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
+            `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+        );
+        return (await r.json()) as any;
+      };
+      const ds = await g(`${CAPI_DATASET_ID}?fields=id,name,owner_business{id,name},is_unavailable`);
+      const contas = await g('me/adaccounts?fields=id,name,business{id,name}&limit=50');
+      const saida: Array<Record<string, unknown>> = [];
+      for (const c of contas?.data ?? []) {
+        const ads = await g(
+          `${c.id}/adsets?fields=id,name,effective_status,optimization_goal,destination_type,promoted_object,campaign{id,name,objective}&limit=200`,
+        );
+        for (const a2 of ads?.data ?? []) {
+          if (a2?.effective_status !== 'ACTIVE') continue;
+          saida.push({
+            conta: c.name,
+            negocio_da_conta: c.business?.name ?? null,
+            campanha: a2.campaign?.name ?? null,
+            objetivo_da_campanha: a2.campaign?.objective ?? null,
+            conjunto: a2.name,
+            conjunto_id: a2.id,
+            otimizacao_atual: a2.optimization_goal,
+            destino: a2.destination_type,
+            promoted_object: a2.promoted_object ?? null,
+          });
+        }
+      }
+      return res.status(200).json({
+        modo: 'conjuntos',
+        dataset: {
+          id: ds?.id ?? null,
+          nome: ds?.name ?? null,
+          negocio_dono: ds?.owner_business?.name ?? null,
+          indisponivel: ds?.is_unavailable ?? null,
+          erro: ds?.error?.message ?? null,
+        },
+        conjuntos_ativos: saida,
       });
     }
 
