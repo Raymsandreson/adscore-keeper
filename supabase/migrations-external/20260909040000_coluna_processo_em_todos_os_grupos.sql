@@ -18,8 +18,9 @@
 -- vez de 508: `do_lead` anda pela ponte (2.551 linhas) e pelo detector; a
 -- junção com a jurimetria só acontece para quem tem `caso_no_nome`.
 --
--- STATUS: NÃO APLICADO. Testado em transação com rollback em 09/09/2026: 750 linhas
--- (395 PREV, 298 CASO/FAMÍLIA, 57 outros), 281 ms. Aguarda aval do Raym.
+-- APLICADO em 09/09/2026 com aval do Raym. Conferido depois: 750 linhas (292 PREV,
+-- 302 CASO/FAMÍLIA, 156 outros), 291 ms (explain analyze). Sugestões da jurimetria
+-- zeradas porque só 3 processos da jm_processos ainda não têm ficha.
 --
 -- ROLLBACK: recriar a view com `where g.contact_name ~* 'caso'` na CTE grupo
 -- (versão em 20260909030000, seção 4).
