@@ -1157,7 +1157,6 @@ async function registrarPendencia(
     /** Intenção do grupo E (é de gente): urgente. O resto entra como alta. */
     urgente: boolean;
     atendenteId: string | null;
-    intencao: string | null;
   },
 ): Promise<{ id: string | null; nova: boolean; atendenteId: string | null }> {
   // `atendenteId` volta resolvido: fora do grupo E quem sorteia é esta função,
@@ -2010,7 +2009,6 @@ Deno.serve(async (req) => {
           intencao: cls.intencao ?? null,
           urgente: grupoIntencao === "E",
           atendenteId,
-          intencao: cls.intencao ?? null,
         });
 
         // Avisa em atividade nova; em atividade que só recebeu mais uma fala,
