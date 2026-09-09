@@ -354,7 +354,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'renomear_dataset';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -412,6 +412,29 @@ export const handler: RequestHandler = async (req, res) => {
     // Lista os conjuntos ATIVOS com o que decide otimizacao, e o dono do
     // dataset. So leitura — serve para saber onde clicar e para conferir que o
     // dataset e do negocio certo antes de liga-lo em campanha que gasta.
+    // TEMPORARIO — renomeia o conjunto de dados. Escreve na Meta, e /functions/*
+    // esta sem autenticacao, entao este modo sai do codigo logo depois do uso.
+    // Só age sobre o dataset configurado, e exige `confirmar: true`.
+    if (modo === 'renomear_dataset') {
+      const body = (req.body || {}) as { nome?: string; confirmar?: boolean };
+      const nome = String(body.nome || '').trim();
+      if (!nome || nome.length > 80) return res.status(400).json({ error: 'informe `nome` (ate 80 chars)' });
+      if (body.confirmar !== true) return res.status(400).json({ error: 'exige confirmar: true' });
+      const r = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${CAPI_DATASET_ID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nome, access_token: CAPI_TOKEN }),
+      });
+      const j: any = await r.json();
+      if (j?.error) return res.status(200).json({ ok: false, erro: j.error.message, codigo: j.error.code });
+      const conf = await fetch(
+        `https://graph.facebook.com/${GRAPH_VERSION}/${CAPI_DATASET_ID}?fields=id,name` +
+          `&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+      );
+      const c: any = await conf.json();
+      return res.status(200).json({ ok: true, resposta: j, nome_agora: c?.name ?? null, id: c?.id ?? null });
+    }
+
     if (modo === 'conjuntos') {
       const g = async (path: string) => {
         const r = await fetch(
