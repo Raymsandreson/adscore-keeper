@@ -15,6 +15,7 @@ import { ContactsCreationTrendBars, type CreationPeriodSelection } from './Conta
 import { ClassificationFilterSelect, type ClassificationFilterMode } from './ClassificationFilterSelect';
 import { ClassificationContactsSheet } from './ClassificationContactsSheet';
 import { FilaProcessosCitadosSheet } from './FilaProcessosCitadosSheet';
+import { FilaCasoGrupoSheet } from './FilaCasoGrupoSheet';
 import { useContactsPendencies } from '@/hooks/useContactsPendencies';
 import { useContactsActivities } from '@/hooks/useContactsActivities';
 import { useContactsLinks, EMPTY_CONTACT_LINKS } from '@/hooks/useContactsLinks';
@@ -436,6 +437,9 @@ export function ContactsListPage() {
   /** A fila dos processos citados que o vinculador não resolveu (vw_grupo_processo_desalinhado). */
   const [filaAberta, setFilaAberta] = useState(false);
   const [filaCitacoes, setFilaCitacoes] = useState(0);
+  /** Caso ↔ grupo que ainda não apontam para o mesmo lead (vw_caso_grupo_conciliacao, passo 1 de "o grupo é o caso"). */
+  const [conciliacaoAberta, setConciliacaoAberta] = useState(false);
+  const [conciliacaoPendentes, setConciliacaoPendentes] = useState(0);
   const [leadStatusFilter, setLeadStatusFilter] = useState<Set<string>>(new Set());
   const [leadLinkFilter, setLeadLinkFilter] = useState<'all' | 'with' | 'without'>('all');
   const [boardFilter, setBoardFilter] = useState<Set<string>>(new Set());
@@ -500,6 +504,12 @@ export function ContactsListPage() {
           .from('vw_grupo_processo_desalinhado')
           .select('cnj', { count: 'exact', head: true });
         if (!cancelado) setFilaCitacoes(count || 0);
+        // 'casado' e 'lead_sem_caso' não são pendência sob "o grupo é o caso".
+        const { count: pend } = await (db as any)
+          .from('vw_caso_grupo_conciliacao')
+          .select('chave_txt', { count: 'exact', head: true })
+          .not('classe', 'in', '(casado,lead_sem_caso)');
+        if (!cancelado) setConciliacaoPendentes(pend || 0);
       } catch {
         // Sem contagem o botão simplesmente não aparece.
       }
@@ -2780,6 +2790,19 @@ export function ContactsListPage() {
                           {filaCitacoes} processo(s) citado(s) a conferir
                         </button>
                       )}
+                      {/* Grupo "PREV N"/"Caso N" e o caso de número N que ainda não
+                          apontam para o mesmo lead (passo 1 de "o grupo é o caso"). */}
+                      {conciliacaoPendentes > 0 && (
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
+                          onClick={() => setConciliacaoAberta(true)}
+                          title="Grupo de caso e caso com o mesmo número que apontam para leads diferentes, ou só um dos lados tem lead. Veja a evidência e ligue com 1 clique."
+                        >
+                          <Users className="h-3.5 w-3.5 text-emerald-600" />
+                          {conciliacaoPendentes} caso(s) ↔ grupo a conciliar
+                        </button>
+                      )}
                       <div className="flex items-center gap-2 ml-auto">
                         <span className="text-[11px]">Criado por:</span>
                         <Select value={creatorFilter} onValueChange={setCreatorFilter}>
@@ -3426,6 +3449,11 @@ export function ContactsListPage() {
         open={filaAberta}
         onOpenChange={setFilaAberta}
         onResolvido={() => setFilaCitacoes(n => Math.max(0, n - 1))}
+      />
+      <FilaCasoGrupoSheet
+        open={conciliacaoAberta}
+        onOpenChange={setConciliacaoAberta}
+        onResolvido={(q) => setConciliacaoPendentes(n => Math.max(0, n - q))}
       />
       <ContactDetailSheet
         contact={detailContact}
