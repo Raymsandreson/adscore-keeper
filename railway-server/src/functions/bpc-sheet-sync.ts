@@ -263,10 +263,47 @@ function extrairIdDaPlanilha(url: string | null): string | null {
 }
 
 interface OpcoesSync {
+  /** Escreve no CRM o status que a equipe preencheu na planilha. */
+  aplicarStatus?: boolean;
   spreadsheetIdOverride?: string;
   sinceDays: number;
   dryRun: boolean;
 }
+
+
+/**
+ * De-para do que a EQUIPE escreve na planilha para o status do CRM.
+ *
+ * O vocabulario do CRM (medido em 09/09/2026): no_response 19.251, closed 3.204,
+ * inviavel 390, refused 111, in_progress 6, cancelled 5.
+ *
+ * Tres sao juizo, nao traducao — estao marcados. Se estiverem errados, e trocar
+ * a linha aqui e rodar de novo.
+ */
+const MAPA_STATUS: Record<string, string> = {
+  fechado: 'closed',
+  cancelado: 'cancelled',
+  inviavel: 'inviavel',
+  'inviável': 'inviavel',
+  'sem resposta': 'no_response',
+  'em andamento': 'in_progress',
+  'primeiro contato': 'in_progress',
+  'aguar. doc': 'in_progress',
+  'aguar. assinat': 'in_progress',
+  'falar depois': 'in_progress',
+  // JUIZO 1: numero errado nao da para trabalhar -> inviavel
+  'n° errado': 'inviavel',
+  'n errado': 'inviavel',
+  'numero errado': 'inviavel',
+  // JUIZO 2: "viavel" e lead bom ainda em aberto -> in_progress
+  'viável': 'in_progress',
+  viavel: 'in_progress',
+  // JUIZO 3: bloqueou o atendente -> refused
+  bloqueado: 'refused',
+};
+
+/** Status que o CRM ja classificou: a planilha nao rebaixa nenhum deles. */
+const NAO_REBAIXAR = new Set(['closed', 'cancelled', 'inviavel', 'refused', 'in_progress']);
 
 async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Record<string, unknown>> {
   const boardId = board.id;
@@ -432,6 +469,69 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
     }
   }
 
+  // APLICA O STATUS DA PLANILHA NO CRM.
+  //
+  // Duas travas:
+  //  1. `closed` da planilha sempre vale (e a conversao, o dado mais caro).
+  //  2. Para o resto, so escreve se o CRM ainda estiver em `no_response` — o
+  //     padrao de quem nunca foi classificado. A planilha nao desfaz trabalho
+  //     que ja foi feito no CRM, porque ela pode estar desatualizada.
+  const statusAplicado: Record<string, number> = {};
+  const statusIgnorado: Record<string, number> = {};
+  let statusEscritos = 0;
+  if (opts.aplicarStatus) {
+    const comStatus = sheetRows.filter((r) => r.facebook_lead_id && MAPA_STATUS[r.status_equipe]);
+    const atual = new Map<string, { id: string; lead_status: string }>();
+    const ids = comStatus.map((r) => r.facebook_lead_id);
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data } = await ext
+        .from('leads')
+        .select('id, facebook_lead_id, lead_status')
+        .in('facebook_lead_id', ids.slice(i, i + 100));
+      for (const l of data || []) {
+        atual.set(String((l as any).facebook_lead_id), {
+          id: String((l as any).id),
+          lead_status: String((l as any).lead_status || ''),
+        });
+      }
+    }
+    const hojeData = new Date().toISOString().slice(0, 10);
+    for (const r of comStatus) {
+      const alvo = MAPA_STATUS[r.status_equipe];
+      const atualLead = atual.get(r.facebook_lead_id);
+      if (!atualLead) {
+        statusIgnorado['lead nao existe no CRM'] = (statusIgnorado['lead nao existe no CRM'] || 0) + 1;
+        continue;
+      }
+      if (atualLead.lead_status === alvo) {
+        statusIgnorado['ja estava assim'] = (statusIgnorado['ja estava assim'] || 0) + 1;
+        continue;
+      }
+      if (alvo !== 'closed' && NAO_REBAIXAR.has(atualLead.lead_status)) {
+        statusIgnorado[`CRM ja classificou como ${atualLead.lead_status}`] =
+          (statusIgnorado[`CRM ja classificou como ${atualLead.lead_status}`] || 0) + 1;
+        continue;
+      }
+      if (opts.dryRun) {
+        statusAplicado[`${r.status_equipe} -> ${alvo}`] = (statusAplicado[`${r.status_equipe} -> ${alvo}`] || 0) + 1;
+        continue;
+      }
+      const patch: Record<string, unknown> = { lead_status: alvo };
+      // `became_client_date` = HOJE, e nao a data do formulario: a planilha nao
+      // guarda quando fechou, e a Meta descarta evento com mais de 7 dias. Com
+      // data antiga o Purchase seria recusado e a conversao se perderia.
+      if (alvo === 'closed') patch.became_client_date = hojeData;
+      const { error: errUp } = await ext.from('leads').update(patch).eq('id', atualLead.id);
+      if (errUp) {
+        statusIgnorado[`erro: ${errUp.message.slice(0, 60)}`] =
+          (statusIgnorado[`erro: ${errUp.message.slice(0, 60)}`] || 0) + 1;
+      } else {
+        statusEscritos += 1;
+        statusAplicado[`${r.status_equipe} -> ${alvo}`] = (statusAplicado[`${r.status_equipe} -> ${alvo}`] || 0) + 1;
+      }
+    }
+  }
+
   const comum = {
     success: true,
     board_id: boardId,
@@ -451,6 +551,9 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
     // aqui antes de virar coluna vazia no banco.
     colunas_da_planilha: [...cabecalhos].sort(),
     com_facebook_lead_id: toCreate.filter((r) => r.facebook_lead_id).length,
+    status_aplicado: statusAplicado,
+    status_ignorado: statusIgnorado,
+    status_escritos: statusEscritos,
     fechados_marcados_na_planilha: {
       total: fechadosNaPlanilha.length,
       com_id_da_meta: fechadosNaPlanilha.filter((r) => r.facebook_lead_id).length,
@@ -566,10 +669,13 @@ export const handler: RequestHandler = async (req, res) => {
       spreadsheet_id?: string;
       since_days?: number;
       dry_run?: boolean;
+      aplicar_status?: boolean;
     };
 
     const sinceDays = Math.max(1, Math.min(365, Number(since_days) || 7));
     const dryRun = !!dry_run;
+    // Fora do cron de proposito: o cron so cria lead, nunca reescreve status.
+    const aplicarStatus = !!(req.body as any)?.aplicar_status;
     const COLUNAS = 'id, name, stages, sheet_source_url';
 
     // Um board: o formato da resposta e o de sempre, pra nao quebrar quem ja chama.
@@ -581,6 +687,7 @@ export const handler: RequestHandler = async (req, res) => {
         spreadsheetIdOverride: spreadsheet_id,
         sinceDays,
         dryRun,
+        aplicarStatus,
       });
       return ok(r);
     }
@@ -598,7 +705,7 @@ export const handler: RequestHandler = async (req, res) => {
 
     const resultados: Record<string, unknown>[] = [];
     for (const b of boards) {
-      resultados.push(await sincronizaBoard(b, { sinceDays, dryRun }));
+      resultados.push(await sincronizaBoard(b, { sinceDays, dryRun, aplicarStatus }));
       // A API do Sheets tem cota por minuto e ja devolveu 429 numa leitura
       // dupla: espacar os boards custa segundos e evita perder a varredura.
       if (boards.indexOf(b) < boards.length - 1) await new Promise((r) => setTimeout(r, 5000));
