@@ -626,20 +626,51 @@ function chaveDoValor(v: string): string {
 /** Dinheiro e porcentagem citados num texto. Porcentagem POR EXTENSO entra com
  *  chave vazia de propósito: "trinta por cento" não tem dígito para conferir,
  *  então nunca casa com o contexto e sempre cai como não conferida. */
-function valoresCitados(texto: string): { texto: string; chave: string }[] {
-  const achados: { texto: string; chave: string }[] = [];
-  const guarda = (bruto: string, chave: string) => {
+function valoresCitados(texto: string): { texto: string; chave: string; tipo: Tipo }[] {
+  const achados: { texto: string; chave: string; tipo: Tipo }[] = [];
+  const guarda = (bruto: string, chave: string, tipo: Tipo) => {
     // Tira a pontuação da frase que a captura levou junto: "R$ 1.443." vira
     // "R$ 1.443". Só afeta o que a pessoa lê no motivo — a chave já foi tirada
     // do primeiro número, sem depender disto.
     const limpo = bruto.trim().replace(/[.,;:]+$/, "");
-    if (limpo && !achados.some((a) => a.texto === limpo)) achados.push({ texto: limpo, chave });
+    if (limpo && !achados.some((a) => a.texto === limpo)) achados.push({ texto: limpo, chave, tipo });
   };
-  for (const m of texto.matchAll(/R\$\s*\d[\d.,]*/gi)) guarda(m[0], chaveDoValor(m[0]));
-  for (const m of texto.matchAll(/\d[\d.,]*\s*rea(?:l|is)\b/gi)) guarda(m[0], chaveDoValor(m[0]));
-  for (const m of texto.matchAll(/\d[\d.,]*\s*%/g)) guarda(m[0], chaveDoValor(m[0]));
-  for (const m of texto.matchAll(/\S+\s+por\s+cento\b/gi)) guarda(m[0], "");
+  for (const m of texto.matchAll(/R\$\s*\d[\d.,]*/gi)) guarda(m[0], chaveDoValor(m[0]), "dinheiro");
+  for (const m of texto.matchAll(/\d[\d.,]*\s*rea(?:l|is)\b/gi)) guarda(m[0], chaveDoValor(m[0]), "dinheiro");
+  for (const m of texto.matchAll(/\d[\d.,]*\s*%/g)) guarda(m[0], chaveDoValor(m[0]), "porcentagem");
+  for (const m of texto.matchAll(/\S+\s+por\s+cento\b/gi)) guarda(m[0], "", "porcentagem");
   return achados;
+}
+
+type Tipo = "dinheiro" | "porcentagem";
+
+/**
+ * SÓ O BLOCO DE ANDAMENTO É LASTRO — medido em produção, 09/09/2026.
+ *
+ * A primeira versão comparava o valor da resposta com o system prompt INTEIRO.
+ * Dois furos apareceram no mesmo grupo, em quatro minutos:
+ *
+ *  1. A chave de um valor é a parte inteira, então "30%" casava com QUALQUER
+ *     "30" do prompt — e o bloco do INSS diz "normalmente 30 dias". Resultado:
+ *     "os 30% são sobre o valor que você recebe" passou, sem nenhum contrato
+ *     lido. Agora dinheiro só casa com dinheiro e porcentagem só com
+ *     porcentagem.
+ *
+ *  2. O motivo que ESTA trava escreve vira atividade ("Pendência do atendente
+ *     virtual: valor sem lastro no processo (R$ 864,53)"), e a atividade volta
+ *     para o prompt no bloco da equipe. Dois minutos depois, o valor barrado
+ *     tinha "lastro" — o nosso próprio bilhete. O modelo chegou a copiar a
+ *     frase e devolver `[REVISAR: valor sem lastro no processo]`.
+ *
+ * Fato é o que veio da base e das peças lidas: o bloco de andamento. Anotação
+ * interna da equipe não é fonte, exemplo antigo não é fonte, e recado que nós
+ * mesmos escrevemos nunca pode virar prova.
+ */
+function andamentoDoContexto(blocos: string): string {
+  const i = blocos.indexOf("=== ANDAMENTO PROCESSUAL");
+  if (i < 0) return "";
+  const j = blocos.indexOf("=== FIM ANDAMENTO PROCESSUAL ===", i);
+  return j < 0 ? blocos.slice(i) : blocos.slice(i, j);
 }
 
 /** Os valores da resposta que NÃO têm lastro: os que não aparecem no bloco de
@@ -661,10 +692,20 @@ function valoresSemLastro(resposta: string, blocos: string): string[] {
   const citados = valoresCitados(resposta);
   if (citados.length === 0) return [];
 
-  const contexto = juntaMilhar(blocos);
-  return citados
-    .filter((c) => !c.chave || !new RegExp(`(?<!\\d)${c.chave}(?!\\d)`).test(contexto))
-    .map((c) => c.texto);
+  const andamento = juntaMilhar(andamentoDoContexto(blocos));
+  const doAndamento = valoresCitados(andamento);
+
+  const temLastro = (c: { chave: string; tipo: Tipo }) => {
+    if (!c.chave) return false; // "trinta por cento" não tem dígito para conferir
+    if (doAndamento.some((d) => d.tipo === c.tipo && d.chave === c.chave)) return true;
+    // Dinheiro escrito sem o "R$" no resumo da peça ("valor de 1.660,00")
+    // continua sendo lastro. Porcentagem NÃO ganha esta folga: é dela que veio
+    // o furo do "30 dias".
+    return c.tipo === "dinheiro"
+      && new RegExp(`(?<!\\d)${c.chave}(?!\\d)`).test(andamento);
+  };
+
+  return citados.filter((c) => !temLastro(c)).map((c) => c.texto);
 }
 
 /** O que vai para o cliente quando o valor foi barrado. Não pede desculpa e não
