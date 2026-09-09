@@ -129,6 +129,14 @@ export interface ActivityDraft {
   /** Marca como atividade de gestão — dispensa vínculo com lead/caso/processo. */
   is_management?: boolean;
   /**
+   * Qual evento pediu esta atividade. Não aparece na tela e não muda o
+   * `action_source`, que continua 'manual': quem criou foi uma PESSOA no
+   * formulário, e trocar isso poria o símbolo de robô numa atividade humana.
+   * Serve para achar depois qual evento gerou qual tarefa — o painel do
+   * atendente virtual grava aqui `atendente-virtual:<id da resposta enviada>`.
+   */
+  action_source_detail?: string;
+  /**
    * O material citou um nº de processo que não existe (traço no lugar do ponto,
    * zero a mais na unidade de origem), e o reparo pelo dígito verificador achou
    * qual processo ele quer dizer. Vem como PERGUNTA: a ficha abre sem vínculo e
@@ -1142,6 +1150,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         ...buildPayload(),
         title: titleToUse,
         estimated_minutes: estimateChoice.minutes,
+        // A origem vem do rascunho, não do formulário: não é campo que alguém
+        // edita, é a marca de qual evento pediu esta atividade.
+        ...(draft?.action_source_detail ? { action_source_detail: draft.action_source_detail } : {}),
       } as Partial<LeadActivity> & { observer_ids?: string[]; observer_names?: string[] };
       // Quem cria a atividade entra como observador automaticamente (se não for responsável).
       const { data: { user } } = await authClient.auth.getUser();

@@ -3453,3 +3453,69 @@ Escavador no momento: 145 (ordem de R$ 15–45 uma vez).
 
 **Aviso que fica.** O saldo do Escavador acaba em silêncio. Este cron tenta 3
 vezes e para, sem avisar. Alarme de saldo é outra entrega.
+
+---
+
+## A resposta prometia a equipe, e a promessa saía sem dono (09/09/2026)
+
+### O que foi visto
+
+No grupo "PREV 1028 | Bianca/Anúncio (Aux. maternidade)" o rascunho dizia ao
+cliente: *"Já estou acionando a equipe pra conferir isso na sua documentação e
+te responder aqui no grupo"*. Aprovar e enviar punha a mensagem na fila e
+fechava o painel. Nada mais.
+
+### A medida
+
+```
+dom_respostas_pendentes com agendamento_id ......... 7
+  dessas, com atividade criada na janela do envio .. 0
+```
+
+Sete promessas ao cliente, nenhuma tarefa. O que existia — `registrarPendencia`
+na `dom-rascunho` — nasce no RASCUNHO, não no envio, e só quando há
+`[REVISAR]` ou intenção de grupo E.
+
+### O que passou a existir
+
+Depois de "Aprovar e enviar" o painel **não fecha**. No lugar dos botões de
+decisão (que já não têm o que decidir) entra a pergunta, com o rascunho à
+vista: assunto sugerido, responsável sugerido, prazo. Dois caminhos —
+**Revisar e criar**, que abre o `ActivityFullSheet` em modo criar empilhado por
+cima, e **Agora não**, que fecha sem gravar.
+
+Pergunta, e não criação automática, por medida: em modo rascunho TODA resposta
+passa por revisão, e resposta que só informa não precisa de tarefa. Uma
+atividade por envio encheria a esteira até ninguém mais olhar — é o mesmo
+motivo que já limitava a `registrarPendencia`.
+
+O formulário é o **completo**, o mesmo da esteira. É lá que se escolhe o
+responsável: o painel sugere, não decide.
+
+Grupo sem ficha não recebe o botão. `createActivity` recusa atividade sem
+lead, caso ou processo — dizer isso antes vale mais que abrir o formulário e
+falhar no fim.
+
+Ligação sem coluna nova: `action_source_detail` guarda
+`atendente-virtual:<id da resposta>`. `action_source` continua `manual` de
+propósito — quem criou foi uma pessoa, no formulário; trocar poria o símbolo
+de robô numa atividade humana.
+
+### Dívida achada no caminho: 102 atividades com dono que a tela não reconhece
+
+```
+lead_activities dos últimos 30 dias, assigned_to preenchido:
+  bate com profiles.user_id ......... 7.118
+  bate só com profiles.id ...........   105   ← 102 são action_source='dom-rascunho'
+```
+
+`dom_atendentes.user_id` guarda `profiles.id`, e a `registrarPendencia` copia
+esse valor direto para `assigned_to`. O resto do sistema grava
+`profiles.user_id`. As 102 atividades existem, têm prazo e têm nome escrito no
+`assigned_to_name` — e provavelmente não aparecem na tela de quem deveria
+executá-las.
+
+O painel já corrige do lado dele: traduz `profiles.id` → `profiles.user_id` e
+depois para o UUID do Cloud, que é o que o `createActivity` remapeia de volta.
+**Falta corrigir a `dom-rascunho` e as 102 linhas já gravadas** — edge function
+e UPDATE em produção, os dois fora do que o merge publica.
