@@ -354,7 +354,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -472,6 +472,55 @@ export const handler: RequestHandler = async (req, res) => {
           negocio: c.business?.name ?? null,
         })),
         paginas,
+      });
+    }
+
+    // Pergunta a PROPRIA Meta por que "Leads com conversao" esta indisponivel.
+    //
+    // `execution_options: ['validate_only']` valida a alteracao e NAO aplica —
+    // nenhum conjunto e alterado aqui. E a diferenca entre deduzir "deve ser
+    // preciso criar campanha nova" e ler o motivo pela boca de quem recusa.
+    if (modo === 'validar_conversao') {
+      const adsetId = String((req.body as any)?.adset_id || '');
+      const pageId = String((req.body as any)?.page_id || '');
+      if (!adsetId || !pageId) return res.status(400).json({ error: 'informe adset_id e page_id' });
+
+      const tentar = async (rotulo: string, corpo: Record<string, unknown>) => {
+        const r = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${adsetId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...corpo, execution_options: ['validate_only'], access_token: CAPI_TOKEN }),
+        });
+        const j: any = await r.json();
+        return {
+          tentativa: rotulo,
+          aceito: !j?.error,
+          erro: j?.error?.message ?? null,
+          subcodigo: j?.error?.error_subcode ?? null,
+          titulo_meta: j?.error?.error_user_title ?? null,
+          explicacao_meta: j?.error?.error_user_msg ?? null,
+        };
+      };
+
+      return res.status(200).json({
+        modo: 'validar_conversao',
+        adset_id: adsetId,
+        aviso: 'validate_only: nada foi alterado',
+        resultados: [
+          await tentar('so trocar optimization_goal', { optimization_goal: 'QUALITY_LEAD' }),
+          await tentar('goal + dataset no promoted_object', {
+            optimization_goal: 'QUALITY_LEAD',
+            promoted_object: { page_id: pageId, pixel_id: CAPI_DATASET_ID },
+          }),
+          await tentar('goal + dataset + evento PURCHASE', {
+            optimization_goal: 'QUALITY_LEAD',
+            promoted_object: { page_id: pageId, pixel_id: CAPI_DATASET_ID, custom_event_type: 'PURCHASE' },
+          }),
+          await tentar('goal + dataset + evento LEAD', {
+            optimization_goal: 'QUALITY_LEAD',
+            promoted_object: { page_id: pageId, pixel_id: CAPI_DATASET_ID, custom_event_type: 'LEAD' },
+          }),
+        ],
       });
     }
 
