@@ -8,6 +8,12 @@ import { isSoundEnabled } from '@/lib/soundSettings';
 import { playUrgentChime } from '@/lib/sounds';
 
 /**
+ * DESMONTADO em 09/09/2026 a pedido do usuário: os toasts cobriam o kanban
+ * (o agrupado chegava a "49 leads novos para ligar" quando a ingestão por
+ * planilha despejava um lote). Ninguém renderiza este componente — quem pega
+ * lead para ligar usa a Fila de discagem em /calls?tab=fila, que continua
+ * viva. Para religar, basta montar de volta no App.tsx.
+ *
  * Avisa na hora em que entra um lead com telefone discável, com o número já
  * montado num botão "Ligar".
  *
