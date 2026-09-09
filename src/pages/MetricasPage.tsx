@@ -39,7 +39,7 @@ interface Painel {
     total_hoje: number; total_7d: number; total_30d: number;
     contas: Array<{ conta: string; id: string; moeda?: string; ativa?: boolean; hoje?: number; ultimos_7d?: number; ultimos_30d?: number; erro?: string }>;
   };
-  leads: { hoje: number; ultimos_7d: number; ultimos_30d: number; pagos_30d: number; por_fonte: Array<{ nome: string; qtd: number }>; por_board: Array<{ nome: string; qtd: number }> };
+  leads: { hoje: number; pagos_hoje: number; ultimos_7d: number; pagos_7d: number; ultimos_30d: number; pagos_30d: number; entraram_no_funil_hoje: number; entraram_no_funil_7d: number; por_fonte: Array<{ nome: string; qtd: number }>; por_board: Array<{ nome: string; qtd: number }> };
   fechamentos: { hoje: number; ultimos_7d: number; ultimos_30d: number; por_fonte: Array<{ nome: string; qtd: number }>; por_board: Array<{ nome: string; qtd: number }> };
   serie: Array<{ dia: string; leads: number; fechamentos: number; investido: number }>;
   capi: Record<string, number>;
@@ -52,8 +52,8 @@ interface Painel {
 }
 
 function Kpi({
-  titulo, valor, sub, icone, destaque, aviso,
-}: { titulo: string; valor: string; sub?: string; icone: React.ReactNode; destaque?: boolean; aviso?: string | null }) {
+  titulo, valor, sub, rodape, icone, destaque, aviso,
+}: { titulo: string; valor: string; sub?: string; rodape?: string; icone: React.ReactNode; destaque?: boolean; aviso?: string | null }) {
   return (
     <Card className={destaque ? 'border-primary/40' : undefined}>
       <CardHeader className="pb-2">
@@ -65,6 +65,7 @@ function Kpi({
       <CardContent>
         <div className={`font-bold tabular-nums ${destaque ? 'text-3xl text-primary' : 'text-2xl'}`}>{valor}</div>
         {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+        {rodape && <p className="text-[11px] text-muted-foreground/70 mt-1.5 border-t pt-1.5">{rodape}</p>}
         {aviso && (
           <p className="text-xs text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
             <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
@@ -177,9 +178,13 @@ export default function MetricasPage() {
                 icone={<Wallet className="h-3.5 w-3.5" />}
               />
               <Kpi
-                titulo="Leads hoje"
-                valor={num(dados.leads.hoje)}
-                sub={`${num(dados.leads.ultimos_7d)} em 7 dias · ${num(dados.leads.ultimos_30d)} em 30`}
+                titulo="Leads de anúncio hoje"
+                valor={num(dados.leads.pagos_hoje)}
+                sub={`${num(dados.leads.pagos_7d)} em 7 dias · ${num(dados.leads.pagos_30d)} em 30`}
+                rodape={
+                  `${num(dados.leads.hoje)} no total hoje (o resto é notícia e orgânico) · ` +
+                  `${num(dados.leads.entraram_no_funil_hoje)} entraram no funil hoje`
+                }
                 icone={<Users className="h-3.5 w-3.5" />}
               />
               <Kpi

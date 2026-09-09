@@ -354,7 +354,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -445,14 +445,82 @@ export const handler: RequestHandler = async (req, res) => {
         };
       }
 
+      // `shared_accounts` EXIGE o parametro `business` — sem ele a Meta responde
+      // "(#100) The parameter business is required" e a pergunta "a conta esta
+      // ligada ao dataset?" fica sem resposta. E justamente essa a ligacao que o
+      // gestor de trafego faz no passo 1, e nenhum dos outros sinais a mede.
+      const contas = await g('me/adaccounts?fields=id,name,business{id,name}&limit=50');
+      const negocios = new Set<string>();
+      for (const c of (contas as any)?.data ?? []) {
+        if (c?.business?.id) negocios.add(String(c.business.id));
+      }
+      const compartilhamento: Record<string, unknown> = {};
+      for (const b of negocios) {
+        compartilhamento[b] = await g(`${CAPI_DATASET_ID}/shared_accounts?business=${b}&fields=id,name`);
+      }
+
       return res.status(200).json({
         modo: 'ligacoes',
         dataset: await g(
           `${CAPI_DATASET_ID}?fields=id,name,is_unavailable,data_use_setting,last_fired_time,creation_time`,
         ),
-        dataset_contas_compartilhadas: await g(`${CAPI_DATASET_ID}/shared_accounts?fields=id,name`),
-        dataset_paginas: await g(`${CAPI_DATASET_ID}/shared_pages?fields=id,name`),
+        negocios: Array.from(negocios),
+        contas_ligadas_ao_dataset: compartilhamento,
+        contas_do_token: ((contas as any)?.data ?? []).map((c: any) => ({
+          id: c.id,
+          nome: c.name,
+          negocio: c.business?.name ?? null,
+        })),
         paginas,
+      });
+    }
+
+    // Pergunta a PROPRIA Meta por que "Leads com conversao" esta indisponivel.
+    //
+    // `execution_options: ['validate_only']` valida a alteracao e NAO aplica —
+    // nenhum conjunto e alterado aqui. E a diferenca entre deduzir "deve ser
+    // preciso criar campanha nova" e ler o motivo pela boca de quem recusa.
+    if (modo === 'validar_conversao') {
+      const adsetId = String((req.body as any)?.adset_id || '');
+      const pageId = String((req.body as any)?.page_id || '');
+      if (!adsetId || !pageId) return res.status(400).json({ error: 'informe adset_id e page_id' });
+
+      const tentar = async (rotulo: string, corpo: Record<string, unknown>) => {
+        const r = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${adsetId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...corpo, execution_options: ['validate_only'], access_token: CAPI_TOKEN }),
+        });
+        const j: any = await r.json();
+        return {
+          tentativa: rotulo,
+          aceito: !j?.error,
+          erro: j?.error?.message ?? null,
+          subcodigo: j?.error?.error_subcode ?? null,
+          titulo_meta: j?.error?.error_user_title ?? null,
+          explicacao_meta: j?.error?.error_user_msg ?? null,
+        };
+      };
+
+      return res.status(200).json({
+        modo: 'validar_conversao',
+        adset_id: adsetId,
+        aviso: 'validate_only: nada foi alterado',
+        resultados: [
+          await tentar('so trocar optimization_goal', { optimization_goal: 'QUALITY_LEAD' }),
+          await tentar('goal + dataset no promoted_object', {
+            optimization_goal: 'QUALITY_LEAD',
+            promoted_object: { page_id: pageId, pixel_id: CAPI_DATASET_ID },
+          }),
+          await tentar('goal + dataset + evento PURCHASE', {
+            optimization_goal: 'QUALITY_LEAD',
+            promoted_object: { page_id: pageId, pixel_id: CAPI_DATASET_ID, custom_event_type: 'PURCHASE' },
+          }),
+          await tentar('goal + dataset + evento LEAD', {
+            optimization_goal: 'QUALITY_LEAD',
+            promoted_object: { page_id: pageId, pixel_id: CAPI_DATASET_ID, custom_event_type: 'LEAD' },
+          }),
+        ],
       });
     }
 

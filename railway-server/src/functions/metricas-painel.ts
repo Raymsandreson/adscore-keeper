@@ -165,6 +165,24 @@ export const handler: RequestHandler = async (_req, res) => {
       ),
     ]);
 
+    // ENTROU NO CRM vs PREENCHEU O FORMULARIO. `created_at` guarda a data do
+    // formulario (e o que alinha o lead com o gasto do dia no grafico), entao
+    // ele nao responde "quanta coisa caiu no funil hoje". Em 09/09/2026 a
+    // equipe viu ~3.100 leads chegarem e o painel dizia 169 — os dois numeros
+    // certos, perguntas diferentes.
+    //
+    // Contagem propria, e nao derivada do fetch de 30 dias: lead que entrou hoje
+    // com formulario de 45 dias atras esta fora daquela janela e sumiria.
+    const contaEntradas = async (desde: string) => {
+      const { count } = await supabase
+        .from('leads')
+        .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
+        .gte('entrou_no_crm_em', `${desde}T00:00:00-03:00`);
+      return count ?? 0;
+    };
+    const [entraramHoje, entraram7d] = await Promise.all([contaEntradas(hoje), contaEntradas(corte7)]);
+
     const nomeBoard: Record<string, string> = {};
     for (const b of (boards.data || []) as any[]) nomeBoard[b.id] = b.name;
 
@@ -203,11 +221,20 @@ export const handler: RequestHandler = async (_req, res) => {
       gerado_em: new Date().toISOString(),
       janela: { de: corte30, ate: hoje },
       investimento: gasto,
+      // PAGO vs TOTAL, sempre os dois. Em 09/09/2026 o card "Leads hoje" dizia
+      // 171 e o gestor de trafego via 80: 99 dos 171 eram `google_alerts`
+      // (noticia raspada, que nao custou anuncio nenhum). Numero de lead total
+      // ao lado do investimento do dia convida a essa leitura errada, e o card
+      // de custo por lead ja usava so os pagos — o painel se contradizia.
       leads: {
         hoje: leadsHoje,
+        pagos_hoje: leadsPagos.filter((l) => diaDoInstante(l.created_at) === hoje).length,
         ultimos_7d: leads7,
+        pagos_7d: pagos7,
         ultimos_30d: leads.length,
         pagos_30d: leadsPagos.length,
+        entraram_no_funil_hoje: entraramHoje,
+        entraram_no_funil_7d: entraram7d,
         por_fonte: contaPor(leads, (l) => l.source || '(sem origem)').slice(0, 15),
         por_board: contaPor(leads, (l) => nomeBoard[l.board_id] || null).slice(0, 15),
       },

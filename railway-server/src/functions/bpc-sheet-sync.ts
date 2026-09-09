@@ -57,6 +57,8 @@ interface ParsedRow {
   phone: string; // normalizado, só dígitos (com 55 quando aplicável)
   phone_key: string; // últimos 8 dígitos (chave de match)
   operator: string;
+  /** O que a EQUIPE escreveu na coluna `status da lead`. */
+  status_equipe: string;
   campaign_id: string;
   campaign_name: string;
   adset_id: string;
@@ -92,6 +94,9 @@ interface AbaLida {
   preenchidas_nas_descartadas: Record<string, number>;
   /** Linhas em que nome e telefone vieram trocados de coluna. */
   recuperadas_por_troca: number;
+  /** Valores da coluna de status preenchida pela equipe, e quantos tem id da Meta. */
+  status_na_planilha: Record<string, number>;
+  status_com_id_meta: Record<string, number>;
 }
 
 async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: string }): Promise<AbaLida> {
@@ -113,7 +118,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   const json = (await resp.json()) as { values?: any[][] };
   const values: any[][] = json.values || [];
   if (values.length < 2)
-    return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0, preenchidas_nas_descartadas: {}, recuperadas_por_troca: 0 };
+    return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0, preenchidas_nas_descartadas: {}, recuperadas_por_troca: 0, status_na_planilha: {}, status_com_id_meta: {} };
   const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
 
   const out: ParsedRow[] = [];
@@ -123,6 +128,11 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   let descTelefone = 0;
   let brutas = 0;
   const preenchidas: Record<string, number> = {};
+  // Distribuicao dos valores das colunas de status QUE A EQUIPE PREENCHE na
+  // planilha. Se houver "fechado" marcado ali que o CRM nao conhece, cada um e
+  // uma conversao real que nunca foi para a Meta.
+  const statusPlanilha: Record<string, number> = {};
+  const statusComIdMeta: Record<string, number> = {};
   let trocaDeColuna = 0;
   for (let i = 1; i < values.length; i++) {
     const r = values[i];
@@ -171,7 +181,18 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
       descTelefone += 1;
       continue;
     }
+    // CADA coluna separada. `lead_status` e campo da exportacao da Meta (vale
+    // sempre "created"); com `||` ele curto-circuita e a coluna que a EQUIPE
+    // preenche nunca era lida — foi o defeito da primeira medicao.
+    for (const col of ['lead_status', 'status da lead', 'status', 'observações', 'observacoes']) {
+      const v = String(o[col] || '').trim().toLowerCase();
+      if (!v) continue;
+      const chave = `${col} = ${v.slice(0, 40)}`;
+      statusPlanilha[chave] = (statusPlanilha[chave] || 0) + 1;
+      if (normalizaLeadIdMeta(o['id'])) statusComIdMeta[chave] = (statusComIdMeta[chave] || 0) + 1;
+    }
     out.push({
+      status_equipe: String(o['status da lead'] || '').trim().toLowerCase(),
       facebook_lead_id: normalizaLeadIdMeta(o['id']),
       created_at: o['created_time'] || '',
       name: name.trim(),
@@ -201,6 +222,8 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     descartadas_telefone: descTelefone,
     preenchidas_nas_descartadas: preenchidas,
     recuperadas_por_troca: trocaDeColuna,
+    status_na_planilha: statusPlanilha,
+    status_com_id_meta: statusComIdMeta,
   };
 }
 
@@ -240,10 +263,47 @@ function extrairIdDaPlanilha(url: string | null): string | null {
 }
 
 interface OpcoesSync {
+  /** Escreve no CRM o status que a equipe preencheu na planilha. */
+  aplicarStatus?: boolean;
   spreadsheetIdOverride?: string;
   sinceDays: number;
   dryRun: boolean;
 }
+
+
+/**
+ * De-para do que a EQUIPE escreve na planilha para o status do CRM.
+ *
+ * O vocabulario do CRM (medido em 09/09/2026): no_response 19.251, closed 3.204,
+ * inviavel 390, refused 111, in_progress 6, cancelled 5.
+ *
+ * Tres sao juizo, nao traducao — estao marcados. Se estiverem errados, e trocar
+ * a linha aqui e rodar de novo.
+ */
+const MAPA_STATUS: Record<string, string> = {
+  fechado: 'closed',
+  cancelado: 'cancelled',
+  inviavel: 'inviavel',
+  'inviável': 'inviavel',
+  'sem resposta': 'no_response',
+  'em andamento': 'in_progress',
+  'primeiro contato': 'in_progress',
+  'aguar. doc': 'in_progress',
+  'aguar. assinat': 'in_progress',
+  'falar depois': 'in_progress',
+  // JUIZO 1: numero errado nao da para trabalhar -> inviavel
+  'n° errado': 'inviavel',
+  'n errado': 'inviavel',
+  'numero errado': 'inviavel',
+  // JUIZO 2: "viavel" e lead bom ainda em aberto -> in_progress
+  'viável': 'in_progress',
+  viavel: 'in_progress',
+  // JUIZO 3: bloqueou o atendente -> refused
+  bloqueado: 'refused',
+};
+
+/** Status que o CRM ja classificou: a planilha nao rebaixa nenhum deles. */
+const NAO_REBAIXAR = new Set(['closed', 'cancelled', 'inviavel', 'refused', 'in_progress']);
 
 async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Record<string, unknown>> {
   const boardId = board.id;
@@ -274,7 +334,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const cabecalhos = new Set<string>();
   const diagPorAba = new Map<
     string,
-    { cabecalho: string[]; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number }
+    { cabecalho: string[]; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
   >();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
@@ -291,6 +351,8 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
           dt: r.value.descartadas_telefone,
           preenchidas: r.value.preenchidas_nas_descartadas,
           troca: r.value.recuperadas_por_troca,
+          status: r.value.status_na_planilha,
+          statusId: r.value.status_com_id_meta,
         });
       } else {
         tabErrors.push({ tab: meta.tab, error: String(r.reason?.message || r.reason).slice(0, 200) });
@@ -371,11 +433,104 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       cabecalho: d?.cabecalho ?? [],
       preenchidas_nas_descartadas: d?.preenchidas ?? {},
       recuperadas_por_troca: d?.troca ?? 0,
+      status_na_planilha: d?.status ?? {},
+      status_com_id_meta: d?.statusId ?? {},
       ...(brutas > 0 && linhas === 0
         ? { ALERTA: 'aba leu linhas e aproveitou ZERO — cabecalho ausente ou coluna com outro nome' }
         : {}),
     };
   });
+
+  // FECHADOS MARCADOS NA PLANILHA.
+  //
+  // A equipe escreve o desfecho na coluna `status da lead`, e o CRM nunca soube
+  // disso. Cada "fechado" ali e uma conversao real — e, diferente dos
+  // fechamentos que vem por webhook, esta TEM o id da Meta, que e o que casa a
+  // conversao com o formulario do anuncio.
+  const fechadosNaPlanilha = sheetRows.filter((r) => r.status_equipe === 'fechado');
+  let fechadosNoCrm = 0;
+  let fechadosAindaAbertos = 0;
+  let fechadosSemLeadNoCrm = 0;
+  if (fechadosNaPlanilha.length) {
+    const ids = fechadosNaPlanilha.map((r) => r.facebook_lead_id).filter(Boolean);
+    const achados = new Map<string, string>();
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data } = await ext
+        .from('leads')
+        .select('facebook_lead_id, lead_status')
+        .in('facebook_lead_id', ids.slice(i, i + 100));
+      for (const l of data || []) achados.set(String((l as any).facebook_lead_id), String((l as any).lead_status || ''));
+    }
+    for (const r of fechadosNaPlanilha) {
+      const st = achados.get(r.facebook_lead_id);
+      if (st === undefined) fechadosSemLeadNoCrm += 1;
+      else if (st === 'closed') fechadosNoCrm += 1;
+      else fechadosAindaAbertos += 1;
+    }
+  }
+
+  // APLICA O STATUS DA PLANILHA NO CRM.
+  //
+  // Duas travas:
+  //  1. `closed` da planilha sempre vale (e a conversao, o dado mais caro).
+  //  2. Para o resto, so escreve se o CRM ainda estiver em `no_response` — o
+  //     padrao de quem nunca foi classificado. A planilha nao desfaz trabalho
+  //     que ja foi feito no CRM, porque ela pode estar desatualizada.
+  const statusAplicado: Record<string, number> = {};
+  const statusIgnorado: Record<string, number> = {};
+  let statusEscritos = 0;
+  if (opts.aplicarStatus) {
+    const comStatus = sheetRows.filter((r) => r.facebook_lead_id && MAPA_STATUS[r.status_equipe]);
+    const atual = new Map<string, { id: string; lead_status: string }>();
+    const ids = comStatus.map((r) => r.facebook_lead_id);
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data } = await ext
+        .from('leads')
+        .select('id, facebook_lead_id, lead_status')
+        .in('facebook_lead_id', ids.slice(i, i + 100));
+      for (const l of data || []) {
+        atual.set(String((l as any).facebook_lead_id), {
+          id: String((l as any).id),
+          lead_status: String((l as any).lead_status || ''),
+        });
+      }
+    }
+    const hojeData = new Date().toISOString().slice(0, 10);
+    for (const r of comStatus) {
+      const alvo = MAPA_STATUS[r.status_equipe];
+      const atualLead = atual.get(r.facebook_lead_id);
+      if (!atualLead) {
+        statusIgnorado['lead nao existe no CRM'] = (statusIgnorado['lead nao existe no CRM'] || 0) + 1;
+        continue;
+      }
+      if (atualLead.lead_status === alvo) {
+        statusIgnorado['ja estava assim'] = (statusIgnorado['ja estava assim'] || 0) + 1;
+        continue;
+      }
+      if (alvo !== 'closed' && NAO_REBAIXAR.has(atualLead.lead_status)) {
+        statusIgnorado[`CRM ja classificou como ${atualLead.lead_status}`] =
+          (statusIgnorado[`CRM ja classificou como ${atualLead.lead_status}`] || 0) + 1;
+        continue;
+      }
+      if (opts.dryRun) {
+        statusAplicado[`${r.status_equipe} -> ${alvo}`] = (statusAplicado[`${r.status_equipe} -> ${alvo}`] || 0) + 1;
+        continue;
+      }
+      const patch: Record<string, unknown> = { lead_status: alvo };
+      // `became_client_date` = HOJE, e nao a data do formulario: a planilha nao
+      // guarda quando fechou, e a Meta descarta evento com mais de 7 dias. Com
+      // data antiga o Purchase seria recusado e a conversao se perderia.
+      if (alvo === 'closed') patch.became_client_date = hojeData;
+      const { error: errUp } = await ext.from('leads').update(patch).eq('id', atualLead.id);
+      if (errUp) {
+        statusIgnorado[`erro: ${errUp.message.slice(0, 60)}`] =
+          (statusIgnorado[`erro: ${errUp.message.slice(0, 60)}`] || 0) + 1;
+      } else {
+        statusEscritos += 1;
+        statusAplicado[`${r.status_equipe} -> ${alvo}`] = (statusAplicado[`${r.status_equipe} -> ${alvo}`] || 0) + 1;
+      }
+    }
+  }
 
   const comum = {
     success: true,
@@ -396,6 +551,16 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
     // aqui antes de virar coluna vazia no banco.
     colunas_da_planilha: [...cabecalhos].sort(),
     com_facebook_lead_id: toCreate.filter((r) => r.facebook_lead_id).length,
+    status_aplicado: statusAplicado,
+    status_ignorado: statusIgnorado,
+    status_escritos: statusEscritos,
+    fechados_marcados_na_planilha: {
+      total: fechadosNaPlanilha.length,
+      com_id_da_meta: fechadosNaPlanilha.filter((r) => r.facebook_lead_id).length,
+      ja_fechados_no_crm: fechadosNoCrm,
+      abertos_no_crm: fechadosAindaAbertos,
+      sem_lead_no_crm: fechadosSemLeadNoCrm,
+    },
     // Quantos telefones o dedup realmente conhecia. Se isto vier redondo em
     // 1000 num board maior que isso, a paginacao quebrou de novo.
     dedup_leads_lidos: lidosDedup,
@@ -504,10 +669,13 @@ export const handler: RequestHandler = async (req, res) => {
       spreadsheet_id?: string;
       since_days?: number;
       dry_run?: boolean;
+      aplicar_status?: boolean;
     };
 
     const sinceDays = Math.max(1, Math.min(365, Number(since_days) || 7));
     const dryRun = !!dry_run;
+    // Fora do cron de proposito: o cron so cria lead, nunca reescreve status.
+    const aplicarStatus = !!(req.body as any)?.aplicar_status;
     const COLUNAS = 'id, name, stages, sheet_source_url';
 
     // Um board: o formato da resposta e o de sempre, pra nao quebrar quem ja chama.
@@ -519,6 +687,7 @@ export const handler: RequestHandler = async (req, res) => {
         spreadsheetIdOverride: spreadsheet_id,
         sinceDays,
         dryRun,
+        aplicarStatus,
       });
       return ok(r);
     }
@@ -536,7 +705,7 @@ export const handler: RequestHandler = async (req, res) => {
 
     const resultados: Record<string, unknown>[] = [];
     for (const b of boards) {
-      resultados.push(await sincronizaBoard(b, { sinceDays, dryRun }));
+      resultados.push(await sincronizaBoard(b, { sinceDays, dryRun, aplicarStatus }));
       // A API do Sheets tem cota por minuto e ja devolveu 429 numa leitura
       // dupla: espacar os boards custa segundos e evita perder a varredura.
       if (boards.indexOf(b) < boards.length - 1) await new Promise((r) => setTimeout(r, 5000));

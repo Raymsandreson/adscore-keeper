@@ -38,9 +38,29 @@ atividade. A pessoa fecha e volta exatamente de onde saiu.
 | Lead | `LeadEditDialog` | Ver skill/memória de formulários únicos. |
 | Imagem / PDF / mídia | `MediaLightbox` | Imagem **nunca** abre página nem aba — regra própria. |
 | Página de PDF em canvas | `src/components/whatsapp/PdfCanvasViewer.tsx` | Usado por dentro do `MediaLightbox`; raramente precisa ser chamado direto. |
+| Conversa do WhatsApp (de qualquer tela) | `DashboardChatPreview` — direto, ou pelo intent `openWhatsAppChatSheet()` de `src/lib/whatsappChatSheet.ts` | Drawer; `direction` já nasce `'bottom'`. `highlightMessageId` rola até a bolha e a acende. É a conversa INTEIRA (histórico, mídia, chat da equipe, IA, virar atividade) — não faça versão reduzida. |
 
 Carregue com `lazy()` + `<Suspense>` quando o painel for pesado e a tela de
 origem for leve (ex.: telão da TV).
+
+### Toda ficha volta pra origem dela (09/09/2026)
+
+Atividade que nasceu do WhatsApp guarda de onde veio: as bolhas ficam em
+`whatsapp_message_activities` (banco Externo) e, quando nasceu do menu do topo
+da conversa, a nota "Atividade Criada" em `whatsapp_internal_notes` (Cloud).
+`loadActivityMessageOrigin()` e `carregarConversaDaNotaDaAtividade()` leem os
+dois, nessa ordem.
+
+O que ficou pronto: **`ActivityFullSheet` e `ActivitiesPage`** mostram
+"Ver mensagem de origem" (bolha específica) ou "Ver conversa de origem" (menu
+do topo) e abrem o `DashboardChatPreview` de baixo pra cima por cima da ficha,
+com a bolha acesa. Fechar devolve a ficha no mesmo lugar.
+
+O erro a não repetir: a ficha trazia o trecho da conversa colado em Observações
+e parava aí. Texto colado não é contexto — quem precisa conferir o que veio
+antes, o anexo ou quem falou tinha que sair da tela e reencontrar a conversa na
+mão. Ficha nova que nasce de alguma origem (conversa, e-mail, movimentação,
+documento) leva o caminho clicável de volta, não só o resumo.
 
 ### PDF: nunca `<iframe src="....pdf">` (30/08/2026)
 

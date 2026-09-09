@@ -274,6 +274,17 @@ Isto é **leitura**. Para decidir por onde ENVIAR em grupo continua valendo `res
 
 Renomear as linhas órfãs para a instância atual **não** é a correção: "Bruno Wenner" (mesma pessoa, instância recriada em 31/07) não alcança aqueles grupos — quem alcança é "Raym". Quem resolve é a varredura, não o nome.
 
+#### Saiu do grupo: cliente sim, chip da casa não (09/09/2026)
+
+O webhook `whatsapp-group-exit` (Railway) grava toda saída de participante em `whatsapp_group_exits` (Externo), e a trigger `trg_create_activity_on_group_exit` transforma isso em atividade de prioridade **alta** para o responsável processual do lead ("⚠️ Cliente saiu do grupo: X").
+
+A trigger só olhava `lead_id`. Como as instâncias da firma também são membros dos grupos, **chip nosso saindo virava "cliente saiu"**: em 2 dias, **37 das 140 saídas (26%)** eram de número da casa — Raym, Analyne, Andressa SDR, Atendimento Previdenciário, e os chips antigos perdidos (Dom `558688437181`, WHATSJUD IA `558689027856`, `558681595991`), que estão sendo removidos de todos os grupos.
+
+- Quem classifica é o banco, no INSERT: trigger `trg_mark_group_exit_internal` chama `is_numero_da_casa(phone)` e grava `whatsapp_group_exits.is_internal`. Fonte da verdade do "número da casa": `dom_numeros_equipe` (ativo) ∪ `whatsapp_instances.owner_phone`, casado pelos **últimos 10 dígitos** (o mesmo critério que `dom_grupos_para_olhar` usa).
+- `is_internal = true` **não gera atividade nem push** e não aparece no card vermelho da ficha (`useGroupExits` filtra). O evento continua **registrado**: no monitor (`GroupExitsPanel`) ele aparece com o selo "chip da casa · não gera atividade", porque chip nosso sendo removido dos grupos é sinal que interessa — só não é tarefa do processual.
+- Chip perdido novo entra pelo cadastro: `insert into dom_numeros_equipe (phone, nome, origem, ativo) values ('55DDNNNNNNNNN', '...', 'manual', true)`. Não precisa mexer em código.
+- Migration: `supabase/migrations-external/20260909190000_chip_da_casa_nao_e_cliente_saindo_do_grupo.sql`.
+
 ---
 
 ## WhatsApp Cloud API (Meta oficial) — canal `cloud_gerencia`
