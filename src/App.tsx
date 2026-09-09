@@ -37,7 +37,6 @@ import { ActivityTimerProvider } from "@/contexts/ActivityTimerContext";
 import { ActivityTimerOverlay } from "@/components/activities/ActivityTimerOverlay";
 import { ShiftGate } from "@/components/activities/ShiftGate";
 import { CallProvider } from "@/contexts/CallContext";
-import { NewDialableLeadAlerts } from "@/components/calls/NewDialableLeadAlerts";
 import { CallOverlay } from "@/components/chat/CallOverlay";
 import { CallSummaryDialog } from "@/components/chat/CallSummaryDialog";
 import { FeatureGuidePopup } from "@/components/guide/FeatureGuidePopup";
@@ -325,8 +324,6 @@ function SidebarLayout() {
           <MobileHeader />
           <main className="flex-1">
             <PageTracker />
-            {/* Avisa na hora quando entra lead com telefone, com o número pronto para discar. */}
-            <NewDialableLeadAlerts />
             <GlobalDatabaseSearch />
             <ConditionalProductivityBanner />
             <CallFieldSuggestionsBanner />
