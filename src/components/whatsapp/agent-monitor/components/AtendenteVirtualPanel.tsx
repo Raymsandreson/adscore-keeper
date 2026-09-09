@@ -503,6 +503,8 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
   /** O rascunho da atividade, montado aqui e revisado no formulario completo. */
   const [atvDraft, setAtvDraft] = useState<ActivityDraft | null>(null);
   const [atvAberta, setAtvAberta] = useState(false);
+  /** De onde veio o responsavel sugerido — a previa diz, para dar para discordar. */
+  const [atvOrigem, setAtvOrigem] = useState('');
   const [montandoAtv, setMontandoAtv] = useState(false);
   const [regerando, setRegerando] = useState(false);
 
@@ -847,32 +849,75 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
    * do Cloud e quem remapeia para o Externo e o `createActivity`, entao mandar
    * o id do Externo daqui erraria de novo, na outra ponta.
    *
+   * QUEM CUIDA DESTE CLIENTE VEM ANTES DO RODIZIO.
+   *
+   * O rodizio (`dom_atendentes`) existe para reclamacao que chega sem dono: é
+   * a fila do plantao. Mas o grupo do print se chama "PREV 1028 | BIANCA/
+   * ANUNCIO (AUX. MATERNIDADE) - KAROLYNE", e a ficha diz o mesmo —
+   * `acolhedor_user_id` é a Maria Karolyne. Sugerir o plantao para um cliente
+   * que já tem quem o acompanhe joga fora a única informação que faz a
+   * atividade chegar em quem sabe do que se trata.
+   *
+   * Ordem: acolhedora da ficha → responsável processual → rodizio. Medido em
+   * 09/09/2026 sobre os 362 rascunhos com ficha: 110 têm acolhedora, 95 têm
+   * responsável processual, 174 (48%) têm um dos dois, e em 24 os dois existem
+   * e são pessoas diferentes — é por isso que a ordem importa. Os outros 52%
+   * continuam caindo no rodizio, como antes. `leads.assigned_to` ficou de
+   * fora: está preenchido em ZERO das 362.
+   *
    * Sugestao, nao decisao: quem aprova troca no seletor do formulario.
    */
-  const montarRascunhoDaAtividade = async (p: Pendente, corpo: string): Promise<ActivityDraft> => {
-    const at = Array.isArray(p.dom_atendentes) ? p.dom_atendentes[0] : p.dom_atendentes;
-
+  const montarRascunhoDaAtividade = async (
+    p: Pendente, corpo: string,
+  ): Promise<{ draft: ActivityDraft; origem: string }> => {
     let assignedTo = '';
-    let assignedNome = at?.nome || '';
-    if (at?.user_id) {
-      // Aceita os dois lados da coluna de proposito: hoje ela guarda
-      // `profiles.id`, e um cadastro futuro pode guardar `profiles.user_id`.
-      const { data: perfil } = await dbAny.from('profiles')
-        .select('user_id, full_name')
-        .or(`id.eq.${at.user_id},user_id.eq.${at.user_id}`)
-        .maybeSingle();
-      const extUuid = (perfil as { user_id?: string } | null)?.user_id || null;
-      if (extUuid) {
-        assignedTo = (await remapToCloud(extUuid)) || '';
-        assignedNome = (perfil as { full_name?: string } | null)?.full_name || assignedNome;
+    let assignedNome = '';
+    let origem = '';
+    let leadNome = '';
+
+    // 1. A ficha do cliente: quem acolhe, senão quem cuida do processo. Os dois
+    //    já são `profiles.user_id` (id de auth do Externo), então basta o
+    //    remap para o Cloud, que é a moeda do formulário.
+    if (p.lead_id) {
+      const { data: lead } = await dbAny.from('leads')
+        .select('lead_name, acolhedor_user_id, processual_responsible_id')
+        .eq('id', p.lead_id).maybeSingle();
+      const l = lead as {
+        lead_name?: string; acolhedor_user_id?: string; processual_responsible_id?: string;
+      } | null;
+      leadNome = l?.lead_name || '';
+      const daFicha = l?.acolhedor_user_id || l?.processual_responsible_id || null;
+      if (daFicha) {
+        assignedTo = (await remapToCloud(daFicha)) || '';
+        origem = l?.acolhedor_user_id ? 'acolhedora da ficha' : 'responsável processual da ficha';
+        const { data: perfil } = await dbAny.from('profiles')
+          .select('full_name').eq('user_id', daFicha).maybeSingle();
+        assignedNome = (perfil as { full_name?: string } | null)?.full_name || '';
       }
     }
 
-    let leadNome = '';
-    if (p.lead_id) {
-      const { data: lead } = await dbAny.from('leads')
-        .select('lead_name').eq('id', p.lead_id).maybeSingle();
-      leadNome = (lead as { lead_name?: string } | null)?.lead_name || '';
+    // 2. Sem ninguem na ficha, o plantao. `dom_atendentes.user_id` guarda
+    //    `profiles.id` — e nao o id de auth. As 107 atividades que a
+    //    `dom-rascunho` abriu com esse valor nao batiam com o `assigned_to`
+    //    que o resto do sistema usa (7.118 das ultimas 30 dias apontam para
+    //    `profiles.user_id`), e por isso nao apareciam na tela de ninguem.
+    //    Aceita os dois lados de proposito: um cadastro futuro pode guardar o
+    //    id certo, e ai a linha achada e a mesma.
+    if (!assignedTo) {
+      const at = Array.isArray(p.dom_atendentes) ? p.dom_atendentes[0] : p.dom_atendentes;
+      assignedNome = at?.nome || '';
+      if (at?.user_id) {
+        const { data: perfil } = await dbAny.from('profiles')
+          .select('user_id, full_name')
+          .or(`id.eq.${at.user_id},user_id.eq.${at.user_id}`)
+          .maybeSingle();
+        const extUuid = (perfil as { user_id?: string } | null)?.user_id || null;
+        if (extUuid) {
+          assignedTo = (await remapToCloud(extUuid)) || '';
+          assignedNome = (perfil as { full_name?: string } | null)?.full_name || assignedNome;
+          origem = 'rodízio do atendente virtual';
+        }
+      }
     }
 
     const motivo = motivoDoCaso(p);
@@ -882,7 +927,7 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
     // grupo, que a equipe volta — o prazo tem que ser menor que a paciencia.
     const prazo = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
 
-    return {
+    return { origem, draft: {
       title: assuntoDaAtividade(p),
       activity_type: 'acompanhamento',
       priority: 'normal',
@@ -909,17 +954,27 @@ ${corpo}`,
       // tarefa. Com prefixo porque o campo e livre — o id sozinho nao diz de
       // onde veio, e daqui a um mes ninguem lembra.
       action_source_detail: `atendente-virtual:${p.id}`,
-    };
+    } };
   };
 
-  /** "Sim, revisar" — monta o rascunho e abre o formulario completo por cima. */
-  const abrirRascunhoDaAtividade = async (p: Pendente, corpo: string) => {
+  /**
+   * Monta o rascunho assim que a resposta sai — antes de perguntar.
+   *
+   * A previa tem que dizer QUEM vai ficar com a atividade, e isso depende de
+   * duas consultas (a ficha do cliente e o perfil). Perguntar "cria?" com o
+   * responsavel em branco, e so revelar o nome depois de abrir o formulario,
+   * e pedir uma decisao escondendo a informacao que a sustenta.
+   */
+  const prepararRascunhoDaAtividade = async (p: Pendente, corpo: string) => {
     setMontandoAtv(true);
     try {
-      setAtvDraft(await montarRascunhoDaAtividade(p, corpo));
-      setAtvAberta(true);
+      const { draft, origem } = await montarRascunhoDaAtividade(p, corpo);
+      setAtvDraft(draft);
+      setAtvOrigem(origem);
     } catch (e) {
-      toast.error('Nao consegui montar o rascunho: ' + ((e as Error)?.message || 'erro'));
+      // Falhar aqui nao desfaz o envio: a resposta ja saiu. A pergunta fica de
+      // pe com o que der para mostrar, e o formulario abre em branco.
+      toast.error('Nao consegui montar o rascunho da atividade: ' + ((e as Error)?.message || 'erro'));
     } finally {
       setMontandoAtv(false);
     }
@@ -934,6 +989,7 @@ ${corpo}`,
       // equipe volta ao cliente, e a promessa saia sem dono. A pergunta da
       // atividade vive no lugar dos botoes, com o rascunho a vista.
       setPerguntarAtv(p.id);
+      void prepararRascunhoDaAtividade(p, texto);
       carregar();
     } catch (e) {
       toast.error('Não consegui pôr na fila: ' + ((e as Error)?.message || 'erro'));
@@ -1787,13 +1843,23 @@ ${corpo}`,
                           <p className="text-[11px] font-medium break-words">{assuntoDaAtividade(aberto)}</p>
                           <p className="text-[10px] text-muted-foreground">
                             Responsável sugerido:{' '}
-                            <strong>{nomeDoAtendente(aberto) || 'ninguém ainda — você escolhe'}</strong>
+                            {montandoAtv
+                              ? <span className="italic">procurando quem cuida deste cliente…</span>
+                              : (
+                                <>
+                                  <strong>{atvDraft?.assigned_to_name || 'ninguém ainda — você escolhe'}</strong>
+                                  {/* De onde veio: sem isto, "Keliane" e "Karolyne" aparecem
+                                      iguais na tela, e quem revisa não tem como discordar de
+                                      uma sugestão cuja razão não está escrita. */}
+                                  {atvOrigem && <> ({atvOrigem})</>}
+                                </>
+                              )}
                             {' '}· prazo em 2 dias
                           </p>
                         </div>
                         <div className="flex gap-2">
                           <Button size="sm" className="text-xs gap-1 flex-1" disabled={montandoAtv}
-                            onClick={() => abrirRascunhoDaAtividade(aberto, texto)}>
+                            onClick={() => setAtvAberta(true)}>
                             {montandoAtv
                               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               : <ClipboardList className="h-3.5 w-3.5" />}
@@ -1901,6 +1967,15 @@ ${corpo}`,
                       ? 'Aprovar e mandar em áudio (sai na hora)'
                       : 'Aprovar e enviar (sai na hora)'}
                   </Button>
+                  {/* O aviso do que vem A SEGUIR. Sem ele a pergunta da atividade
+                      aparece do nada depois do clique — e quem não a viu chegar
+                      conclui que ela não existe, que foi o que aconteceu na
+                      primeira vez que esta tela foi usada (09/09/2026). */}
+                  <p className="text-[10px] text-muted-foreground flex items-start gap-1 -mt-1">
+                    <ClipboardList className="h-3 w-3 mt-px shrink-0" />
+                    Depois de enviar, eu pergunto aqui mesmo se você quer criar a atividade
+                    da equipe — com o responsável já sugerido pela ficha do cliente.
+                  </p>
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" className="text-xs gap-1 flex-1"
                       onClick={() => decidir(aberto, texto === aberto.resposta_sugerida ? 'aprovada' : 'editada')}>
@@ -1956,10 +2031,10 @@ ${corpo}`,
             onOpenChange={o => {
               // Fechar sem criar joga o rascunho fora: manter faria a proxima
               // resposta herdar a pergunta e o texto desta.
-              if (!o) { setAtvAberta(false); setAtvDraft(null); }
+              if (!o) { setAtvAberta(false); setAtvDraft(null); setAtvOrigem(''); }
             }}
             onCreated={() => {
-              setAtvAberta(false); setAtvDraft(null);
+              setAtvAberta(false); setAtvDraft(null); setAtvOrigem('');
               setPerguntarAtv(null); setAberto(null);
               toast.success('Atividade criada — a promessa tem dono.');
             }}

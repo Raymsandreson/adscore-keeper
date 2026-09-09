@@ -3492,6 +3492,28 @@ motivo que já limitava a `registrarPendencia`.
 O formulário é o **completo**, o mesmo da esteira. É lá que se escolhe o
 responsável: o painel sugere, não decide.
 
+**Quem cuida do cliente vem antes do rodízio.** O rodízio (`dom_atendentes`)
+é a fila do plantão, para reclamação que chega sem dono. Mas o grupo do caso
+que motivou isto se chama "PREV 1028 | BIANCA/ANUNCIO (AUX. MATERNIDADE) -
+KAROLYNE", e a ficha diz o mesmo: `acolhedor_user_id` é a Maria Karolyne.
+Sugerir o plantão ali joga fora a única informação que faz a atividade chegar
+em quem sabe do que se trata.
+
+Ordem: **acolhedora da ficha → responsável processual → rodízio**. Medido sobre
+os 362 rascunhos com ficha: 110 têm acolhedora, 95 têm responsável processual,
+174 (48%) têm um dos dois, e em **24 os dois existem e são pessoas diferentes**
+— é por isso que a ordem importa. Os outros 52% continuam no rodízio.
+`leads.assigned_to` ficou de fora: preenchido em **zero** das 362.
+
+A prévia diz **de onde** veio a sugestão ("acolhedora da ficha", "rodízio do
+atendente virtual"). Sem isso "Keliane" e "Karolyne" aparecem iguais na tela, e
+quem revisa não tem como discordar de uma sugestão cuja razão não está escrita.
+
+**E o botão avisa o que vem depois.** Na estreia da tela a pergunta não foi
+vista, porque ela só existe depois do clique: quem não a viu chegar concluiu
+que ela não existia. Agora há uma linha sob "Aprovar e enviar" dizendo que a
+pergunta vem em seguida, com o responsável já sugerido pela ficha.
+
 Grupo sem ficha não recebe o botão. `createActivity` recusa atividade sem
 lead, caso ou processo — dizer isso antes vale mais que abrir o formulário e
 falhar no fim.

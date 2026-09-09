@@ -70,7 +70,8 @@ vi.mock('@/components/activities/ActivityFullSheet', () => ({
 // `profiles.user_id` do Externo → UUID do Cloud. O mapa real vive em
 // `auth_uuid_mapping`; aqui basta provar que a tradução é aplicada.
 vi.mock('@/integrations/supabase/uuid-remap', () => ({
-  remapToCloud: async (ext: string) => (ext === 'EXT-KELIANE' ? 'CLOUD-KELIANE' : ext),
+  remapToCloud: async (ext: string) =>
+    ({ 'EXT-KELIANE': 'CLOUD-KELIANE', 'EXT-KAROLYNE': 'CLOUD-KAROLYNE' } as Record<string, string>)[ext] ?? ext,
 }));
 
 import { AtendenteVirtualPanel } from '../AtendenteVirtualPanel';
@@ -175,6 +176,44 @@ describe('Atendente virtual — a atividade que a resposta prometeu', () => {
     expect(String(d.current_status_notes)).toMatch(/Mas porque cada mes/);
     expect(String(d.what_was_done)).toMatch(/A gente entende a sua duvida/);
     expect(d.action_source_detail).toBe('atendente-virtual:r1');
+  });
+
+  it('avisa ANTES de enviar que a pergunta vem depois', async () => {
+    render(<AtendenteVirtualPanel />);
+    fireEvent.click(await screen.findByText(/Mas porque cada mes/i));
+
+    // A pergunta aparece só depois do clique, e quem não a vê chegar conclui
+    // que ela não existe — foi o que aconteceu na estreia da tela.
+    expect(await screen.findByText(/Depois de enviar, eu pergunto aqui mesmo/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Criar a atividade correspondente/i)).toBeNull();
+  });
+
+  it('quem cuida do cliente vem antes do rodizio', async () => {
+    // A ficha diz quem acolhe — e o nome do grupo diz o mesmo ("- KAROLYNE").
+    dados.leads = [{ lead_name: 'Bianca', acolhedor_user_id: 'EXT-KAROLYNE' }];
+    dados.profiles = [{ user_id: 'EXT-KAROLYNE', full_name: 'Maria Karolyne de Aguiar Nunes' }];
+
+    render(<AtendenteVirtualPanel />);
+    await aprovarEEnviar();
+
+    expect(await screen.findByText(/Maria Karolyne/)).toBeInTheDocument();
+    expect(screen.getByText(/acolhedora da ficha/i)).toBeInTheDocument();
+    // O plantão nem entra: sugerir a fila de reclamação para um cliente que já
+    // tem quem o acompanhe joga fora a única informação que faz a atividade
+    // chegar em quem sabe do que se trata.
+    expect(screen.queryByText(/rodízio/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Revisar e criar/i }));
+    await screen.findByTestId('form-atividade');
+    expect(rascunhoRecebido.atual!.assigned_to).toBe('CLOUD-KAROLYNE');
+  });
+
+  it('sem ninguem na ficha, cai no rodizio — e diz que caiu', async () => {
+    render(<AtendenteVirtualPanel />);
+    await aprovarEEnviar();
+
+    expect(await screen.findByText(/Keliane/)).toBeInTheDocument();
+    expect(screen.getByText(/rodízio do atendente virtual/i)).toBeInTheDocument();
   });
 
   it('grupo sem ficha nao oferece criar — e diz por que', async () => {
