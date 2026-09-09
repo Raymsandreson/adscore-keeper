@@ -39,7 +39,7 @@ interface Painel {
     total_hoje: number; total_7d: number; total_30d: number;
     contas: Array<{ conta: string; id: string; moeda?: string; ativa?: boolean; hoje?: number; ultimos_7d?: number; ultimos_30d?: number; erro?: string }>;
   };
-  leads: { hoje: number; pagos_hoje: number; ultimos_7d: number; pagos_7d: number; ultimos_30d: number; pagos_30d: number; por_fonte: Array<{ nome: string; qtd: number }>; por_board: Array<{ nome: string; qtd: number }> };
+  leads: { hoje: number; pagos_hoje: number; ultimos_7d: number; pagos_7d: number; ultimos_30d: number; pagos_30d: number; entraram_no_funil_hoje: number; entraram_no_funil_7d: number; por_fonte: Array<{ nome: string; qtd: number }>; por_board: Array<{ nome: string; qtd: number }> };
   fechamentos: { hoje: number; ultimos_7d: number; ultimos_30d: number; por_fonte: Array<{ nome: string; qtd: number }>; por_board: Array<{ nome: string; qtd: number }> };
   serie: Array<{ dia: string; leads: number; fechamentos: number; investido: number }>;
   capi: Record<string, number>;
@@ -181,7 +181,10 @@ export default function MetricasPage() {
                 titulo="Leads de anúncio hoje"
                 valor={num(dados.leads.pagos_hoje)}
                 sub={`${num(dados.leads.pagos_7d)} em 7 dias · ${num(dados.leads.pagos_30d)} em 30`}
-                rodape={`${num(dados.leads.hoje)} leads no total hoje — o restante é notícia e orgânico, que não custam anúncio`}
+                rodape={
+                  `${num(dados.leads.hoje)} no total hoje (o resto é notícia e orgânico) · ` +
+                  `${num(dados.leads.entraram_no_funil_hoje)} entraram no funil hoje`
+                }
                 icone={<Users className="h-3.5 w-3.5" />}
               />
               <Kpi
