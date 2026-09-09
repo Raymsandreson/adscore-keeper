@@ -3453,3 +3453,106 @@ Escavador no momento: 145 (ordem de R$ 15–45 uma vez).
 
 **Aviso que fica.** O saldo do Escavador acaba em silêncio. Este cron tenta 3
 vezes e para, sem avisar. Alarme de saldo é outra entrega.
+
+---
+
+## A resposta prometia a equipe, e a promessa saía sem dono (09/09/2026)
+
+### O que foi visto
+
+No grupo "PREV 1028 | Bianca/Anúncio (Aux. maternidade)" o rascunho dizia ao
+cliente: *"Já estou acionando a equipe pra conferir isso na sua documentação e
+te responder aqui no grupo"*. Aprovar e enviar punha a mensagem na fila e
+fechava o painel. Nada mais.
+
+### A medida
+
+```
+dom_respostas_pendentes com agendamento_id ......... 7
+  dessas, com atividade criada na janela do envio .. 0
+```
+
+Sete promessas ao cliente, nenhuma tarefa. O que existia — `registrarPendencia`
+na `dom-rascunho` — nasce no RASCUNHO, não no envio, e só quando há
+`[REVISAR]` ou intenção de grupo E.
+
+### O que passou a existir
+
+Depois de "Aprovar e enviar" o painel **não fecha**. No lugar dos botões de
+decisão (que já não têm o que decidir) entra a pergunta, com o rascunho à
+vista: assunto sugerido, responsável sugerido, prazo. Dois caminhos —
+**Revisar e criar**, que abre o `ActivityFullSheet` em modo criar empilhado por
+cima, e **Agora não**, que fecha sem gravar.
+
+Pergunta, e não criação automática, por medida: em modo rascunho TODA resposta
+passa por revisão, e resposta que só informa não precisa de tarefa. Uma
+atividade por envio encheria a esteira até ninguém mais olhar — é o mesmo
+motivo que já limitava a `registrarPendencia`.
+
+O formulário é o **completo**, o mesmo da esteira. É lá que se escolhe o
+responsável: o painel sugere, não decide.
+
+Grupo sem ficha não recebe o botão. `createActivity` recusa atividade sem
+lead, caso ou processo — dizer isso antes vale mais que abrir o formulário e
+falhar no fim.
+
+Ligação sem coluna nova: `action_source_detail` guarda
+`atendente-virtual:<id da resposta>`. `action_source` continua `manual` de
+propósito — quem criou foi uma pessoa, no formulário; trocar poria o símbolo
+de robô numa atividade humana.
+
+### Dívida achada no caminho: 102 atividades com dono que a tela não reconhece
+
+```
+lead_activities dos últimos 30 dias, assigned_to preenchido:
+  bate com profiles.user_id ......... 7.118
+  bate só com profiles.id ...........   105   ← 102 são action_source='dom-rascunho'
+```
+
+`dom_atendentes.user_id` guarda `profiles.id`, e a `registrarPendencia` copia
+esse valor direto para `assigned_to`. O resto do sistema grava
+`profiles.user_id`. As 102 atividades existem, têm prazo e têm nome escrito no
+`assigned_to_name` — e provavelmente não aparecem na tela de quem deveria
+executá-las.
+
+O painel corrige do lado dele: traduz `profiles.id` → `profiles.user_id` e
+depois para o UUID do Cloud, que é o que o `createActivity` remapeia de volta.
+
+A `registrarPendencia` passou a fazer a mesma tradução (aceitando os dois lados
+da coluna, para o dia em que um cadastro novo guardar o id de auth) e a usar
+`profiles.full_name` no `assigned_to_name`, como o resto do sistema. Sem perfil
+correspondente a atividade nasce sem dono e escreve no log — melhor na fila do
+escritório que invisível no colo de alguém.
+
+**O merge publicou sozinho — e isso é novidade.** O workflow
+`deploy-edge-externo.yml` falhava desde sempre por falta do secret
+`SUPABASE_PAT`; em 09/09/2026 o secret foi configurado e ele voltou a rodar.
+O run `34403124353` (20:47 UTC) deployou esta correção em 16 s, sem nenhuma
+ação manual, e a pendência criada 20:48 já nasceu com o código novo — o nome
+saiu como "Keliane Sousa Amorim Araújo" (`profiles.full_name`) em vez de
+"Keliane" (`dom_atendentes.nome`), que é a assinatura da versão nova.
+
+Continua valendo diferenciar antes de deployar à mão: repo e produção estavam
+idênticos às 17h42 (1.860 linhas, zero diff), e a divergência de 08/09 já
+tinha sido reconciliada.
+
+**As 107 linhas já gravadas foram corrigidas em 09/09/2026** — o UPDATE abaixo,
+rodado depois do deploy para o cron não criar linha errada nova no intervalo:
+
+```sql
+UPDATE lead_activities a
+   SET assigned_to = p.user_id
+  FROM profiles p
+ WHERE a.assigned_to = p.id
+   AND p.id <> p.user_id
+   AND a.action_source = 'dom-rascunho';
+```
+
+Sem FK em `assigned_to` e sem trigger de notificação nessa coluna (só
+`trg_activity_audit`, que guarda o antes/depois e serve de volta). O
+`updated_at` sobe nas linhas tocadas. Todas as 107 eram do mesmo par
+(`744ce99b…` → `5b5ac716…`) e todas estavam abertas.
+
+**Depois:** 108 atividades do `dom-rascunho`, 108 com dono que a tela
+reconhece, 0 com o id errado, 0 sem dono. A 108ª é a que nasceu já certa,
+depois do deploy.

@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowLeft, RefreshCw, TrendingUp, Users, Handshake, Wallet, AlertTriangle, Send,
+  ArrowLeft, RefreshCw, TrendingUp, Users, Handshake, Wallet, AlertTriangle, Send, Check, X, Link2,
 } from 'lucide-react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -42,7 +42,17 @@ interface Painel {
   leads: { hoje: number; pagos_hoje: number; ultimos_7d: number; pagos_7d: number; ultimos_30d: number; pagos_30d: number; entraram_no_funil_hoje: number; entraram_no_funil_7d: number; por_fonte: Array<{ nome: string; qtd: number }>; por_board: Array<{ nome: string; qtd: number }> };
   fechamentos: { hoje: number; ultimos_7d: number; ultimos_30d: number; por_fonte: Array<{ nome: string; qtd: number }>; por_board: Array<{ nome: string; qtd: number }> };
   serie: Array<{ dia: string; leads: number; fechamentos: number; investido: number }>;
-  capi: Record<string, number>;
+  capi: Record<string, any>;
+  funil_por_status: Record<string, number>;
+  integracao: {
+    disponivel: boolean;
+    erro?: string;
+    dataset_id?: string;
+    conjuntos_ativos?: number;
+    conjuntos_otimizando_conversao?: number;
+    conjuntos_usando_dataset?: number;
+    detalhe?: Array<{ nome: string; conta: string; otimizacao: string; usa_dataset: boolean }>;
+  };
   custo: {
     leads_pagos_7d: number; leads_pagos_30d: number;
     por_lead_pago_7d: number | null; por_lead_pago_30d: number | null;
@@ -74,6 +84,33 @@ function Kpi({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+
+const ROTULO_STATUS: Record<string, string> = {
+  no_response: 'Sem resposta',
+  in_progress: 'Em atendimento',
+  closed: 'Fechado',
+  inviavel: 'Inviável',
+  cancelled: 'Cancelado',
+  refused: 'Recusado',
+};
+
+/** Linha do checklist: o que precisa estar feito para a otimização por conversão valer. */
+function Passo({ ok, texto, detalhe }: { ok: boolean; texto: string; detalhe?: string }) {
+  return (
+    <div className="flex items-start gap-2 text-sm">
+      {ok ? (
+        <Check className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+      ) : (
+        <X className="h-4 w-4 text-muted-foreground/60 mt-0.5 shrink-0" />
+      )}
+      <div className="min-w-0">
+        <span className={ok ? '' : 'text-muted-foreground'}>{texto}</span>
+        {detalhe && <span className="text-xs text-muted-foreground block">{detalhe}</span>}
+      </div>
+    </div>
   );
 }
 
@@ -231,6 +268,62 @@ export default function MetricasPage() {
               </CardContent>
             </Card>
 
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Link2 className="h-4 w-4" />Saúde da integração com a Meta
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    O que ainda falta para o anúncio otimizar por cliente fechado, e não por volume de lead.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-2.5">
+                  {!dados.integracao?.disponivel ? (
+                    <p className="text-sm text-muted-foreground">
+                      Não consegui ler a conta de anúncio agora{dados.integracao?.erro ? `: ${dados.integracao.erro}` : '.'}
+                    </p>
+                  ) : (
+                    <>
+                      <Passo
+                        ok={(dados.capi.sent || 0) > 0}
+                        texto="Conversões chegando à Meta"
+                        detalhe={`${num(dados.capi.sent || 0)} aceitas`}
+                      />
+                      <Passo
+                        ok={(dados.capi.aceitos_com_lead_id || 0) > 0}
+                        texto="Conversões com o id do lead da Meta"
+                        detalhe={`${num(dados.capi.aceitos_com_lead_id || 0)} de ${num(dados.capi.sent || 0)} — é o que casa a venda com o formulário do anúncio`}
+                      />
+                      <Passo
+                        ok={(dados.integracao.conjuntos_otimizando_conversao || 0) > 0}
+                        texto="Conjuntos otimizando por conversão"
+                        detalhe={`${num(dados.integracao.conjuntos_otimizando_conversao || 0)} de ${num(dados.integracao.conjuntos_ativos || 0)} ativos — trocar em "Leads com conversão" no Gerenciador`}
+                      />
+                      <p className="text-xs text-muted-foreground pt-2 border-t">
+                        Enquanto o último item não estiver marcado, a Meta recebe as conversões mas continua
+                        comprando lead por volume, não por quem fecha contrato.
+                      </p>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3"><CardTitle className="text-sm">Funil por status</CardTitle></CardHeader>
+                <CardContent className="space-y-2">
+                  {Object.entries(dados.funil_por_status || {})
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([k, v]) => (
+                      <div key={k} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="text-muted-foreground">{ROTULO_STATUS[k] || k}</span>
+                        <span className="tabular-nums">{num(v)}</span>
+                      </div>
+                    ))}
+                </CardContent>
+              </Card>
+            </div>
+
             <div className="grid gap-4 lg:grid-cols-3">
               <Card>
                 <CardHeader className="pb-3">
@@ -250,9 +343,16 @@ export default function MetricasPage() {
                       </Badge>
                     </div>
                   ))}
-                  <p className="text-xs text-muted-foreground pt-2 border-t">
-                    Ignorada é lead fechado sem telefone nem e-mail — a Meta descartaria. É lista de conserto, não erro do envio.
-                  </p>
+                  <div className="pt-2 border-t space-y-1">
+                    {Object.entries(dados.capi.motivos_ignorado || {}).map(([motivo, qtd]) => (
+                      <p key={motivo} className="text-xs text-muted-foreground">
+                        {num(qtd as number)} — {motivo}
+                      </p>
+                    ))}
+                    <p className="text-xs text-muted-foreground">
+                      Ignorada não é erro de envio: é lead fechado que a Meta descartaria. É lista de conserto.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
 

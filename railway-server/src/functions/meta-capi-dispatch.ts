@@ -354,7 +354,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -521,6 +521,33 @@ export const handler: RequestHandler = async (req, res) => {
             promoted_object: { page_id: pageId, pixel_id: CAPI_DATASET_ID, custom_event_type: 'LEAD' },
           }),
         ],
+      });
+    }
+
+    // Quem MAIS escreve neste conjunto de dados, e quanto.
+    //
+    // O nome dizia "COMPRA GUIA MAES ATIPICAS" e o gestor de trafego afirma que
+    // e de venda de curso, nao de caso fechado. O `last_fired_time` reforca:
+    // marcou 08/09 21:46, dia em que o CRM nao mandou nada. Se o outro produto
+    // despeja milhares de `Purchase` aqui, os nossos viram ruido — e a campanha
+    // otimizaria por venda de curso achando que otimiza por cliente fechado.
+    if (modo === 'dono_do_dataset') {
+      const g = async (path: string) => {
+        const r = await fetch(
+          `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
+            `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+        );
+        const j: any = await r.json();
+        return j?.error ? { erro: j.error.message, codigo: j.error.code } : j;
+      };
+      return res.status(200).json({
+        modo: 'dono_do_dataset',
+        dataset: await g(`${CAPI_DATASET_ID}?fields=id,name,last_fired_time,creation_time,owner_business{name}`),
+        // Varias formas de pedir o volume: a Meta muda o nome dessas bordas com
+        // frequencia, entao pergunta-se de tres jeitos e mostra-se o que responder.
+        stats_evento: await g(`${CAPI_DATASET_ID}/stats?aggregation=event&start_time=1756684800`),
+        stats_total: await g(`${CAPI_DATASET_ID}/stats?aggregation=event_total_counts`),
+        fontes: await g(`${CAPI_DATASET_ID}/da_checks`),
       });
     }
 

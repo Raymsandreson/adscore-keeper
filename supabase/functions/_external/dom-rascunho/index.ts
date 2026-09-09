@@ -1131,8 +1131,37 @@ async function registrarPendencia(
     if (atendenteId) {
       const { data: at } = await supabase.from("dom_atendentes")
         .select("user_id, nome").eq("id", atendenteId).maybeSingle();
-      userId = (at as any)?.user_id ?? null;
       userNome = (at as any)?.nome ?? null;
+
+      // DUAS COLUNAS COM O MESMO NOME, E ELAS NÃO SÃO A MESMA COISA.
+      //
+      // `dom_atendentes.user_id` guarda `profiles.id` — não o id de auth. E
+      // `lead_activities.assigned_to` é `profiles.user_id`: das atividades dos
+      // últimos 30 dias, 7.118 apontam para `profiles.user_id` e só 105 para
+      // `profiles.id` — 102 delas abertas por aqui.
+      //
+      // O efeito é o pior tipo de falha: nada dá erro. A atividade nasce, tem
+      // prazo, tem `assigned_to_name` escrito com o nome certo — e não aparece
+      // na tela de quem deveria executá-la, porque a tela filtra pelo id, não
+      // pelo nome. Cento e duas pendências de cliente ficaram assim.
+      //
+      // Aceita os dois lados de propósito: hoje a coluna guarda `profiles.id`;
+      // um cadastro feito depois pode guardar `profiles.user_id`, e nesse caso
+      // a linha achada é a mesma.
+      const bruto = (at as any)?.user_id ?? null;
+      if (bruto) {
+        const { data: perfil } = await supabase.from("profiles")
+          .select("user_id, full_name")
+          .or(`id.eq.${bruto},user_id.eq.${bruto}`)
+          .maybeSingle();
+        userId = (perfil as any)?.user_id ?? null;
+        userNome = (perfil as any)?.full_name || userNome;
+        if (!userId) {
+          // Sem dono a atividade ainda serve (fica na fila do escritório); com
+          // dono errado ela some. Registrar para não repetir calado.
+          console.warn(`[dom-rascunho] atendente ${atendenteId} sem perfil — atividade sai sem dono`);
+        }
+      }
     }
 
     // Três dias: perto o bastante para não virar prateleira, longe o bastante
