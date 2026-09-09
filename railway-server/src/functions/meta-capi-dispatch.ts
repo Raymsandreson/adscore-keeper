@@ -171,6 +171,26 @@ async function inventario() {
  * preenchidos em 23.426). Ou alguem baixa CSV a mao, ou tem lead parado la que
  * nunca virou atendimento. Isto mede qual das duas.
  */
+/**
+ * Token de cada pagina, a partir do token do sistema.
+ *
+ * `leadgen_forms` recusa o token do sistema com erro 190 ("must be called with
+ * a Page Access Token"). O caminho e `me/accounts`, que devolve as paginas
+ * alcancadas JUNTO com o token de cada uma — nao precisa gerar nada a mao.
+ *
+ * O token de pagina NUNCA sai desta funcao: nao vai para resposta nem para log.
+ */
+export async function tokensDePagina(): Promise<Map<string, string>> {
+  const r = await fetch(
+    `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts` +
+      `?fields=id,access_token&limit=100&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+  );
+  const j: any = await r.json();
+  const m = new Map<string, string>();
+  for (const p of j?.data ?? []) if (p?.id && p?.access_token) m.set(String(p.id), String(p.access_token));
+  return m;
+}
+
 async function formularios() {
   const g = async (path: string) => {
     const r = await fetch(
@@ -214,9 +234,26 @@ async function formularios() {
     });
   }
 
+  const tokens = await tokensDePagina();
+
   const resultado: Array<Record<string, unknown>> = [];
   for (const [pageId, dono] of paginas) {
-    const f = await g(`${pageId}/leadgen_forms?fields=id,name,status,leads_count&limit=100`);
+    const tokenPagina = tokens.get(String(pageId));
+    if (!tokenPagina) {
+      resultado.push({
+        page_id: pageId,
+        contas: dono,
+        erro: 'o token do sistema nao alcanca esta pagina: atribuir a pagina ao usuario do sistema em Configuracoes do negocio',
+      });
+      continue;
+    }
+    const f = await (async () => {
+      const r = await fetch(
+        `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/leadgen_forms` +
+          `?fields=id,name,status,leads_count&limit=100&access_token=${encodeURIComponent(tokenPagina)}`,
+      );
+      return (await r.json()) as any;
+    })();
     if (f?.error) {
       resultado.push({ page_id: pageId, contas: dono, erro: f.error.message, codigo: f.error.code });
       continue;
@@ -314,7 +351,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -323,6 +360,133 @@ export const handler: RequestHandler = async (req, res) => {
 
     if (modo === 'probe') return res.status(200).json({ modo: 'probe', ...(await probe(dataset_id)) });
     if (modo === 'inventario') return res.status(200).json({ modo: 'inventario', ...(await inventario()) });
+    // Diagnostico so-leitura: o que este token pode fazer. Serve para responder
+    // "da pra mudar a otimizacao do conjunto pela API?" sem tentar e quebrar
+    // campanha ativa — `ads_read` le, `ads_management` escreve.
+    // `leadgen_forms` exige Page Access Token (erro 190 com o token do sistema).
+    // O caminho padrao para obter um e `me/accounts`, que devolve as paginas
+    // que o usuario alcanca JUNTO com o token de cada uma. Aqui so se mede se
+    // ele vem: o token em si NUNCA sai desta funcao nem vai para log.
+    // Amostra da ESTRUTURA de um formulario, nunca do conteudo: devolve os
+    // NOMES dos campos e a contagem. Valor de campo e dado pessoal de cliente e
+    // nao sai daqui — LGPD, minimizacao.
+    if (modo === 'amostra_formulario') {
+      const formId = String((req.body as any)?.form_id || '');
+      if (!formId) return res.status(400).json({ error: 'informe form_id' });
+      const tokens = await tokensDePagina();
+      const pageId = String((req.body as any)?.page_id || '');
+      const tokenPagina = tokens.get(pageId) || Array.from(tokens.values())[0];
+      if (!tokenPagina) return res.status(200).json({ erro: 'nenhum token de pagina alcancado' });
+      const r = await fetch(
+        `https://graph.facebook.com/${GRAPH_VERSION}/${formId}/leads` +
+          `?fields=id,created_time,field_data,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,platform` +
+          `&limit=5&access_token=${encodeURIComponent(tokenPagina)}`,
+      );
+      const j: any = await r.json();
+      if (j?.error) return res.status(200).json({ erro: j.error.message, codigo: j.error.code });
+      const linhas = j?.data ?? [];
+      const campos = new Set<string>();
+      for (const l of linhas) for (const f of l.field_data ?? []) campos.add(String(f.name));
+      const p0 = linhas[0] || {};
+      return res.status(200).json({
+        modo: 'amostra_formulario',
+        form_id: formId,
+        linhas_lidas: linhas.length,
+        tem_proxima_pagina: Boolean(j?.paging?.next),
+        campos_do_formulario: Array.from(campos),
+        // Só metadados de anúncio (não são dado pessoal) e o tamanho do id.
+        exemplo_metadados: {
+          created_time: p0.created_time ?? null,
+          campaign_name: p0.campaign_name ?? null,
+          adset_name: p0.adset_name ?? null,
+          ad_name: p0.ad_name ?? null,
+          platform: p0.platform ?? null,
+          tamanho_do_lead_id: String(p0.id ?? '').length,
+        },
+      });
+    }
+
+    // Lista os conjuntos ATIVOS com o que decide otimizacao, e o dono do
+    // dataset. So leitura — serve para saber onde clicar e para conferir que o
+    // dataset e do negocio certo antes de liga-lo em campanha que gasta.
+    if (modo === 'conjuntos') {
+      const g = async (path: string) => {
+        const r = await fetch(
+          `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
+            `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+        );
+        return (await r.json()) as any;
+      };
+      const ds = await g(`${CAPI_DATASET_ID}?fields=id,name,owner_business{id,name},is_unavailable`);
+      const contas = await g('me/adaccounts?fields=id,name,business{id,name}&limit=50');
+      const saida: Array<Record<string, unknown>> = [];
+      for (const c of contas?.data ?? []) {
+        const ads = await g(
+          `${c.id}/adsets?fields=id,name,effective_status,optimization_goal,destination_type,promoted_object,campaign{id,name,objective}&limit=200`,
+        );
+        for (const a2 of ads?.data ?? []) {
+          if (a2?.effective_status !== 'ACTIVE') continue;
+          saida.push({
+            conta: c.name,
+            negocio_da_conta: c.business?.name ?? null,
+            campanha: a2.campaign?.name ?? null,
+            objetivo_da_campanha: a2.campaign?.objective ?? null,
+            conjunto: a2.name,
+            conjunto_id: a2.id,
+            otimizacao_atual: a2.optimization_goal,
+            destino: a2.destination_type,
+            promoted_object: a2.promoted_object ?? null,
+          });
+        }
+      }
+      return res.status(200).json({
+        modo: 'conjuntos',
+        dataset: {
+          id: ds?.id ?? null,
+          nome: ds?.name ?? null,
+          negocio_dono: ds?.owner_business?.name ?? null,
+          indisponivel: ds?.is_unavailable ?? null,
+          erro: ds?.error?.message ?? null,
+        },
+        conjuntos_ativos: saida,
+      });
+    }
+
+    if (modo === 'paginas') {
+      const r = await fetch(
+        `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts` +
+          `?fields=id,name,access_token,tasks&limit=100&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+      );
+      const j: any = await r.json();
+      if (j?.error) {
+        return res.status(200).json({ modo: 'paginas', erro: j.error.message, codigo: j.error.code });
+      }
+      const paginas = (j?.data ?? []).map((p: any) => ({
+        page_id: p.id,
+        nome: p.name,
+        tem_token_de_pagina: Boolean(p.access_token),
+        tarefas: p.tasks ?? [],
+      }));
+      return res.status(200).json({
+        modo: 'paginas',
+        total: paginas.length,
+        com_token: paginas.filter((p: any) => p.tem_token_de_pagina).length,
+        paginas,
+      });
+    }
+
+    if (modo === 'escopos') {
+      const d = await diagnosticaAcesso(CAPI_DATASET_ID);
+      const esc = d.escopos ?? [];
+      return res.status(200).json({
+        modo: 'escopos',
+        escopos: esc,
+        pode_ler_anuncios: esc.includes('ads_read') || esc.includes('ads_management'),
+        pode_escrever_anuncios: esc.includes('ads_management'),
+        ativos_alcancados: d.ativos_alcancados ?? [],
+        diagnostico: d.diagnostico,
+      });
+    }
     if (modo === 'formularios') return res.status(200).json({ modo: 'formularios', ...(await formularios()) });
 
     // Religa o que foi congelado por erro sem volta, depois que a causa mudou

@@ -3321,3 +3321,58 @@ select indisvalid from pg_index i join pg_class c on c.oid = i.indexrelid
 | `AtendenteVirtualPanel.tsx` | campo único embaixo das abas; debounce; sequência; toast com id; aba controlada |
 | `AtendenteVirtualPanel.busca-conversas.test.tsx` | 5 testes, incluindo "uma consulta por termo, nao uma por tecla" |
 | `20260909130000_busca_nas_conversas_por_indice_trigram.sql` | `f_unaccent`, `btree_gin`, o índice e a RPC reescrita |
+
+## "O grupo é o caso" — passo 1: casar caso ↔ grupo (09/09/2026)
+
+**O pedido.** A palavra "caso" tem que sumir; o caso é o grupo do WhatsApp com
+o mesmo número; unificar em todas as telas. Antes de tirar qualquer objeto, os
+dois lados têm que apontar para o **mesmo lead** (grupo → lead ← caso). Este
+passo casa o que bate e lista o resto com evidência. Não apaga, não renomeia.
+
+**O que a leitura do banco mostrou (e muda a conta).**
+- `legal_cases.case_number` mistura duas numerações: `PREV 1939`, `CASO 231`,
+  `Família 304`, `516` (o número do grupo) e `CASO-0465`, `DG-0017`, `SM-0001`
+  (sequência interna criada pelo sistema, 3 por lead, título = nome do lead;
+  `CASO-0465/0466/0467` apontam todos para o grupo "LEAD 0001"). Casar isso pelo
+  número era colisão falsa: 93 dos 107 "duplicados" eram isso. Fica fora da chave.
+- `Família 231` (grupo) e `CASO 231` (caso) são a mesma numeração (83 de 90).
+  CASO ≡ FAMÍLIA. Caso sem prefixo (`516`) casa com o grupo de qualquer família
+  se só um grupo de caso tem o número.
+- Nos 272 grupos em que a ponte aponta para o lead X e o caso está no lead Y:
+  Y tem os processos (255 de 272), X é quem fala no grupo (41 vs 1). É o mesmo
+  caso rachado em dois leads — o defeito do CASO 398, em escala. Não se
+  automatiza.
+
+**O que existe agora (migration `20260909050000`, estrutura aplicada).**
+- `caso_chave(texto, estrito)` → `(fam, numero, sufixo)` normalizada.
+- `vw_caso_grupo_conciliacao`: uma linha por grupo de caso (PREV/CASO/FAMÍLIA
+  com número) e uma por caso sem grupo, com `classe`, `o_que_fazer` e a
+  evidência dos dois lados (lead, via ponte/cadastro, nº no lead, processos).
+  1,67 s. Classes em 09/09: casado 771 · lead_sem_caso 779 (não é pendência) ·
+  leads_diferentes 272 · grupo_sem_lead 270 · vários leads sem caso 101 ·
+  casável 125 (99 com cadastro batendo + 26) · numero_divergente 63 · vários
+  leads 44 · caso_duplicado 26 · lead do caso noutro grupo 12 · caso_sem_lead 8
+  · lado caso: 67 + 50 ("grupo ainda LEAD N") + 9.
+- `casar_caso_grupo(grupo?)`: ponte grupo → lead do caso nas classes casáveis
+  (`auto_linked = true`, log `casar_caso_grupo`). **Rodou em 09/09 (15:45 UTC)
+  com aval: 125 pontes, todas viraram `casado`; 928 linhas seguem na fila.**
+  Conferido no Dom: acha o lead pela ponte nos 125; processo em 31, INSS em 3;
+  os outros 91 grupos têm lead sem processo com número (52 leads só com linha
+  administrativa sem número). Vínculo resolvido; cadastro de processo é outra
+  esteira (fila AUTOS / "Atualizar Escavador").
+- `resolver_caso_grupo(grupo, 'ligar_ao_lead_do_caso')`: o 1 clique da fila
+  (`auto_linked = false`, log `fila_caso_grupo`). A ponte mais nova vale; a
+  antiga fica e o grupo mostra "2 leads" até alguém juntar os leads.
+- Tela: Contatos → Grupos → Auditoria → botão "N caso(s) ↔ grupo a conciliar"
+  abre `FilaCasoGrupoSheet` (chips por classe, evidência, "Ligar ao lead do
+  caso" onde a RPC aceita, "Ligar os N" em lote com segundo clique).
+
+**O que NÃO existe ainda (decisões pendentes).**
+- "Não é o mesmo": sem tabela de decisão (sem objeto novo), a linha só sai
+  quando a cadeia fecha.
+- Juntar leads: não há esteira. As 272 "dois leads" resolvem de verdade com
+  merge — fora deste passo (Leopardo).
+- Passos 2 e 3 (telas mostram o nome do grupo onde hoje mostram "Caso N";
+  aposentar `legal_cases`/`case_number`) só depois deste passo estar limpo.
+
+Rollback: cabeçalho da migration (delete das pontes pelo `source` no log).

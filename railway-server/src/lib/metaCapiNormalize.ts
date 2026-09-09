@@ -55,6 +55,7 @@ export function montaCorrespondencia(lead: {
   lead_email?: string | null;
   lead_phone?: string | null;
   lead_name?: string | null;
+  facebook_lead_id?: string | null;
 }): DadosCorrespondencia {
   const hash: Record<string, string> = {};
   const keys: string[] = [];
@@ -86,6 +87,22 @@ export function montaCorrespondencia(lead: {
   }
 
   if (lead.id) hash.external_id = sha256(lead.id);
+
+  // `lead_id` vai EM CLARO, de proposito — e a unica chave aqui que nao se
+  // hasheia. Nao e dado da pessoa: e o identificador que a PROPRIA Meta deu ao
+  // preenchimento do formulario, e ela precisa dele legivel para casar a
+  // conversao com o lead. Hashear seria o mesmo que nao mandar.
+  //
+  // E o que sustenta "Leads com conversao" em formulario instantaneo: sem ele
+  // sobra o pareamento por telefone/e-mail, que aqui ja falha em 78 dos nossos
+  // eventos (lead fechado sem contato nenhum).
+  //
+  // Fora de `match_keys` pela mesma razao do `external_id`: `temCorrespondencia
+  // Util` decide se vale gastar envio, e isso continua exigindo e-mail ou
+  // telefone — um lead_id sozinho nao identifica pessoa para a Meta.
+  const idMeta = String(lead.facebook_lead_id || '').trim();
+  if (/^[0-9]{15,17}$/.test(idMeta)) hash.lead_id = idMeta;
+
   return { user_data_hash: hash, match_keys: keys };
 }
 

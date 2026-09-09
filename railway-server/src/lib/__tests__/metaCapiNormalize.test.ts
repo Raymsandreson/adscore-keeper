@@ -124,3 +124,34 @@ describe('temCorrespondenciaUtil', () => {
     expect(temCorrespondenciaUtil([])).toBe(false);
   });
 });
+
+describe('lead_id da Meta no user_data', () => {
+  const base = { id: 'uuid-do-crm', lead_email: 'a@b.com', lead_phone: '5511987654321' };
+
+  it('vai EM CLARO, não hasheado — a Meta precisa lê-lo para casar a conversão', () => {
+    const r = montaCorrespondencia({ ...base, facebook_lead_id: '1009263962139850' });
+    expect(r.user_data_hash.lead_id).toBe('1009263962139850');
+    // contraste: e-mail e telefone continuam hasheados
+    expect(r.user_data_hash.em).toMatch(/^[a-f0-9]{64}$/);
+    expect(r.user_data_hash.ph).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('não entra em match_keys: sozinho não identifica pessoa para a Meta', () => {
+    const r = montaCorrespondencia({ ...base, facebook_lead_id: '1009263962139850' });
+    expect(r.match_keys).not.toContain('lead_id');
+    expect(temCorrespondenciaUtil(r.match_keys)).toBe(true); // por causa de em/ph
+  });
+
+  it('id fora do formato não é enviado — prefixo l: da exportação já nos mordeu', () => {
+    for (const ruim of ['l:1009263962139850', '', '123', 'abc', '12345678901234567890']) {
+      const r = montaCorrespondencia({ ...base, facebook_lead_id: ruim });
+      expect(r.user_data_hash.lead_id).toBeUndefined();
+    }
+  });
+
+  it('lead sem id da Meta continua funcionando como antes', () => {
+    const r = montaCorrespondencia(base);
+    expect(r.user_data_hash.lead_id).toBeUndefined();
+    expect(r.match_keys).toEqual(expect.arrayContaining(['em', 'ph']));
+  });
+});

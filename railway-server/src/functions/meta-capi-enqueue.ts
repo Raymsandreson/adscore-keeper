@@ -47,7 +47,9 @@ export async function enfileiraUm(p: Pedido): Promise<ResultadoEnfileiramento> {
 
   const { data: lead, error } = await supabase
     .from('leads')
-    .select('id, lead_name, lead_email, lead_phone, conversion_value, product_service_id, became_client_date')
+    .select(
+      'id, lead_name, lead_email, lead_phone, conversion_value, product_service_id, became_client_date, facebook_lead_id',
+    )
     .eq('id', p.lead_id)
     .maybeSingle();
 
