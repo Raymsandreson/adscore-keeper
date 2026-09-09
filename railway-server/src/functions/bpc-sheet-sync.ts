@@ -92,6 +92,9 @@ interface AbaLida {
   preenchidas_nas_descartadas: Record<string, number>;
   /** Linhas em que nome e telefone vieram trocados de coluna. */
   recuperadas_por_troca: number;
+  /** Valores da coluna de status preenchida pela equipe, e quantos tem id da Meta. */
+  status_na_planilha: Record<string, number>;
+  status_com_id_meta: Record<string, number>;
 }
 
 async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: string }): Promise<AbaLida> {
@@ -113,7 +116,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   const json = (await resp.json()) as { values?: any[][] };
   const values: any[][] = json.values || [];
   if (values.length < 2)
-    return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0, preenchidas_nas_descartadas: {}, recuperadas_por_troca: 0 };
+    return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0, preenchidas_nas_descartadas: {}, recuperadas_por_troca: 0, status_na_planilha: {}, status_com_id_meta: {} };
   const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
 
   const out: ParsedRow[] = [];
@@ -123,6 +126,11 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   let descTelefone = 0;
   let brutas = 0;
   const preenchidas: Record<string, number> = {};
+  // Distribuicao dos valores das colunas de status QUE A EQUIPE PREENCHE na
+  // planilha. Se houver "fechado" marcado ali que o CRM nao conhece, cada um e
+  // uma conversao real que nunca foi para a Meta.
+  const statusPlanilha: Record<string, number> = {};
+  const statusComIdMeta: Record<string, number> = {};
   let trocaDeColuna = 0;
   for (let i = 1; i < values.length; i++) {
     const r = values[i];
@@ -171,6 +179,11 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
       descTelefone += 1;
       continue;
     }
+    const st = (o['lead_status'] || o['status da lead'] || o['status'] || '').trim().toLowerCase();
+    if (st) {
+      statusPlanilha[st] = (statusPlanilha[st] || 0) + 1;
+      if (normalizaLeadIdMeta(o['id'])) statusComIdMeta[st] = (statusComIdMeta[st] || 0) + 1;
+    }
     out.push({
       facebook_lead_id: normalizaLeadIdMeta(o['id']),
       created_at: o['created_time'] || '',
@@ -201,6 +214,8 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     descartadas_telefone: descTelefone,
     preenchidas_nas_descartadas: preenchidas,
     recuperadas_por_troca: trocaDeColuna,
+    status_na_planilha: statusPlanilha,
+    status_com_id_meta: statusComIdMeta,
   };
 }
 
@@ -274,7 +289,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const cabecalhos = new Set<string>();
   const diagPorAba = new Map<
     string,
-    { cabecalho: string[]; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number }
+    { cabecalho: string[]; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
   >();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
@@ -291,6 +306,8 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
           dt: r.value.descartadas_telefone,
           preenchidas: r.value.preenchidas_nas_descartadas,
           troca: r.value.recuperadas_por_troca,
+          status: r.value.status_na_planilha,
+          statusId: r.value.status_com_id_meta,
         });
       } else {
         tabErrors.push({ tab: meta.tab, error: String(r.reason?.message || r.reason).slice(0, 200) });
@@ -371,6 +388,8 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       cabecalho: d?.cabecalho ?? [],
       preenchidas_nas_descartadas: d?.preenchidas ?? {},
       recuperadas_por_troca: d?.troca ?? 0,
+      status_na_planilha: d?.status ?? {},
+      status_com_id_meta: d?.statusId ?? {},
       ...(brutas > 0 && linhas === 0
         ? { ALERTA: 'aba leu linhas e aproveitou ZERO — cabecalho ausente ou coluna com outro nome' }
         : {}),
