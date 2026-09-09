@@ -3515,7 +3515,34 @@ esse valor direto para `assigned_to`. O resto do sistema grava
 `assigned_to_name` — e provavelmente não aparecem na tela de quem deveria
 executá-las.
 
-O painel já corrige do lado dele: traduz `profiles.id` → `profiles.user_id` e
+O painel corrige do lado dele: traduz `profiles.id` → `profiles.user_id` e
 depois para o UUID do Cloud, que é o que o `createActivity` remapeia de volta.
-**Falta corrigir a `dom-rascunho` e as 102 linhas já gravadas** — edge function
-e UPDATE em produção, os dois fora do que o merge publica.
+
+A `registrarPendencia` passou a fazer a mesma tradução (aceitando os dois lados
+da coluna, para o dia em que um cadastro novo guardar o id de auth) e a usar
+`profiles.full_name` no `assigned_to_name`, como o resto do sistema. Sem perfil
+correspondente a atividade nasce sem dono e escreve no log — melhor na fila do
+escritório que invisível no colo de alguém.
+
+**Merge em `main` não publica isso.** O workflow `deploy-edge-externo.yml`
+falha sem `SUPABASE_PAT`; a `dom-rascunho` precisa de deploy explícito, e
+conferir com `get_edge_function` antes de dizer que subiu. Conferido em
+09/09/2026: repo e produção estavam **idênticos** (1.860 linhas, zero diff) —
+a divergência de 08/09 foi reconciliada.
+
+**As linhas já gravadas continuam erradas** — eram 102 às 16h de 09/09, 106 às
+17h30, e crescem a cada rodada do cron enquanto a edge antiga estiver no ar. O
+UPDATE de correção é um passo à parte:
+
+```sql
+UPDATE lead_activities a
+   SET assigned_to = p.user_id
+  FROM profiles p
+ WHERE a.assigned_to = p.id
+   AND p.id <> p.user_id
+   AND a.action_source = 'dom-rascunho';
+```
+
+Sem FK em `assigned_to` e sem trigger de notificação nessa coluna (só
+`trg_activity_audit`, que guarda o antes/depois e serve de volta). O
+`updated_at` sobe nas linhas tocadas.
