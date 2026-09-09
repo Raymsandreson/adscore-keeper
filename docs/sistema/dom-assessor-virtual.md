@@ -3008,16 +3008,40 @@ textos reais que saíram para a Bianca: os quatro são barrados; uma resposta qu
 cita valor presente na peça lida passa; "faz 10 dias" e "28/08/2026" não são
 confundidos com dinheiro.
 
-### Estado: no git, NÃO em produção
+### Estado: em produção desde 09/09/2026 03:04
 
-Publicado em `main` (`902b4c0`) com build, `tsc --noEmit` e 1.930 testes verdes.
-O deploy **não aconteceu**: o run 13 do `deploy-edge-externo.yml` falhou às
-23:16 com `SUPABASE_PAT:` vazio, igual aos 12 anteriores. Enquanto o secret não
-existir de fato no repositório, o código está consertado no git e a função no ar
-segue a antiga — a divergência que aquele workflow foi escrito para acabar.
+`dom-rascunho` v23 e `dom-contexto` v16, do commit `aa91561`. Confirmado no
+caractere: para um grupo sem processo, sem requerimento e sem exemplo, o
+`blocos` é uma constante do código — a versão antiga dava 17.407 ch, a nova dá
+18.318 ch, e às 03:06:06 produção logou `blocos=18318ch`.
 
-Para deployar depois que o secret existir: `workflow_dispatch` com
-`slugs = "dom-rascunho dom-contexto"`. Não precisa de commit novo.
+### O deploy quebrou produção por 8 minutos, e a culpa era do script
+
+O primeiro deploy (02:56) subiu as duas funções quebradas. Das 02:56 às 03:04,
+todo POST no `dom-rascunho` respondeu **503**, com o cron batendo de 2 em 2
+minutos:
+
+```
+worker boot error: failed to bootstrap runtime: failed to create the graph:
+JSR package manifest for '@supabase/functions-js' failed to load. A remote
+specifier was requested (...) but --no-remote is specified.
+```
+
+Não era o código do Dom: era o envelope. O `scripts/deploy-edge-externo.mjs`
+mandava `POST/PATCH { body: codigo }` em JSON, que grava o fonte CRU, sem
+resolver dependência. Toda função daqui abre com
+`import "jsr:@supabase/functions-js/edge-runtime.d.ts"` e o runtime sobe com
+`--no-remote`. Corrigido para `POST /v1/projects/{ref}/functions/deploy?slug=`,
+multipart, que empacota no servidor — o mesmo caminho da CLI.
+
+**Por que ninguém pegou antes:** os 12 runs anteriores do workflow morriam na
+falta do secret `SUPABASE_PAT`. A primeira execução real do script foi direto em
+produção. Script de deploy que nunca rodou não é script testado — é hipótese.
+
+**O sinal que eu quase deixei passar:** logo depois do deploy, `get_edge_function`
+passou a responder `Failed to retrieve function bundle` nas duas funções, quando
+antes lia normal. Isso já era a função quebrada. Job verde no GitHub não é prova
+de nada do lado do Supabase — a prova é o log de boot e um `200` do cron.
 
 ### Dois itens em aberto que apareceram nesta investigação
 

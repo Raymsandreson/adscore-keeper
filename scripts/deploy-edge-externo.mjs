@@ -45,7 +45,7 @@ if (slugs.length === 0) {
   process.exit(0);
 }
 
-const headers = { Authorization: `Bearer ${PAT}`, 'Content-Type': 'application/json' };
+const auth = { Authorization: `Bearer ${PAT}` };
 const base = `https://api.supabase.com/v1/projects/${REF}/functions`;
 let falhou = false;
 
@@ -55,7 +55,7 @@ for (const slug of slugs) {
 
   const codigo = readFileSync(arquivo, 'utf8');
 
-  const atual = await fetch(`${base}/${slug}/body`, { headers: { Authorization: `Bearer ${PAT}` } });
+  const atual = await fetch(`${base}/${slug}/body`, { headers: auth });
   if (atual.ok) {
     mkdirSync('.deploy-backup', { recursive: true });
     writeFileSync(`.deploy-backup/${slug}.ts`, await atual.text());
@@ -75,22 +75,44 @@ for (const slug of slugs) {
   //
   // Função nova (o POST) nasce com JWT exigido. Quem precisa de função aberta
   // abre de propósito, uma vez, e o deploy respeita a partir dali.
-  const meta = await fetch(`${base}/${slug}`, { headers: { Authorization: `Bearer ${PAT}` } });
+  const meta = await fetch(`${base}/${slug}`, { headers: auth });
   const verifyJwt = meta.ok ? ((await meta.json()).verify_jwt !== false) : true;
   console.log(`  ${slug}: verify_jwt preservado = ${verifyJwt}`);
 
-  let r = await fetch(base, {
-    method: 'POST', headers,
-    body: JSON.stringify({ slug, name: slug, verify_jwt: verifyJwt, body: codigo }),
-  });
-  if (r.status === 409 || r.status === 400) {
-    r = await fetch(`${base}/${slug}`, {
-      method: 'PATCH', headers,
-      body: JSON.stringify({ verify_jwt: verifyJwt, body: codigo }),
-    });
-  }
+  // MULTIPART, NÃO JSON — e a diferença derrubou o Dom (09/09/2026, 02:56)
+  //
+  // Aqui ficava `POST/PATCH` com `{ body: codigo }` em JSON. Isso grava o FONTE
+  // CRU, sem resolver dependência nenhuma. Toda função daqui começa com
+  // `import "jsr:@supabase/functions-js/edge-runtime.d.ts"`, e o runtime sobe
+  // com `--no-remote`: ele não busca o JSR na hora do boot. Resultado medido,
+  // nas duas funções, dois minutos depois do primeiro deploy que este script
+  // conseguiu fazer:
+  //
+  //   worker boot error: failed to bootstrap runtime: failed to create the
+  //   graph: JSR package manifest for '@supabase/functions-js' failed to load.
+  //   A remote specifier was requested (...) but --no-remote is specified.
+  //
+  // e todo POST /dom-rascunho respondendo 503. O script nunca tinha rodado até
+  // então — os 12 runs anteriores morriam na falta do secret — então este
+  // caminho subiu para produção sem nunca ter sido exercido uma vez.
+  //
+  // `POST /functions/deploy?slug=` recebe multipart e empacota no servidor
+  // (eszip), que é o que a CLI faz. Não se põe Content-Type na mão: o fetch
+  // escreve o boundary.
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify({
+    name: slug,
+    entrypoint_path: 'index.ts',
+    verify_jwt: verifyJwt,
+  })], { type: 'application/json' }));
+  form.append('file', new File([codigo], 'index.ts', { type: 'application/typescript' }));
+
+  const r = await fetch(
+    `https://api.supabase.com/v1/projects/${REF}/functions/deploy?slug=${encodeURIComponent(slug)}`,
+    { method: 'POST', headers: { Authorization: `Bearer ${PAT}` }, body: form },
+  );
   if (!r.ok) { console.error(`  ${slug}: FALHOU ${r.status} ${await r.text()}`); falhou = true; }
-  else console.log(`  ${slug}: deployado`);
+  else console.log(`  ${slug}: deployado (bundle no servidor)`);
 }
 
 process.exit(falhou ? 1 : 0);
