@@ -9,22 +9,16 @@
 // agora saem da mesma linha do banco.
 import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
-import { normalizaLeadIdMeta } from '../lib/leadAdsSheet';
+import {
+  normalizaLeadIdMeta,
+  normalizePhone,
+  phoneKey,
+  isJunkName,
+  OPERATOR_KEYWORDS,
+} from '../lib/leadAdsSheet';
 
 const GATEWAY = 'https://connector-gateway.lovable.dev/google_sheets/v4';
 
-// Mapeamento por PALAVRA-CHAVE (não por nome exato).
-// Resiliente a renomear aba ("LEADS EDILAN" / "1LEADS EDILAN" / "EDILAN NOVO" → Edilan).
-const OPERATOR_KEYWORDS: { keyword: string; operator: string }[] = [
-  { keyword: 'israel', operator: 'Israel' },
-  { keyword: 'cris', operator: 'Cris' },
-  { keyword: 'mateus', operator: 'Mateus' },
-  { keyword: 'edilan', operator: 'Edilan' },
-  { keyword: 'karol', operator: 'Karolyne' },
-  { keyword: 'andressa', operator: 'Andressa' },
-  { keyword: 'keilane', operator: 'Keilane' },
-  { keyword: 'api', operator: 'API' },
-];
 const SKIP_TABS = new Set(['BASE_UNIFICADA']);
 
 async function discoverSheetTabs(
@@ -77,27 +71,6 @@ interface ParsedRow {
   tab: string;
 }
 
-function normalizePhone(raw: string): string {
-  if (!raw) return '';
-  let digits = String(raw).replace(/^p:/i, '').replace(/\D/g, '');
-  if (!digits) return '';
-  if (digits.length >= 12 && digits.startsWith('55')) return digits;
-  if (digits.length === 10 || digits.length === 11) return '55' + digits;
-  return digits;
-}
-
-function phoneKey(digits: string): string {
-  return digits.slice(-8);
-}
-
-function isJunkName(s: string): boolean {
-  const t = (s || '').trim();
-  if (!t || t.length < 3) return true;
-  if (t.startsWith('<test')) return true;
-  if (/^\.+$/.test(t)) return true;
-  if (!/[a-zà-ú]/i.test(t)) return true;
-  return false;
-}
 
 function rowToObj(headers: string[], r: any[]): Record<string, string> {
   const o: Record<string, string> = {};

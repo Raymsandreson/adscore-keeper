@@ -180,7 +180,7 @@ async function inventario() {
  *
  * O token de pagina NUNCA sai desta funcao: nao vai para resposta nem para log.
  */
-async function tokensDePagina(): Promise<Map<string, string>> {
+export async function tokensDePagina(): Promise<Map<string, string>> {
   const r = await fetch(
     `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts` +
       `?fields=id,access_token&limit=100&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
