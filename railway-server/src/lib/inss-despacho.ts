@@ -94,6 +94,81 @@ export function extractServico(body: string): string | undefined {
   return v ? v.slice(0, 200) : undefined;
 }
 
+/**
+ * Tipo do benefício para `benefit_type`, com o mesmo corte de `extractServico`.
+ *
+ * O rótulo do bloco varia entre "Serviço:" e "Benefício:", e o corpo chega
+ * achatado numa linha só (`gmailBodyToText` faz `\s+` → ' ' no caminho HTML).
+ * Por isso o corte NÃO pode ser `\n`: tem de ser o rótulo seguinte do bloco.
+ * Sem isso, 752 dos 753 `benefit_type` gravados até 09/09/2026 vieram com o
+ * bloco inteiro dentro ("POR INCAPACIDADE Data do Protocolo : ... Unidade
+ * responsável : ...").
+ */
+export function extractTipoBeneficio(body: string): string | undefined {
+  const servico = extractServico(body);
+  if (servico) return servico;
+  const m = body.match(/benef[íi]cio\s*:\s*([^\n]+?)(?:\s+Data do Protocolo|\s+Unidade respons|\s+Status atual|\n|$)/i);
+  if (!m) return undefined;
+  const v = m[1].replace(/\s+/g, ' ').trim();
+  return v ? v.slice(0, 200) : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Número do benefício (NB)
+//
+// Quatro formatos, medidos em 09/09/2026 sobre os 100 requerimentos concluídos
+// com resultado 'deferido' (o número é quantos usam cada um):
+//   47  "NB: 189.936.277-8"                          (pontuado, carta de concessão)
+//   24  "O benefício 7232761377 foi prorrogado"
+//   21  "concedido sob número de benefício (NB) 2430575919"
+//    8  "AUXÍLIO ... PREVIDENCIÁRIO nº 7333804209 foi concedido"
+//
+// O regex anterior (`\bNB[:\s]*(\d{6,12})`) não cobria nenhum: quebrava no ponto
+// do formato pontuado e no ')' do "(NB)". Resultado medido: 524 de 524
+// concluídos com `benefit_number` vazio, tendo o número visível no `despacho`
+// salvo ao lado.
+//
+// Os 11 deferidos restantes não têm NB no texto — o INSS mandou "Aguarde
+// correspondência" sem número. Esses seguem vazios, e é o correto.
+// ---------------------------------------------------------------------------
+
+/** O NB do INSS tem 10 dígitos; serve de trava contra capturar outro número. */
+const NB_DIGITOS = 10;
+
+/** Número de 10 dígitos, com ou sem a pontuação 999.999.999-9. */
+const NUM = String.raw`(\d[\d.-]{8,12}\d)`;
+
+const NB_PADROES: RegExp[] = [
+  new RegExp(String.raw`\(NB\)\s*:?\s*` + NUM, 'i'),
+  new RegExp(String.raw`\bNB\s*:?\s*` + NUM, 'i'),
+  new RegExp(String.raw`benef[íi]cio\s*(?:n[ºo°]\s*)?` + NUM, 'i'),
+  // Por último: "nº" sozinho, que também abre número de processo e requerimento.
+  new RegExp(String.raw`n[ºo°]\s*` + NUM, 'i'),
+];
+
+/** Rótulo imediatamente antes que prova que o número NÃO é o benefício. */
+const NAO_E_BENEFICIO = /(processo|requerimento|protocolo|cpf|ctc)[^.]{0,25}$/i;
+
+/**
+ * Número do benefício no texto do Despacho, só dígitos. `undefined` quando o
+ * e-mail não traz o número — nunca chuta a partir de outro número do corpo.
+ */
+export function extractBenefitNumber(despacho?: string | null): string | undefined {
+  const txt = (despacho || '').replace(/\s+/g, ' ').trim();
+  if (!txt) return undefined;
+
+  for (const re of NB_PADROES) {
+    const m = txt.match(re);
+    if (!m || m.index === undefined) continue;
+    // O que vem antes decide: "requerimento nº 1234567890" tem a mesma forma do
+    // NB e não pode virar benefit_number.
+    if (NAO_E_BENEFICIO.test(txt.slice(Math.max(0, m.index - 30), m.index))) continue;
+    const digitos = m[1].replace(/\D/g, '');
+    if (digitos.length === NB_DIGITOS) return digitos;
+  }
+  return undefined;
+}
+
 function decodeBase64Url(s: string): string {
   try {
     const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
