@@ -171,6 +171,26 @@ async function inventario() {
  * preenchidos em 23.426). Ou alguem baixa CSV a mao, ou tem lead parado la que
  * nunca virou atendimento. Isto mede qual das duas.
  */
+/**
+ * Token de cada pagina, a partir do token do sistema.
+ *
+ * `leadgen_forms` recusa o token do sistema com erro 190 ("must be called with
+ * a Page Access Token"). O caminho e `me/accounts`, que devolve as paginas
+ * alcancadas JUNTO com o token de cada uma — nao precisa gerar nada a mao.
+ *
+ * O token de pagina NUNCA sai desta funcao: nao vai para resposta nem para log.
+ */
+async function tokensDePagina(): Promise<Map<string, string>> {
+  const r = await fetch(
+    `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts` +
+      `?fields=id,access_token&limit=100&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+  );
+  const j: any = await r.json();
+  const m = new Map<string, string>();
+  for (const p of j?.data ?? []) if (p?.id && p?.access_token) m.set(String(p.id), String(p.access_token));
+  return m;
+}
+
 async function formularios() {
   const g = async (path: string) => {
     const r = await fetch(
@@ -214,9 +234,26 @@ async function formularios() {
     });
   }
 
+  const tokens = await tokensDePagina();
+
   const resultado: Array<Record<string, unknown>> = [];
   for (const [pageId, dono] of paginas) {
-    const f = await g(`${pageId}/leadgen_forms?fields=id,name,status,leads_count&limit=100`);
+    const tokenPagina = tokens.get(String(pageId));
+    if (!tokenPagina) {
+      resultado.push({
+        page_id: pageId,
+        contas: dono,
+        erro: 'o token do sistema nao alcanca esta pagina: atribuir a pagina ao usuario do sistema em Configuracoes do negocio',
+      });
+      continue;
+    }
+    const f = await (async () => {
+      const r = await fetch(
+        `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/leadgen_forms` +
+          `?fields=id,name,status,leads_count&limit=100&access_token=${encodeURIComponent(tokenPagina)}`,
+      );
+      return (await r.json()) as any;
+    })();
     if (f?.error) {
       resultado.push({ page_id: pageId, contas: dono, erro: f.error.message, codigo: f.error.code });
       continue;
