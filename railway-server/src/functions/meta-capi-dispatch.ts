@@ -314,7 +314,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -326,6 +326,33 @@ export const handler: RequestHandler = async (req, res) => {
     // Diagnostico so-leitura: o que este token pode fazer. Serve para responder
     // "da pra mudar a otimizacao do conjunto pela API?" sem tentar e quebrar
     // campanha ativa — `ads_read` le, `ads_management` escreve.
+    // `leadgen_forms` exige Page Access Token (erro 190 com o token do sistema).
+    // O caminho padrao para obter um e `me/accounts`, que devolve as paginas
+    // que o usuario alcanca JUNTO com o token de cada uma. Aqui so se mede se
+    // ele vem: o token em si NUNCA sai desta funcao nem vai para log.
+    if (modo === 'paginas') {
+      const r = await fetch(
+        `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts` +
+          `?fields=id,name,access_token,tasks&limit=100&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+      );
+      const j: any = await r.json();
+      if (j?.error) {
+        return res.status(200).json({ modo: 'paginas', erro: j.error.message, codigo: j.error.code });
+      }
+      const paginas = (j?.data ?? []).map((p: any) => ({
+        page_id: p.id,
+        nome: p.name,
+        tem_token_de_pagina: Boolean(p.access_token),
+        tarefas: p.tasks ?? [],
+      }));
+      return res.status(200).json({
+        modo: 'paginas',
+        total: paginas.length,
+        com_token: paginas.filter((p: any) => p.tem_token_de_pagina).length,
+        paginas,
+      });
+    }
+
     if (modo === 'escopos') {
       const d = await diagnosticaAcesso(CAPI_DATASET_ID);
       const esc = d.escopos ?? [];
