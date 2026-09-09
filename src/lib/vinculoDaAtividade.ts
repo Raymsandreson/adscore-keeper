@@ -10,6 +10,11 @@
 // DUAS PISTAS, NESTA ORDEM:
 //   1. número CNJ  — casa exato em `lead_processes.process_number`. É a pista
 //      forte: número é único, não tem homônimo.
+//   1b. número CNJ TORTO — o que veio do material tem um dígito a mais ou a
+//      menos (traço no lugar do ponto, zero sobrando na unidade de origem). O
+//      reparo pelo dígito verificador (src/lib/cnj.ts) diz qual processo o
+//      texto quer dizer, mas isso NÃO vira vínculo automático: volta com
+//      `precisaConfirmar` e quem chama pergunta antes de amarrar.
 //   2. partes      — nome do autor/réu contra `polo_ativo`/`polo_passivo`, e
 //      contra o nome do lead. Só entra quando o número não achou nada, e só
 //      quando o nome é longo o bastante pra não casar com meio mundo.
@@ -17,7 +22,7 @@
 // O vínculo é SUGESTÃO: vai pro rascunho, que o assessor revisa antes de salvar.
 // =============================================================================
 import { db, ensureExternalSession } from '@/integrations/supabase';
-import { cnjVariantes, onlyDigits } from './cnj';
+import { candidatosCnj, cnjVariantes, formatCnj, onlyDigits } from './cnj';
 
 export interface VinculoSugerido {
   lead_id?: string;
@@ -28,9 +33,18 @@ export interface VinculoSugerido {
   process_title?: string;
   workflow_id?: string;
   /** Por qual pista casou — o rascunho mostra isso pro assessor conferir. */
-  origem: 'numero' | 'parte';
+  origem: 'numero' | 'numero-corrigido' | 'parte';
   /** O valor que casou (o número lido, ou o nome da parte). */
   chave: string;
+  /**
+   * Achado por reparo do número: é sugestão a CONFIRMAR, não vínculo pronto.
+   * Quem chama não pode preencher processo/caso/lead sem passar pelo assessor.
+   */
+  precisaConfirmar?: boolean;
+  /** O número como estava escrito no material. */
+  numeroLido?: string;
+  /** O número do processo achado, como está gravado na ficha. */
+  numeroAchado?: string;
 }
 
 /** Nome curto demais casa com qualquer um: "Ana", "B&Q" viram ruído. */
@@ -83,26 +97,21 @@ async function completar(proc: ProcessoRow, origem: VinculoSugerido['origem'], c
   return vinculo;
 }
 
-/** Processo pelo número, aceitando com e sem máscara. */
-async function porNumero(numero: string): Promise<VinculoSugerido | null> {
-  const variantes = cnjVariantes(numero);
-  if (variantes.length === 0) return null;
-
+/** A ficha desses 20 dígitos, com máscara ou sem, gravada como estiver. */
+async function acharPorDigitos(digitos: string): Promise<ProcessoRow | null> {
   const { data, error } = await db
     .from('lead_processes')
     .select(COLUNAS)
-    .in('process_number', variantes)
+    .in('process_number', [formatCnj(digitos), digitos])
     .is('deleted_at', null)
     .limit(1);
   if (error) throw error;
   const exato = (data as ProcessoRow[] | null)?.[0];
-  if (exato) return completar(exato, 'numero', numero);
+  if (exato) return exato;
 
   // A equipe às vezes digita o número com espaço ou barra no meio, e aí nenhuma
-  // das variantes bate. O sequencial (7 primeiros dígitos) é seletivo o
+  // das duas formas bate. O sequencial (7 primeiros dígitos) é seletivo o
   // bastante pra buscar por semelhança e conferir dígito a dígito aqui.
-  const digitos = onlyDigits(numero);
-  if (digitos.length !== 20) return null;
   const { data: parecidos, error: erroParecidos } = await db
     .from('lead_processes')
     .select(COLUNAS)
@@ -110,8 +119,41 @@ async function porNumero(numero: string): Promise<VinculoSugerido | null> {
     .is('deleted_at', null)
     .limit(20);
   if (erroParecidos) throw erroParecidos;
-  const casou = (parecidos as ProcessoRow[] | null)?.find((p) => onlyDigits(p.process_number) === digitos);
-  return casou ? completar(casou, 'numero', numero) : null;
+  return (parecidos as ProcessoRow[] | null)?.find((p) => onlyDigits(p.process_number) === digitos) || null;
+}
+
+/** Processo pelo número, aceitando com e sem máscara — e com dígito sobrando. */
+async function porNumero(numero: string): Promise<VinculoSugerido | null> {
+  // 1) O número EXATAMENTE como veio. Cobre a ficha gravada com a mesma
+  //    pontuação torta do material, que reparo nenhum acharia.
+  const variantes = cnjVariantes(numero);
+  if (variantes.length > 0) {
+    const { data, error } = await db
+      .from('lead_processes')
+      .select(COLUNAS)
+      .in('process_number', variantes)
+      .is('deleted_at', null)
+      .limit(1);
+    if (error) throw error;
+    const exato = (data as ProcessoRow[] | null)?.[0];
+    if (exato) return completar(exato, 'numero', numero);
+  }
+
+  // 2) Os números de 20 dígitos que o texto pode estar querendo dizer. Com 20
+  //    dígitos lidos há um só candidato (ele mesmo) e o vínculo sai pronto;
+  //    quando o candidato veio de reparo, sai PARA CONFIRMAR — o dígito
+  //    verificador é forte, mas quem responde pelo vínculo é o assessor.
+  for (const cand of candidatosCnj(numero)) {
+    const achado = await acharPorDigitos(cand.digits);
+    if (!achado) continue;
+    if (!cand.reparado) return completar(achado, 'numero', numero);
+    const vinculo = await completar(achado, 'numero-corrigido', numero);
+    vinculo.precisaConfirmar = true;
+    vinculo.numeroLido = numero;
+    vinculo.numeroAchado = achado.process_number || cand.formatted;
+    return vinculo;
+  }
+  return null;
 }
 
 /** Processo pelas partes: autor/réu da ficha, ou o nome do lead. */
@@ -190,6 +232,9 @@ export function descreverVinculo(v: VinculoSugerido): string {
     : v.lead_name
       ? `lead ${v.lead_name}`
       : 'ficha encontrada';
+  if (v.origem === 'numero-corrigido') {
+    return `O nº ${v.numeroLido} citado no material não existe. O que existe é ${v.numeroAchado} — ${alvo}. Confirme antes de vincular.`;
+  }
   return v.origem === 'numero'
     ? `Vinculado ao ${alvo} pelo nº ${v.chave} lido no material.`
     : `Vinculado ao ${alvo} pela parte "${v.chave}".`;

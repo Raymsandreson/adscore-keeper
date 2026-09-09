@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCnj, originScopeLabel } from '../cnj';
+import { parseCnj, originScopeLabel, digitoVerificadorCnj, cnjDvValido, candidatosCnj } from '../cnj';
 import { normalizeUnitName, buildUnitKey, isContactStale } from '../courtCatalog';
 
 /**
@@ -99,5 +99,61 @@ describe('validade do contato', () => {
 
   it('não envelhece secretaria de vara, que é contato estável', () => {
     expect(isContactStale('secretaria', null, old)).toBe(false);
+  });
+});
+
+/**
+ * Reparo do número torto. O caso de 09/09/2026 é o corpo de delito: o advogado
+ * da reclamada mandou "0000846-69-2025-5-08-00009" no WhatsApp (traço no lugar
+ * do ponto, zero a mais na unidade de origem) e a atividade nasceu sem processo.
+ */
+describe('dígito verificador do CNJ', () => {
+  it('calcula o DD pelo módulo 97', () => {
+    // 0000846-69.2025.5.08.0009 — processo real do CASO 307 (TRT8, 9ª VT de Belém).
+    expect(digitoVerificadorCnj('000084620255080009')).toBe('69');
+  });
+
+  it('exige 18 dígitos', () => {
+    expect(digitoVerificadorCnj('123')).toBeNull();
+    expect(digitoVerificadorCnj('00008462025508000')).toBeNull();
+  });
+
+  it('confere o número inteiro', () => {
+    expect(cnjDvValido('00008466920255080009')).toBe(true);
+    // Mesmo número com o DD trocado: não fecha.
+    expect(cnjDvValido('00008467020255080009')).toBe(false);
+    expect(cnjDvValido('000084669202550800009')).toBe(false); // 21 dígitos
+  });
+});
+
+describe('candidatosCnj', () => {
+  it('devolve o próprio número quando já tem 20 dígitos', () => {
+    const [c] = candidatosCnj('0000846-69.2025.5.08.0009');
+    expect(c.digits).toBe('00008466920255080009');
+    expect(c.reparado).toBe(false);
+  });
+
+  it('conserta o zero a mais na unidade de origem', () => {
+    const cands = candidatosCnj('0000846-69-2025-5-08-00009');
+    expect(cands).toHaveLength(1);
+    expect(cands[0].formatted).toBe('0000846-69.2025.5.08.0009');
+    expect(cands[0].reparado).toBe(true);
+  });
+
+  it('conserta o zero que faltou', () => {
+    // Mesmo processo com o sequencial digitado sem um zero: 19 dígitos.
+    const cands = candidatosCnj('000846-69.2025.5.08.0009');
+    expect(cands.some((c) => c.formatted === '0000846-69.2025.5.08.0009')).toBe(true);
+  });
+
+  it('não inventa processo quando nenhum candidato fecha o DV', () => {
+    // 21 dígitos aleatórios: nada aqui pode virar sugestão de vínculo.
+    expect(candidatosCnj('123456789012345678901')).toHaveLength(0);
+  });
+
+  it('ignora o que não tem tamanho de CNJ', () => {
+    expect(candidatosCnj('7219266600')).toHaveLength(0); // NB do INSS
+    expect(candidatosCnj('')).toHaveLength(0);
+    expect(candidatosCnj(null)).toHaveLength(0);
   });
 });

@@ -104,7 +104,15 @@ export async function gerarRascunhoDaConversa(pedido: PedidoDeRascunho): Promise
     partyNames: f.party_names,
     leadName: leadId ? null : f.lead_name,
   });
-  if (vinculo) toast.success(descreverVinculo(vinculo), { duration: 6000 });
+
+  // Número torto no material (traço no lugar do ponto, zero a mais na unidade):
+  // o reparo pelo dígito verificador sabe qual processo é, mas isso vira
+  // PERGUNTA na ficha, não vínculo. Amarrar processo por palpite de número é
+  // pior do que não amarrar — o assessor não tem como desconfiar depois.
+  const aConfirmar = vinculo?.precisaConfirmar ? vinculo : null;
+  const aplicado = aConfirmar ? null : vinculo;
+  if (aConfirmar) toast.warning(descreverVinculo(aConfirmar), { duration: 10000 });
+  else if (aplicado) toast.success(descreverVinculo(aplicado), { duration: 6000 });
 
   // Assessor sugerido pela IA (nome exato) vence; sem sugestão, fica com quem
   // está criando. Mesmo critério para o prazo: o citado na conversa vence,
@@ -119,7 +127,7 @@ export async function gerarRascunhoDaConversa(pedido: PedidoDeRascunho): Promise
   // da conversa com o processo do documento deixaria o vínculo torto (atividade
   // no lead A apontando pro processo do lead B). Sem processo, a conversa aberta
   // manda: quem clicou está falando com aquele cliente.
-  const leadDoVinculo = vinculo?.process_id ? vinculo.lead_id : undefined;
+  const leadDoVinculo = aplicado?.process_id ? aplicado.lead_id : undefined;
   const origemNotas = [
     prefillText ? `— Origem: conversa do WhatsApp —\n${prefillText}` : '— Origem: anexo da conversa do WhatsApp —',
     vinculo ? descreverVinculo(vinculo) : '',
@@ -132,13 +140,26 @@ export async function gerarRascunhoDaConversa(pedido: PedidoDeRascunho): Promise
       activity_type: f.activity_type || 'tarefa',
       priority: f.priority || 'normal',
       deadline: f.deadline || format(new Date(), 'yyyy-MM-dd'),
-      lead_id: leadDoVinculo || leadId || vinculo?.lead_id || undefined,
-      lead_name: leadDoVinculo ? (vinculo?.lead_name || leadName) : (leadName || vinculo?.lead_name || f.lead_name || undefined),
-      case_id: vinculo?.case_id,
-      case_title: vinculo?.case_title,
-      process_id: vinculo?.process_id,
-      process_title: vinculo?.process_title,
-      workflow_id: vinculo?.workflow_id,
+      lead_id: leadDoVinculo || leadId || aplicado?.lead_id || undefined,
+      lead_name: leadDoVinculo ? (aplicado?.lead_name || leadName) : (leadName || aplicado?.lead_name || f.lead_name || undefined),
+      case_id: aplicado?.case_id,
+      case_title: aplicado?.case_title,
+      process_id: aplicado?.process_id,
+      process_title: aplicado?.process_title,
+      workflow_id: aplicado?.workflow_id,
+      numero_a_confirmar: aConfirmar && aConfirmar.process_id
+        ? {
+            lido: aConfirmar.numeroLido || aConfirmar.chave,
+            achado: aConfirmar.numeroAchado || '',
+            process_id: aConfirmar.process_id,
+            process_title: aConfirmar.process_title || '',
+            case_id: aConfirmar.case_id,
+            case_title: aConfirmar.case_title,
+            lead_id: aConfirmar.lead_id,
+            lead_name: aConfirmar.lead_name,
+            workflow_id: aConfirmar.workflow_id,
+          }
+        : undefined,
       assigned_to: assignee?.user_id || undefined,
       assigned_to_name: assignee?.full_name || undefined,
       what_was_done: f.what_was_done || '',
