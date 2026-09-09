@@ -351,7 +351,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -367,6 +367,45 @@ export const handler: RequestHandler = async (req, res) => {
     // O caminho padrao para obter um e `me/accounts`, que devolve as paginas
     // que o usuario alcanca JUNTO com o token de cada uma. Aqui so se mede se
     // ele vem: o token em si NUNCA sai desta funcao nem vai para log.
+    // Amostra da ESTRUTURA de um formulario, nunca do conteudo: devolve os
+    // NOMES dos campos e a contagem. Valor de campo e dado pessoal de cliente e
+    // nao sai daqui — LGPD, minimizacao.
+    if (modo === 'amostra_formulario') {
+      const formId = String((req.body as any)?.form_id || '');
+      if (!formId) return res.status(400).json({ error: 'informe form_id' });
+      const tokens = await tokensDePagina();
+      const pageId = String((req.body as any)?.page_id || '');
+      const tokenPagina = tokens.get(pageId) || Array.from(tokens.values())[0];
+      if (!tokenPagina) return res.status(200).json({ erro: 'nenhum token de pagina alcancado' });
+      const r = await fetch(
+        `https://graph.facebook.com/${GRAPH_VERSION}/${formId}/leads` +
+          `?fields=id,created_time,field_data,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,platform` +
+          `&limit=5&access_token=${encodeURIComponent(tokenPagina)}`,
+      );
+      const j: any = await r.json();
+      if (j?.error) return res.status(200).json({ erro: j.error.message, codigo: j.error.code });
+      const linhas = j?.data ?? [];
+      const campos = new Set<string>();
+      for (const l of linhas) for (const f of l.field_data ?? []) campos.add(String(f.name));
+      const p0 = linhas[0] || {};
+      return res.status(200).json({
+        modo: 'amostra_formulario',
+        form_id: formId,
+        linhas_lidas: linhas.length,
+        tem_proxima_pagina: Boolean(j?.paging?.next),
+        campos_do_formulario: Array.from(campos),
+        // Só metadados de anúncio (não são dado pessoal) e o tamanho do id.
+        exemplo_metadados: {
+          created_time: p0.created_time ?? null,
+          campaign_name: p0.campaign_name ?? null,
+          adset_name: p0.adset_name ?? null,
+          ad_name: p0.ad_name ?? null,
+          platform: p0.platform ?? null,
+          tamanho_do_lead_id: String(p0.id ?? '').length,
+        },
+      });
+    }
+
     if (modo === 'paginas') {
       const r = await fetch(
         `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts` +
