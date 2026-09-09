@@ -2212,6 +2212,13 @@ Três travas, cada uma por um jeito de dar errado: só com pendência de verdade
 (senão o cron abriria uma a cada 5 minutos, para sempre); e falhar ali não
 derruba o rascunho.
 
+> **Desatualizado desde 09/09/2026.** O prazo de 3 dias e a trava de 7 dias por
+> título saíram: prazo passou a ser HOJE, a trava passou a ser por conversa, e a
+> atividade nasce urgente/alta, com os campos preenchidos, com vínculo para a
+> bolha de origem e com aviso no WhatsApp de quem vai executá-la. Ver
+> "[A atividade da pendência nascia inerte](#a-atividade-da-pendência-nascia-inerte-09092026)"
+> no fim deste documento.
+
 #### Dois erros meus, que só apareceram testando a resposta de verdade
 
 1. **Português quebrado:** saiu *"está na fase de quando a gente entrou com o
@@ -3685,4 +3692,93 @@ clonada diz que quase sempre é sessão sem permissão de leitura em
 **O que não consegui verificar:** `custom_voices` mora no Supabase **Cloud**
 (`gliigkupoebmlbwyvijp`), onde o MCP desta sessão não tem permissão, e a
 leitura com a chave publicável volta `[]` por RLS. Se a voz "Kely" existe e
-não estava aparecendo, esta mudança passa a dizer o porquê na própria tela.
+não estava aparecendo, esta mudança passa a dizer o porquê na própria tela.---
+
+## A atividade da pendência nascia inerte (09/09/2026)
+
+### O que foi visto
+
+A ficha de uma atividade aberta pelo robô, com o cliente pedindo atendimento
+humano naquela manhã: **prazo 12/09**, prioridade **Normal**, os campos "Como
+está / O que foi feito / Próximo passo" **vazios**, e nenhum caminho de volta
+para a conversa que a gerou. Ao lado, a ficha do lead com **seis** pendências
+do mesmo cliente empilhadas.
+
+### O que os números diziam
+
+```
+lead_activities where action_source='dom-rascunho', em 09/09/2026:
+  59 atividades · 43 leads · 112 abertas no total
+  todas: deadline 2026-09-12, priority 'normal', notification_at NULL
+  ai_generation_context NULL · contact_id/case_id/process_id NULL
+
+dom_respostas_pendentes:
+  420 nunca notificadas · 1 aviso entregue na vida
+  41 com atendente sorteado e sem aviso, a mais velha de 04/09
+```
+
+### As seis causas, todas no mesmo lugar
+
+`registrarPendencia`, em `dom-rascunho`. Nenhuma era mistério — todas eram
+decisões escritas no código, que deixaram de servir:
+
+1. **`+3 dias` fixo**, com comentário dizendo que três dias era "perto o
+   bastante para não virar prateleira". Não distinguia processo parado de
+   cliente esperando resposta agora.
+2. **`priority` não era passado.** Caía no default `normal` da tabela.
+3. **Nada identificava a conversa.** O nome do grupo ia como texto na
+   `description`; `group_jid` e `instance_name` não iam a lugar nenhum. Nome de
+   grupo não abre conversa.
+4. **Os campos de detalhamento nasciam vazios**, com tudo empilhado na
+   `description`.
+5. **O aviso não existia na prática.** `dom-avisar-atendente` estava certa, era
+   ensaio por padrão (`dry_run !== false`) e **não tinha cron**. Uma peça que
+   ninguém ligou é uma peça que não existe.
+6. **A trava de duplicata era o título exato**, e o título carrega o motivo que
+   o modelo escreve livre. "valor", "valor, prazo", "prazo", "interpretar o
+   mérito" e "interpretar o MÉRITO" são cinco atividades do mesmo cliente na
+   mesma tarde.
+
+### O que passou a valer
+
+| Antes | Agora |
+|---|---|
+| `deadline` = hoje + 3 dias | `deadline` = **hoje**, calculado em -03 |
+| `priority` ausente → `normal` | **`urgente`** no grupo E, **`alta`** no resto; só sobe, nunca desce |
+| `notification_at` NULL | preenchido: o sino toca |
+| Nome do grupo em texto | vínculo em `whatsapp_message_activities` + `ai_generation_context` |
+| Campos vazios | `current_status_notes` e `next_steps` vêm escritos; `what_was_done` fica para a pessoa |
+| Aviso desligado | sai junto da criação, com link `?openActivity=` |
+| Dedupe por título / 7 dias | dedupe por **conversa** / 24h, anexando a fala nova |
+
+**O botão de voltar para a conversa não foi criado.** Ele já existia: a ficha
+tem "Ver mensagem de origem", alimentado por `loadActivityMessageOrigin`, que lê
+`whatsapp_message_activities`. Faltava alguém gravar a linha. Gravando, o atalho
+acende sozinho e abre a conversa em painel por cima (skill
+`ui-sem-redirecionar`) — zero mudança no front.
+
+Para isso o select de `whatsapp_messages` passou a trazer o `id`, e a
+deduplicação de cópias leva o `id` junto do conteúdo: a bolha que interessa é a
+que **tem** o texto, não a cópia muda que chegou por último.
+
+### O que o dado antigo recebeu
+
+- **112 atividades abertas**: `deadline` = hoje, 17 `urgente` (cruzando com
+  `dom_respostas_pendentes.intencao like 'E%'` na janela de ±10 min da criação),
+  95 `alta`.
+- **42 pendências represadas**: um resumo único no WhatsApp da atendente,
+  agrupado por gravidade (5 falando em desistir, 2 pedindo adiantamento, 7
+  querendo sair/transferir/reclamando, 18 de valor e prazo), e `notificado_em`
+  preenchido para não repetirem.
+
+### O que ficou de fora, de propósito
+
+`dom-avisar-atendente` continua no ar, agora redundante — não foi apagada
+porque ainda é o caminho de aviso de pendência que **não** vira atividade.
+
+### O que ninguém consertou ainda
+
+`dom_atendentes` tem **uma linha**: Keliane, escopo `geral`. O "rodízio" é ela
+sozinha, e as 59 pendências de um dia normal caem todas no mesmo colo. A regra
+de urgência reduz o ruído, não o volume. Enquanto não houver mais gente
+cadastrada, o gargalo é esse — e ele não é de código.

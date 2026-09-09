@@ -575,3 +575,26 @@ dentro da mesma transação — isso é visível (mesma transação, comando
 posterior); o que não é visível é dentro de um único SELECT.
 
 Rollback: cabeçalho da migration.
+
+## Chave anon e views (10/09/2026)
+
+Testando a REST pelo pg_net com a chave anon (que vai no bundle), a
+`vw_caso_grupo_conciliacao` respondeu 200 com nome de lead. Todas as 51 views
+`vw_*` tinham SELECT para `anon` pelo default privilege do Supabase em
+`public`, e 36 tabelas (backups `zz_*`, staging) estavam sem RLS.
+
+Feito (migration `20260910000000`, aplicada): revoke de `anon` nas 51 views;
+RLS ligada nas 36 tabelas. Conferido: 0 views com anon, 0 tabelas sem RLS,
+REST com anon passa a negar. O front não usa o papel anon (faz
+`signInAnonymously()` e vira `authenticated`), edges e railway não leem view
+com a chave anon: impacto zero.
+
+**A porta que continua aberta (decisão pendente).** Qualquer pessoa com a
+chave anon pode fazer sign-in anônimo e virar `authenticated`: 6.277 usuários
+anônimos, ~168 por dia, contra 55 usuários reais no projeto externo. Enquanto
+o front depender disso, "authenticated" quer dizer "qualquer um", e as
+policies que liberam `authenticated` não protegem nada. Conserto: o Railway
+emitir JWT do projeto externo (assinado com o JWT secret dele) para quem está
+logado no Cloud, o front usar `setSession` com ele, e o sign-in anônimo ser
+desligado no Auth do externo. Mexe em env var, auth e em todo `ensureExternalSession`
+— Modo Leopardo, com rollback (religar o sign-in anônimo) antes de começar.

@@ -565,6 +565,18 @@ Numa conversa pessoal (a esposa do dono da conta) a sugestão saía **"Entendi, 
 
 **Regra**: a IA aponta valor absurdo no texto, mas **nunca filtra ou esconde linha** do resultado. A tabela mostra o que está no banco; o conserto é na origem.
 
+### O mapa do banco é lido do banco — desde 09/09/2026
+
+O analista não recebe uma lista de colunas escrita à mão: `railway-server/src/lib/schemaCatalog.ts` lê o schema do próprio banco a cada boot (e a cada hora), monta o catálogo e o `report-query` cola isso no prompt. A **curadoria** continua no arquivo — o que cada tabela significa, o vocabulário real dos status (`lead_status='closed'`, `resultado` em minúsculo, `current_status='Concluída'`) e os joins já testados —, porque isso o schema não conta.
+
+**Por que mudou**: o catálogo à mão envelheceu. `inss_admin_processes.resultado` tinha 498 registros preenchidos (396 indeferido, 100 deferido, 2 arquivado_decurso) e nunca entrou na lista; como o prompt manda "nunca invente coluna, use só as listadas", a IA respondeu à diretoria que o requerimento "não tem campo de resultado". Mesma coisa em `lead_processes`: 83 colunas no banco, 25 no catálogo — `resultado_atingido*` e `protocolo_administrativo` (275 preenchidos) invisíveis. **Não era o modelo** (quem responde é o Opus desde 04/09/2026): era o mapa.
+
+- **Tabela nova só aparece no relatório depois de entrar na lista `TABELAS`** do `schemaCatalog` (com uma linha dizendo o que ela é). O `/health` conta em `schema_catalog.fora_do_catalogo` quantas o banco expõe e ninguém liberou.
+- **Coluna de credencial fica fora de propósito** (`senha_gov` e afins). A IA não consulta senha, nem pra contar quantas estão preenchidas.
+- **Se a leitura do schema falhar**, o catálogo sai em modo degradado: sem lista de colunas e com uma regra dura no prompt — é proibido afirmar que um campo não existe; ou testa a consulta, ou diz que não sabe. Nunca cai num segundo catálogo à mão (que envelheceria igual).
+- **Como conferir de fora**: `GET /health` → `schema_catalog`. Precisa dizer `fonte: "banco"` com o número de tabelas e colunas; `"degradado"` significa IA respondendo sem enxergar o schema. Medido em 09/09/2026: 13 tabelas, 462 colunas.
+- Custo: o catálogo ficou ~1k tokens maior por rodada, mas vai cacheado no prompt.
+
 ### Anexo e ditado por voz na pergunta — desde 09/09/2026
 
 A pergunta não é só texto: dá pra **anexar** material e **ditar** em vez de digitar. Dois botões à esquerda do campo (clipe e microfone).

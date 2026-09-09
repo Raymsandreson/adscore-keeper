@@ -426,6 +426,10 @@ function pausasNasQuebras(texto: string, ms: number): string {
   return texto.replace(/^\n+|\n+$/g, "").replace(/\n+/g, ` <break time="${segundos}s" /> `).trim();
 }
 
+/** Endereço do sistema, para o aviso levar um link que abre a ficha. Vem da env
+ *  quando o domínio mudar; o padrão é o de hoje. */
+const APP_URL = (Deno.env.get("APP_URL") || "https://adscore-keeper.lovable.app").replace(/\/$/, "");
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -1068,6 +1072,12 @@ async function gerarAudioDoRascunho(
   }
 }
 
+/** Data de hoje no fuso de Teresina (-03). O runtime roda em UTC: depois das
+ *  21h daqui, `toISOString()` já virou o dia e o prazo nasceria amanhã. */
+function hojeBR(): string {
+  return new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
+}
+
 /**
  * DINHEIRO TEM DONO PRÓPRIO.
  *
@@ -1107,18 +1117,25 @@ function escopoDaIntencao(intencao: string | null | undefined): string {
  * já trabalha todo dia, com dono e com prazo — que é a diferença entre
  * registrar um problema e fazer alguém resolvê-lo.
  *
- * TRÊS CUIDADOS, cada um por um jeito de isto dar errado:
+ * QUATRO CUIDADOS, cada um por um jeito de isto dar errado:
  *
  *  1. SÓ COM PENDÊNCIA DE VERDADE. Nasce do [REVISAR] que o próprio modelo
  *     emitiu, ou da intenção que exige gente. Em modo rascunho TODA resposta
  *     passa por revisão, e criar atividade para cada uma encheria a esteira de
  *     ruído até ninguém mais olhar.
  *
- *  2. NÃO REPETE. Sem esta trava, o mesmo processo parado geraria uma
- *     atividade por rodada do cron — a cada cinco minutos, para sempre. Só
- *     cria se não houver outra igual, aberta, nos últimos 7 dias.
+ *  2. UMA CONVERSA, UMA ATIVIDADE. A trava antiga era o TÍTULO exato, e o
+ *     título carrega o motivo que o modelo escreve livre: "valor", "valor,
+ *     prazo", "prazo", "interpretar o mérito" e "interpretar o MÉRITO" são
+ *     cinco atividades para o mesmo cliente da mesma tarde. Em 09/09/2026
+ *     foram 59 atividades para 43 leads. Agora a chave é a CONVERSA: existindo
+ *     uma aberta do mesmo lead nas últimas 24h, o que chega é ANEXADO nela.
  *
- *  3. FALHAR AQUI NÃO DERRUBA O RASCUNHO. A resposta ao cliente é a entrega;
+ *  3. PRAZO É HOJE. Era `+3 dias`, fixo, para qualquer coisa — inclusive para
+ *     cliente que acabou de escrever pedindo alguém. Quem espera resposta não
+ *     espera três dias; o que é do dia vence no dia.
+ *
+ *  4. FALHAR AQUI NÃO DERRUBA O RASCUNHO. A resposta ao cliente é a entrega;
  *     a atividade é consequência. Se o insert falhar, o motivo vai para o log
  *     e a rodada segue.
  */
@@ -1127,32 +1144,85 @@ async function registrarPendencia(
   dados: {
     leadId: string | null;
     grupo: string | null;
+    groupJid: string | null;
+    instanceName: string | null;
+    /** Bolha que gerou a pendência — vira o vínculo que acende o atalho na ficha. */
+    messageId: string | null;
+    autor: string | null;
     motivo: string;
     pergunta: string;
-    atendenteId: string | null;
+    /** O rascunho que o Dom escreveu: vira o "próximo passo" já pronto para revisar. */
+    resposta: string | null;
     intencao: string | null;
+    /** Intenção do grupo E (é de gente): urgente. O resto entra como alta. */
+    urgente: boolean;
+    atendenteId: string | null;
   },
-): Promise<string | null> {
+): Promise<{ id: string | null; nova: boolean; atendenteId: string | null }> {
+  // `atendenteId` volta resolvido: fora do grupo E quem sorteia é esta função,
+  // e sem devolver quem saiu no rodízio o aviso não teria para quem ir.
+  const nada = { id: null as string | null, nova: false, atendenteId: dados.atendenteId };
   try {
-    if (!dados.leadId) return null;
+    if (!dados.leadId) return nada;
 
     const titulo = `Pendência do atendente virtual: ${dados.motivo}`.slice(0, 200);
 
-    const seteDiasAtras = new Date(Date.now() - 7 * 86_400_000).toISOString();
-    const { data: jaExiste } = await supabase
+    // A conversa é a unidade, não o motivo. Vinte e quatro horas: o cliente que
+    // volta no dia seguinte merece uma linha nova na esteira; o que manda três
+    // mensagens na mesma tarde, não.
+    const umDiaAtras = new Date(Date.now() - 86_400_000).toISOString();
+    const { data: aberta } = await supabase
       .from("lead_activities")
-      .select("id")
+      .select("id, current_status_notes, action_source_detail, priority")
       .eq("lead_id", dados.leadId)
-      .eq("title", titulo)
+      .eq("action_source", "dom-rascunho")
       .is("completed_at", null)
       .is("deleted_at", null)
-      .gte("created_at", seteDiasAtras)
+      .gte("created_at", umDiaAtras)
+      .order("created_at", { ascending: false })
       .limit(1).maybeSingle();
-    if (jaExiste) return (jaExiste as any).id ?? null;
 
-    // Quem cuida: o mesmo rodízio que já atende reclamação. `pick_dom_atendente`
-    // devolve o id em dom_atendentes; o dono da atividade é o USUÁRIO por trás
-    // dele, senão a linha nasce sem ninguém que a enxergue na própria tela.
+    if (aberta) {
+      // Anexa em vez de abrir outra: a atendente lê a conversa inteira num
+      // lugar só. Motivo novo entra na lista do detalhe; a fala nova entra no
+      // "como está", que é onde ela procura o que o cliente disse.
+      const jaTem = String((aberta as any).action_source_detail || "");
+      const detalhe = jaTem.includes(dados.motivo)
+        ? jaTem
+        : `${jaTem}${jaTem ? " · " : ""}${dados.motivo}`.slice(0, 200);
+      const agora = new Date().toLocaleString("pt-BR", { timeZone: "America/Fortaleza" });
+      const acrescimo =
+        `\n\n— ${agora} · ${dados.motivo}\n` +
+        `${dados.autor || "cliente"}: ${dados.pergunta.slice(0, 500)}`;
+      const patch: Record<string, unknown> = {
+        action_source_detail: detalhe,
+        current_status_notes:
+          `${String((aberta as any).current_status_notes || "")}${acrescimo}`.slice(0, 8000),
+        // Voltou a falar: o prazo é hoje de novo, ainda que a linha seja de ontem.
+        deadline: hojeBR(),
+      };
+      // Só sobe de prioridade, nunca desce: quem já foi marcado urgente não
+      // vira "alta" porque a mensagem seguinte era mais mansa.
+      if (dados.urgente && (aberta as any).priority !== "urgente") patch.priority = "urgente";
+      await supabase.from("lead_activities").update(patch).eq("id", (aberta as any).id);
+
+      // O vínculo é por mensagem: a bolha nova também aponta para esta ficha.
+      if (dados.messageId) {
+        await supabase.from("whatsapp_message_activities").upsert([{
+          message_id: dados.messageId,
+          phone: dados.groupJid,
+          instance_name: dados.instanceName,
+          activity_id: (aberta as any).id,
+          activity_title: titulo,
+        }], { onConflict: "message_id,activity_id" });
+      }
+      return { id: (aberta as any).id, nova: false, atendenteId: dados.atendenteId };
+    }
+
+    // Quem cuida: o rodízio, no escopo que a intenção pede — dinheiro vai para
+    // o financeiro, o resto para reclamação. `pick_dom_atendente` devolve o id
+    // em dom_atendentes; o dono da atividade é o USUÁRIO por trás dele, senão a
+    // linha nasce sem ninguém que a enxergue na própria tela.
     let atendenteId = dados.atendenteId;
     if (!atendenteId) {
       const { data: pick } = await supabase.rpc("pick_dom_atendente", {
@@ -1198,9 +1268,9 @@ async function registrarPendencia(
       }
     }
 
-    // Três dias: perto o bastante para não virar prateleira, longe o bastante
-    // para caber num dia cheio.
-    const prazo = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    // Hoje. Cliente que escreveu agora não espera três dias — e o que não é do
+    // dia também não some: fica na esteira dela, vencendo, à vista.
+    const prazo = hojeBR();
 
     const { data: nova, error } = await supabase.from("lead_activities").insert({
       lead_id: dados.leadId,
@@ -1213,21 +1283,139 @@ async function registrarPendencia(
       activity_type: "acompanhamento",
       status: "pendente",
       deadline: prazo,
+      // Notificar agora, não à meia-noite do prazo. O sino existia e nunca
+      // tocava para estas: `notification_at` nascia nulo.
+      notification_at: new Date().toISOString(),
+      notification_date: prazo,
+      // Urgente é o que precisa de gente (grupo E: reclamação, dinheiro,
+      // prazo, "quero falar com alguém"). Pedido de documento e agendamento
+      // entram como alta — urgente que vale para tudo não vale para nada.
+      priority: dados.urgente ? "urgente" : "alta",
+      // O que a atendente lê antes de abrir a conversa. Nenhum campo é
+      // obrigatório para ela concluir: isto é ponto de partida, não formulário.
+      current_status_notes:
+        `${dados.autor || "O cliente"} escreveu no grupo ${dados.grupo ?? "(sem nome)"}:\n` +
+        `"${dados.pergunta.slice(0, 500)}"\n\n` +
+        `O atendente virtual não respondeu sozinho porque: ${dados.motivo}.`,
+      // O rascunho que o Dom escreveu e não enviou. Serve de partida — ela
+      // corrige e manda, ou apaga e escreve o dela.
+      next_steps: dados.resposta
+        ? `Falar com o cliente. Rascunho que o atendente virtual preparou (revise antes de enviar):\n\n${dados.resposta.slice(0, 1500)}`
+        : `Falar com o cliente no grupo ${dados.grupo ?? "(sem nome)"}.`,
       assigned_to: userId,
       assigned_to_name: userNome,
       created_by_ai: true,
       action_source: "dom-rascunho",
       action_source_detail: dados.motivo.slice(0, 200),
+      // Rastro de auditoria: de qual grupo, por qual instância, qual intenção.
+      // A `description` guardava só o NOME do grupo, em texto — nome não abre
+      // conversa nenhuma.
+      ai_generation_context: {
+        group_jid: dados.groupJid,
+        instance_name: dados.instanceName,
+        intencao: dados.intencao,
+        motivo: dados.motivo,
+        message_id: dados.messageId,
+      },
     }).select("id").maybeSingle();
 
     if (error) {
       console.error("[dom-rascunho] não consegui abrir a atividade da pendência", error.message);
-      return null;
+      return nada;
     }
-    return (nova as any)?.id ?? null;
+    const novaId = (nova as any)?.id ?? null;
+
+    // Vínculo com a bolha de origem. É ele — e não um botão novo — que acende
+    // o "Ver mensagem de origem" que a ficha já tem, abrindo a conversa em
+    // painel por cima, sem tirar ninguém da tela.
+    if (novaId && dados.messageId) {
+      const { error: errLink } = await supabase.from("whatsapp_message_activities").upsert([{
+        message_id: dados.messageId,
+        phone: dados.groupJid,
+        instance_name: dados.instanceName,
+        activity_id: novaId,
+        activity_title: titulo,
+      }], { onConflict: "message_id,activity_id" });
+      // Sem o vínculo a atividade continua válida; só perde o atalho.
+      if (errLink) console.warn("[dom-rascunho] vínculo com a mensagem falhou:", errLink.message);
+    }
+    return { id: novaId, nova: true, atendenteId };
   } catch (e) {
     console.error("[dom-rascunho] pendência falhou", (e as Error)?.message);
-    return null;
+    return nada;
+  }
+}
+
+/**
+ * Leva a atividade ao WhatsApp de quem vai executá-la.
+ *
+ * A esteira só resolve quem abre a esteira. Até 09/09/2026 o aviso existia
+ * (`dom-avisar-atendente`), era ensaio por padrão e não tinha cron: 41
+ * pendências com atendente sorteado e nenhum aviso, a mais velha de cinco dias
+ * atrás. Aqui o aviso sai junto do que ele anuncia — quem criou a atividade é
+ * quem avisa, e não há segunda peça para esquecer de ligar.
+ *
+ * Falhar aqui não derruba nada: o erro vai para o log e a atividade continua
+ * em pé na tela dela.
+ */
+async function avisarNoWhatsApp(
+  supabase: any,
+  dados: {
+    atendenteId: string | null;
+    activityId: string | null;
+    titulo: string;
+    grupo: string | null;
+    autor: string | null;
+    pergunta: string;
+    motivo: string;
+    urgente: boolean;
+    instanceName: string | null;
+  },
+): Promise<boolean> {
+  try {
+    if (!dados.atendenteId || !dados.activityId) return false;
+    const { data: at } = await supabase.from("dom_atendentes")
+      .select("nome, whatsapp, is_active").eq("id", dados.atendenteId).maybeSingle();
+    if (!at?.whatsapp || (at as any).is_active === false) {
+      console.warn("[dom-rascunho] atendente sem WhatsApp ou inativo — atividade fica só na tela");
+      return false;
+    }
+
+    const url = Deno.env.get("SUPABASE_URL") ?? "";
+    const chave = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const texto = [
+      dados.urgente ? "🚨 *Um cliente precisa de você agora*" : "📌 *Nova atividade sua*",
+      "",
+      `*Grupo:* ${dados.grupo ?? "(sem nome)"}`,
+      `*Quem falou:* ${dados.autor || "cliente"}`,
+      `*Por quê:* ${dados.motivo}`,
+      "",
+      "*O que ele escreveu:*",
+      `"${dados.pergunta.slice(0, 400)}"`,
+      "",
+      `*Abrir a atividade:* ${APP_URL}/?openActivity=${dados.activityId}`,
+    ].join("\n");
+
+    const r = await fetch(`${url}/functions/v1/send-whatsapp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${chave}` },
+      body: JSON.stringify({
+        phone: (at as any).whatsapp,
+        message: texto,
+        instance_name: dados.instanceName,
+      }),
+    });
+    const resp = await r.json().catch(() => null);
+    if (!r.ok || resp?.success === false) {
+      console.error("[dom-rascunho] aviso não saiu:", resp?.error || `HTTP ${r.status}`);
+      return false;
+    }
+    // Log sem texto de cliente: só o que dá para auditar.
+    console.log(`[dom-rascunho] aviso entregue para ${(at as any).nome} · atividade ${dados.activityId}`);
+    return true;
+  } catch (e) {
+    console.error("[dom-rascunho] aviso falhou", (e as Error)?.message);
+    return false;
   }
 }
 
@@ -1520,7 +1708,9 @@ Deno.serve(async (req) => {
       // Puxa com folga porque a deduplicação corta 2,5 a 5 vezes.
       const { data: brutas } = await supabase
         .from("whatsapp_messages")
-        .select("message_text, message_type, contact_name, instance_name, created_at, metadata")
+        // `id` entra para o vínculo mensagem→atividade: é ele que faz a ficha
+        // abrir a conversa NA BOLHA que gerou a pendência.
+        .select("id, message_text, message_type, contact_name, instance_name, created_at, metadata")
         .eq("phone", g.group_jid)
         .order("created_at", { ascending: false })
         .limit((agente.history_limit || 20) * 5);
@@ -1549,6 +1739,11 @@ Deno.serve(async (req) => {
           if (!jaVista.texto && texto) {
             jaVista.texto = texto;
             jaVista.tipo = tipo;
+            // O `id` acompanha o conteúdo. A bolha que a atendente precisa ver
+            // é a que TEM o texto — abrir a conversa na cópia muda não mostra
+            // nada e parece atalho quebrado.
+            jaVista.id = m.id;
+            jaVista.instancia = m.instance_name;
           } else if (!jaVista.texto && jaVista.tipo === "document" && tipo !== "document") {
             // Sem texto de nenhum lado, vale o tipo mais específico: `document`
             // é para onde o webhook joga o que não reconheceu.
@@ -1558,6 +1753,7 @@ Deno.serve(async (req) => {
         }
         const remetente = so(msg.sender_pn || msg.sender);
         const linha = {
+          id: m.id,
           texto,
           tipo,
           instancia: m.instance_name,
@@ -1795,19 +1991,45 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // 6. Pendência vira atividade com dono e prazo. Depois da fila de
-      //    propósito: se o rascunho não entrou, não há o que encaminhar.
+      // 6. Pendência vira atividade com dono, prazo de hoje e aviso no
+      //    WhatsApp de quem vai executá-la. Depois da fila de propósito: se o
+      //    rascunho não entrou, não há o que encaminhar.
       if (motivo) {
-        const atvId = await registrarPendencia(supabase, {
+        const nomeDoGrupo = g.group_name || domCtx.contexto?.grupo || null;
+        const pend = await registrarPendencia(supabase, {
           leadId: g.lead_id || domCtx.contexto?.lead_id || null,
-          grupo: g.group_name ?? null,
+          grupo: nomeDoGrupo,
+          groupJid: g.group_jid,
+          instanceName: ultima.instancia ?? null,
+          messageId: ultima.id ?? null,
+          autor: ultima.autor ?? null,
           motivo,
           pergunta,
-          atendenteId,
+          resposta,
           intencao: cls.intencao ?? null,
+          urgente: grupoIntencao === "E",
+          atendenteId,
         });
+
+        // Avisa em atividade nova; em atividade que só recebeu mais uma fala,
+        // só quando é urgente. Sem esse corte, cliente falante vira uma
+        // mensagem por rodada no WhatsApp pessoal da atendente — e aviso que
+        // chega demais é aviso que ninguém abre.
+        if (pend.id && (pend.nova || grupoIntencao === "E")) {
+          await avisarNoWhatsApp(supabase, {
+            atendenteId: pend.atendenteId,
+            activityId: pend.id,
+            titulo: motivo,
+            grupo: nomeDoGrupo,
+            autor: ultima.autor ?? null,
+            pergunta,
+            motivo,
+            urgente: grupoIntencao === "E",
+            instanceName: ultima.instancia ?? null,
+          });
+        }
         // Log sem texto de cliente: só o que dá para auditar.
-        console.log(`[dom-rascunho] pendência grupo=${g.group_jid} atividade=${atvId ?? "nenhuma"}`);
+        console.log(`[dom-rascunho] pendência grupo=${g.group_jid} atividade=${pend.id ?? "nenhuma"} nova=${pend.nova}`);
       }
 
       // 7. O cliente falou por áudio? Então a resposta nasce falada também — e,
