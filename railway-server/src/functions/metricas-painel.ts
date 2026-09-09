@@ -9,7 +9,7 @@
 // atravessa esta resposta.
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
-import { CAPI_TOKEN, GRAPH_VERSION } from '../lib/metaCapi';
+import { CAPI_TOKEN, GRAPH_VERSION, CAPI_DATASET_ID } from '../lib/metaCapi';
 import { hojeISO, diasAtras, corteDeDias, diaDoInstante, diaDaColuna } from '../lib/diasSaoPaulo';
 
 // PostgREST corta em 1000. Não é teoria: o dedup da planilha leu 1000 de 7.255
@@ -124,13 +124,71 @@ async function investimento() {
   };
 }
 
+
+/**
+ * Checklist da integracao com a Meta, medido na fonte.
+ *
+ * Existe porque eu vinha conferindo isso na mao a cada conversa: se os conjuntos
+ * ja otimizam por conversao, se algum anuncio usa o dataset, se os formularios
+ * estao marcados. Sao os tres sinais que dizem se o trabalho no Gerenciador de
+ * Anuncios foi concluido — e quem opera precisa ver sozinho.
+ *
+ * CACHE de 5 minutos: o painel se atualiza a cada minuto e a Meta limita
+ * chamada por segundo (ja devolveu "1 call per 30 seconds" no endpoint de
+ * conjunto). Sem cache, a tela aberta esgota a cota do resto.
+ */
+let cacheIntegracao: { em: number; dados: Record<string, unknown> } | null = null;
+const TTL_INTEGRACAO_MS = 5 * 60 * 1000;
+
+async function saudeDaIntegracao(): Promise<Record<string, unknown>> {
+  if (cacheIntegracao && Date.now() - cacheIntegracao.em < TTL_INTEGRACAO_MS) return cacheIntegracao.dados;
+  const g = async (path: string) => {
+    const r = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
+        `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+    );
+    return (await r.json()) as any;
+  };
+  try {
+    const contas = await g('me/adaccounts?fields=id,name&limit=50');
+    if (contas?.error) throw new Error(contas.error.message);
+    const conjuntos: Array<{ nome: string; conta: string; otimizacao: string; usa_dataset: boolean }> = [];
+    for (const c of contas?.data ?? []) {
+      const ads = await g(
+        `${c.id}/adsets?fields=name,effective_status,optimization_goal,promoted_object&limit=200`,
+      );
+      for (const a of ads?.data ?? []) {
+        if (a?.effective_status !== 'ACTIVE') continue;
+        conjuntos.push({
+          nome: a.name,
+          conta: c.name,
+          otimizacao: a.optimization_goal,
+          usa_dataset: String(a?.promoted_object?.pixel_id || '') === String(CAPI_DATASET_ID),
+        });
+      }
+    }
+    const dados = {
+      disponivel: true,
+      dataset_id: CAPI_DATASET_ID,
+      conjuntos_ativos: conjuntos.length,
+      conjuntos_otimizando_conversao: conjuntos.filter((x) => x.otimizacao === 'QUALITY_LEAD').length,
+      conjuntos_usando_dataset: conjuntos.filter((x) => x.usa_dataset).length,
+      detalhe: conjuntos,
+    };
+    cacheIntegracao = { em: Date.now(), dados };
+    return dados;
+  } catch (err) {
+    return { disponivel: false, erro: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export const handler: RequestHandler = async (_req, res) => {
   try {
     const hoje = hojeISO();
     const corte7 = corteDeDias(7);
     const corte30 = corteDeDias(30);
 
-    const [boards, leads, fechados, gasto, filaCapi] = await Promise.all([
+    const [boards, leads, fechados, gasto, eventos, statusFunil, filaCapi, integracao] = await Promise.all([
       supabase.from('kanban_boards').select('id, name'),
       leTudo<any>((de, ate) =>
         supabase
@@ -154,6 +212,12 @@ export const handler: RequestHandler = async (_req, res) => {
           .range(de, ate),
       ),
       investimento(),
+      leTudo<any>((de, ate) =>
+        supabase.from('meta_capi_events').select('status, user_data_hash, motivo_skip').range(de, ate),
+      ),
+      leTudo<any>((de, ate) =>
+        supabase.from('leads').select('lead_status').is('deleted_at', null).range(de, ate),
+      ),
       Promise.all(
         ['pending', 'sent', 'failed', 'skipped'].map(async (s) => {
           const { count } = await supabase
@@ -163,6 +227,7 @@ export const handler: RequestHandler = async (_req, res) => {
           return [s, count ?? 0] as const;
         }),
       ),
+      saudeDaIntegracao(),
     ]);
 
     // ENTROU NO CRM vs PREENCHEU O FORMULARIO. `created_at` guarda a data do
@@ -251,7 +316,30 @@ export const handler: RequestHandler = async (_req, res) => {
         fechamentos: fechPorDia[d] || 0,
         investido: gasto.serie?.find((s: any) => s.dia === d)?.valor ?? 0,
       })),
-      capi: Object.fromEntries(filaCapi),
+      capi: {
+        ...Object.fromEntries(filaCapi),
+        // Evento COM lead_id e o que a Meta consegue casar com o formulario do
+        // anuncio. Sem ele sobra pareamento por telefone/e-mail, que aqui falha
+        // na maioria dos fechamentos (lead sem contato nenhum).
+        com_lead_id: eventos.filter((e: any) => e?.user_data_hash?.lead_id).length,
+        aceitos_com_lead_id: eventos.filter(
+          (e: any) => e?.status === 'sent' && e?.user_data_hash?.lead_id,
+        ).length,
+        motivos_ignorado: eventos
+          .filter((e: any) => e?.status === 'skipped' && e?.motivo_skip)
+          .reduce((acc: Record<string, number>, e: any) => {
+            acc[e.motivo_skip] = (acc[e.motivo_skip] || 0) + 1;
+            return acc;
+          }, {}),
+      },
+      // Como o funil esta distribuido hoje — inclui o que veio da coluna que a
+      // equipe preenche na planilha.
+      funil_por_status: statusFunil.reduce((acc: Record<string, number>, l: any) => {
+        const k = l?.lead_status || '(sem status)';
+        acc[k] = (acc[k] || 0) + 1;
+        return acc;
+      }, {}),
+      integracao,
       // Custo só existe se houve gasto: dividir por zero e mostrar "R$ 0,00 por
       // lead" mentiria tanto quanto esconder o número.
       //
