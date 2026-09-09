@@ -43,13 +43,30 @@ function jsonResponse(payload: unknown, status = 200) {
   })
 }
 
+// Sem timeout, cada chamada à UazAPI pode ficar pendurada até o limite de
+// ociosidade da edge (150s). Com dezenas de instâncias checadas em série isso
+// estourava sempre. Todo fetch externo agora tem teto próprio.
+const STATUS_TIMEOUT_MS = 5000
+const INFO_TIMEOUT_MS = 12000
+const MAX_CANDIDATES = 6
+
+async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const ctrl = new AbortController()
+  const tid = setTimeout(() => ctrl.abort(), ms)
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal })
+  } finally {
+    clearTimeout(tid)
+  }
+}
+
 async function isInstanceConnected(inst: any): Promise<boolean> {
   try {
     const url = (inst.base_url || 'https://abraci.uazapi.com') + '/status'
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json', token: inst.instance_token },
-    })
+    }, STATUS_TIMEOUT_MS)
     if (!res.ok) return false
     const data = await res.json()
     const statusObj = data?.status
