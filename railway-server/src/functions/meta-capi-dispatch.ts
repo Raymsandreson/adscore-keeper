@@ -314,7 +314,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -323,6 +323,21 @@ export const handler: RequestHandler = async (req, res) => {
 
     if (modo === 'probe') return res.status(200).json({ modo: 'probe', ...(await probe(dataset_id)) });
     if (modo === 'inventario') return res.status(200).json({ modo: 'inventario', ...(await inventario()) });
+    // Diagnostico so-leitura: o que este token pode fazer. Serve para responder
+    // "da pra mudar a otimizacao do conjunto pela API?" sem tentar e quebrar
+    // campanha ativa — `ads_read` le, `ads_management` escreve.
+    if (modo === 'escopos') {
+      const d = await diagnosticaAcesso(CAPI_DATASET_ID);
+      const esc = d.escopos ?? [];
+      return res.status(200).json({
+        modo: 'escopos',
+        escopos: esc,
+        pode_ler_anuncios: esc.includes('ads_read') || esc.includes('ads_management'),
+        pode_escrever_anuncios: esc.includes('ads_management'),
+        ativos_alcancados: d.ativos_alcancados ?? [],
+        diagnostico: d.diagnostico,
+      });
+    }
     if (modo === 'formularios') return res.status(200).json({ modo: 'formularios', ...(await formularios()) });
 
     // Religa o que foi congelado por erro sem volta, depois que a causa mudou
