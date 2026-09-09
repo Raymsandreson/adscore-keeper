@@ -39,7 +39,7 @@ import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
   Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus, ChevronLeft, UserPlus, MessageSquare, Target,
-  DollarSign, Paperclip, Calculator
+  DollarSign, Paperclip, Calculator, Briefcase, PanelRightOpen
 } from 'lucide-react';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { usePecasDoProcesso } from '@/hooks/usePecasDoProcesso';
@@ -66,6 +66,19 @@ import { useActivityTypes } from '@/hooks/useActivityTypes';
 
 import { EntityTeamChatDock } from '@/components/chat/EntityTeamChatDock';
 import { CourtContactsForProcess } from './CourtContactsForProcess';
+
+// A ficha do lead aberta por cima desta, a partir do "Cliente e caso" do
+// cabeçalho. Por lazy de propósito: arrasta o LeadEditDialog e o useLeads
+// junto, e nenhum dos dois tem o que fazer aqui enquanto ninguém clicar.
+const LeadPainelPorId = lazy(() => import('@/components/leads/LeadPainelPorId'));
+
+/** Rótulo do status do caso (a coluna guarda o valor cru). */
+const STATUS_CASO: Record<string, string> = {
+  aberto: 'Aberto',
+  em_andamento: 'Em andamento',
+  encerrado: 'Encerrado',
+  arquivado: 'Arquivado',
+};
 
 interface ProcessDetailSheetProps {
   open: boolean;
@@ -646,6 +659,37 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   // pai e não muda até reabrir; este estado dá o efeito imediato na aba.
   const [linkedLeadId, setLinkedLeadId] = useState<string | null>(null);
   useEffect(() => { setLinkedLeadId(process?.lead_id ?? null); }, [process?.id, process?.lead_id]);
+
+  // ── De quem é este processo: lead e caso, no cabeçalho ────────────────────
+  // Pedido do Raym (09/09/2026): a ficha mostrava tudo do processo e nada de
+  // quem ele pertence. Para chegar no cliente era fechar a ficha e procurar
+  // pelo nome. Aqui só se mostra e se abre — vincular e criar continuam nos
+  // fluxos que já existem (botão âmbar abaixo e aba Documentos).
+  const [vinculoLead, setVinculoLead] = useState<{ nome: string | null; status: string | null; telefone: string | null } | null>(null);
+  const [vinculoCaso, setVinculoCaso] = useState<{ numero: string | null; titulo: string | null; status: string | null } | null>(null);
+  const [leadAberto, setLeadAberto] = useState<{ id: string; aba?: string } | null>(null);
+  const caseIdVinculado = (form.case_id as string | null) ?? process?.case_id ?? null;
+  useEffect(() => {
+    if (!open) return;
+    let vivo = true;
+    (async () => {
+      await ensureExternalSession().catch(() => {});
+      const [leadRes, casoRes] = await Promise.all([
+        linkedLeadId
+          ? externalSupabase.from('leads').select('lead_name, lead_status, lead_phone').eq('id', linkedLeadId).maybeSingle()
+          : Promise.resolve({ data: null }),
+        caseIdVinculado
+          ? externalSupabase.from('legal_cases').select('case_number, title, status').eq('id', caseIdVinculado).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      if (!vivo) return;
+      const l = leadRes.data as { lead_name?: string; lead_status?: string; lead_phone?: string } | null;
+      const c = casoRes.data as { case_number?: string; title?: string; status?: string } | null;
+      setVinculoLead(l ? { nome: l.lead_name ?? null, status: l.lead_status ?? null, telefone: l.lead_phone ?? null } : null);
+      setVinculoCaso(c ? { numero: c.case_number ?? null, titulo: c.title ?? null, status: c.status ?? null } : null);
+    })();
+    return () => { vivo = false; };
+  }, [open, linkedLeadId, caseIdVinculado]);
 
   // Acervo dos autos (jm_documentos, por CNJ) — a MESMA fonte da Conferência.
   // A aba Documentos só mostrava process_documents (uploads/ZapSign/importados) e
@@ -2005,6 +2049,78 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
           </Button>
         </div>
 
+        {/* De quem é o processo — lead e caso vinculados, com a porta para eles.
+            Abre EMPILHADO por cima da ficha (nunca redireciona). Quando não há
+            lead, quem cobre o estado é o botão âmbar do bloco do POP abaixo. */}
+        {(linkedLeadId || caseIdVinculado) && (
+          <div className="rounded-md border bg-muted/30 p-2 space-y-1.5">
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1">
+              <Briefcase className="h-3 w-3" />
+              Cliente e caso
+            </Label>
+
+            {linkedLeadId && (
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium">{vinculoLead?.nome || 'Lead vinculado'}</p>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                    {vinculoLead?.status && <Badge variant="outline" className="text-[9px]">{vinculoLead.status}</Badge>}
+                    {vinculoLead?.telefone && <span className="text-[10px] text-muted-foreground">{vinculoLead.telefone}</span>}
+                  </div>
+                </div>
+                <Button
+                  type="button" size="sm" variant="outline"
+                  className="h-7 shrink-0 gap-1 text-xs"
+                  title="Abrir a ficha do lead por cima desta"
+                  onClick={() => setLeadAberto({ id: linkedLeadId })}
+                >
+                  <PanelRightOpen className="h-3 w-3" />
+                  Abrir o lead
+                </Button>
+              </div>
+            )}
+
+            {caseIdVinculado ? (
+              <div className="flex items-center gap-2 border-t pt-1.5">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium">{vinculoCaso?.titulo || 'Caso vinculado'}</p>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                    {vinculoCaso?.numero && <Badge variant="secondary" className="text-[9px]">{vinculoCaso.numero}</Badge>}
+                    {vinculoCaso?.status && (
+                      <Badge variant="outline" className="text-[9px]">{STATUS_CASO[vinculoCaso.status] || vinculoCaso.status}</Badge>
+                    )}
+                  </div>
+                </div>
+                {linkedLeadId && (
+                  <Button
+                    type="button" size="sm" variant="outline"
+                    className="h-7 shrink-0 gap-1 text-xs"
+                    title="Abrir o caso na ficha do lead, por cima desta"
+                    onClick={() => setLeadAberto({ id: linkedLeadId, aba: 'casos' })}
+                  >
+                    <PanelRightOpen className="h-3 w-3" />
+                    Abrir o caso
+                  </Button>
+                )}
+              </div>
+            ) : linkedLeadId ? (
+              <div className="flex items-center gap-2 border-t pt-1.5">
+                <p className="min-w-0 flex-1 text-[10px] text-muted-foreground">
+                  Processo sem caso vinculado — o caso nasce na ficha do lead, na aba Casos.
+                </p>
+                <Button
+                  type="button" size="sm" variant="outline"
+                  className="h-7 shrink-0 gap-1 text-xs"
+                  onClick={() => setLeadAberto({ id: linkedLeadId, aba: 'casos' })}
+                >
+                  <PanelRightOpen className="h-3 w-3" />
+                  Casos do lead
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        )}
+
         {/* Workflow link — destaque */}
         <div className="rounded-md border border-primary/30 bg-primary/5 p-2 space-y-1">
           <Label className="text-[10px] uppercase tracking-wider text-primary font-semibold flex items-center gap-1">
@@ -2211,9 +2327,24 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
           }}
           onCriado={({ leadId, caseId }) => {
             setForm(prev => ({ ...prev, lead_id: leadId, case_id: caseId }));
+            // Sem isto o "Cliente e caso" do cabeçalho continuaria vazio até
+            // reabrir a ficha — o prop `process` é do pai e não muda aqui.
+            if (leadId) setLinkedLeadId(leadId);
             onUpdated?.();
           }}
         />
+      )}
+
+      {/* Ficha do lead (e o caso, na aba Casos) por cima da ficha do processo.
+          Empilha, não redireciona: fechar devolve a pessoa ao processo. */}
+      {leadAberto && (
+        <Suspense fallback={null}>
+          <LeadPainelPorId
+            leadId={leadAberto.id}
+            aba={leadAberto.aba}
+            onClose={() => setLeadAberto(null)}
+          />
+        </Suspense>
       )}
 
       {/* Peça do acervo aberta por cima da ficha — nunca em aba nova. */}

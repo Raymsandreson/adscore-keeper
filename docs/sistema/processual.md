@@ -523,3 +523,16 @@ Custo zero de API — é tudo junção do que já está no banco.
 **Furo fechado na origem**: `_shared/escavadorCapa.ts` (`mapearCapa` + `COLUNAS_DA_CAPA`) traduz a capa do Escavador para as colunas de `lead_processes`. A `backfill-process-marcos` já pagava uma consulta extra em `/processos/{cnj}` quando faltava data de início, mas guardava só três campos; desde a v16 grava a capa inteira e o `escavador_raw`, sem passar por cima de campo já preenchido. Deploy da função: `node _deploy_backfill_process_marcos.mjs` com `SUPABASE_PAT` (ela tem dependências em `_shared/`, então não dá para subir só o `index.ts`).
 
 **Dois defeitos de leitura da nota corrigidos junto**: o valor parava no primeiro ponto e cortava "Copel Distribuicao S.A" em "Copel Distribuicao S" (705 fichas); e parte anonimizada em iniciais ("R. G. M. P.") virava polo passivo "R" (35 fichas, todas desfeitas).
+
+## Ficha do processo: de quem ele é — lead e caso no cabeçalho (09/09/2026)
+
+**O problema**: o formulário do processo (`ProcessDetailSheet`) mostrava tudo do processo e nada de quem ele pertence. Para chegar no cliente era fechar a ficha e procurar pelo nome — o vínculo com lead só aparecia na aba Documentos, e mesmo assim só quando **não** havia lead.
+
+**O que existe agora**: logo abaixo dos badges do cabeçalho, o bloco **"Cliente e caso"**, montado com `lead_id`/`case_id` da própria linha de `lead_processes`:
+
+- **Lead** — nome, status e telefone (`leads`), com "Abrir o lead";
+- **Caso** — nº, título e status (`legal_cases`), com "Abrir o caso", que abre a ficha do lead já na aba Casos;
+- **Lead sem caso** — atalho "Casos do lead" (o caso nasce na ficha do lead; a numeração é gerada lá);
+- **Processo sem lead** — segue com o botão âmbar "Sem lead e sem caso — criar agora (com grupo)" (`CriarCasoDoProcessoDialog`), que agora também atualiza o cabeçalho na hora, sem reabrir a ficha.
+
+**Empilha, não redireciona** (princípio de interface nº 1): quem abre é o `LeadPainelPorId` por cima da ficha do processo, e fechar devolve a pessoa exatamente onde estava. Para o "Abrir o caso" cair direto na aba certa, `LeadPainelPorId` passou a aceitar `aba` e repassar para o `initialTab` que o `LeadEditDialog` já tinha.

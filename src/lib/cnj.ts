@@ -200,3 +200,82 @@ export function originScopeLabel(branch: CourtBranch | null | undefined): string
     default: return 'nesta unidade';
   }
 }
+
+// =============================================================================
+// Reparo do número lido em material solto (conversa, PDF, print)
+//
+// O advogado da outra parte digita "0000846-69-2025-5-08-00009" no WhatsApp:
+// traço no lugar do ponto e um zero a mais na unidade de origem. São 21 dígitos,
+// e o casamento por número simplesmente desiste — a pista mais forte que existe
+// é jogada fora justamente quando ela é mais útil. A atividade então cai no
+// vínculo por nome de parte, que é fraco, e nasce no lead certo sem processo
+// nenhum (caso real de 09/09/2026: o processo existia, no mesmo lead).
+//
+// Reparar sem chutar é possível porque o CNJ carrega dígito verificador: entre
+// os candidatos de 20 dígitos que dá pra formar tirando (ou pondo) um dígito,
+// só passa quem fecha o módulo 97. Um candidato aleatório tem 1 chance em 97 de
+// passar — e mesmo assim o reparo NUNCA vincula sozinho: quem chama pergunta.
+// =============================================================================
+
+/**
+ * DD do CNJ (Resolução 65/2008, art. 1º §1º — módulo 97 base 10, ISO 7064):
+ * `DD = 98 - (NNNNNNN AAAA J TR OOOO || "00" mod 97)`.
+ * Recebe os 18 dígitos SEM o verificador. Devolve null se não forem 18 dígitos.
+ */
+export function digitoVerificadorCnj(dezoitoDigitos: string): string | null {
+  if (!/^\d{18}$/.test(dezoitoDigitos)) return null;
+  const resto = Number(BigInt(dezoitoDigitos + '00') % 97n);
+  return String(98 - resto).padStart(2, '0');
+}
+
+/** O DD gravado confere com o que o resto do número exige? */
+export function cnjDvValido(digits: string): boolean {
+  if (!/^\d{20}$/.test(digits)) return false;
+  return digitoVerificadorCnj(digits.slice(0, 7) + digits.slice(9)) === digits.slice(7, 9);
+}
+
+export interface CandidatoCnj {
+  /** 20 dígitos, sem máscara. */
+  digits: string;
+  /** NNNNNNN-DD.AAAA.J.TR.OOOO. */
+  formatted: string;
+  /** Faltou/sobrou dígito no que foi lido e este candidato é uma reconstrução. */
+  reparado: boolean;
+}
+
+/**
+ * Os números de 20 dígitos que o texto lido pode estar querendo dizer.
+ *
+ *   20 dígitos → ele mesmo, e só. Errar UM dígito no meio de um número completo
+ *                é outra classe de problema: aqui viraria adivinhação.
+ *   21 dígitos → tira um dígito, em cada posição. Sobra quem fecha o DV.
+ *   19 dígitos → põe um zero de preenchimento, em cada posição. Idem.
+ *   qualquer outro tamanho → nada. Protocolo administrativo e NB do INSS caem
+ *                aqui e não podem virar palpite de processo.
+ */
+export function candidatosCnj(bruto: string | null | undefined): CandidatoCnj[] {
+  const digits = onlyDigits(bruto);
+  if (digits.length === 20) {
+    return [{ digits, formatted: formatCnj(digits), reparado: false }];
+  }
+
+  const brutos: string[] = [];
+  if (digits.length === 21) {
+    for (let i = 0; i < digits.length; i++) brutos.push(digits.slice(0, i) + digits.slice(i + 1));
+  } else if (digits.length === 19) {
+    for (let i = 0; i <= digits.length; i++) brutos.push(`${digits.slice(0, i)}0${digits.slice(i)}`);
+  } else {
+    return [];
+  }
+
+  const vistos = new Set<string>();
+  const candidatos: CandidatoCnj[] = [];
+  for (const c of brutos) {
+    if (vistos.has(c) || !cnjDvValido(c)) continue;
+    // Segmento inválido (parseCnj devolve null) é ruído que passou no DV por acaso.
+    if (!parseCnj(c)) continue;
+    vistos.add(c);
+    candidatos.push({ digits: c, formatted: formatCnj(c), reparado: true });
+  }
+  return candidatos;
+}

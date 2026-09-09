@@ -15,7 +15,7 @@ import { ActivityMovementsPanel } from '@/components/activities/ActivityMovement
 import { cn } from '@/lib/utils';
 import { statusAtividadeDef } from '@/lib/activityStatus';
 import { toast } from 'sonner';
-import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil, DollarSign, MoreVertical, Copy, RotateCcw, Users, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil, DollarSign, MoreVertical, Copy, RotateCcw, Users, MessageCircle, Maximize2, Minimize2, AlertTriangle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
@@ -128,6 +128,25 @@ export interface ActivityDraft {
   observers?: { user_id: string; full_name: string }[];
   /** Marca como atividade de gestão — dispensa vínculo com lead/caso/processo. */
   is_management?: boolean;
+  /**
+   * O material citou um nº de processo que não existe (traço no lugar do ponto,
+   * zero a mais na unidade de origem), e o reparo pelo dígito verificador achou
+   * qual processo ele quer dizer. Vem como PERGUNTA: a ficha abre sem vínculo e
+   * mostra a faixa de confirmação — quem amarra é o assessor, não o robô.
+   */
+  numero_a_confirmar?: {
+    /** O número como estava escrito no material. */
+    lido: string;
+    /** O número do processo achado, como está gravado na ficha. */
+    achado: string;
+    process_id: string;
+    process_title: string;
+    case_id?: string;
+    case_title?: string;
+    lead_id?: string;
+    lead_name?: string;
+    workflow_id?: string;
+  };
 }
 
 interface ActivityFullSheetProps {
@@ -599,6 +618,11 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     }
   }, [activityId, leadId, leadName, loadContactsForLead, loadLeadPreview]);
 
+  // Nº citado no material que não existe e o processo que o reparo achou. A
+  // ficha abre SEM esse vínculo: enquanto isto estiver preenchido, a faixa de
+  // confirmação está na tela esperando o assessor dizer se é aquele processo.
+  const [numeroAConfirmar, setNumeroAConfirmar] = useState<ActivityDraft['numero_a_confirmar'] | null>(null);
+
   // Modo CRIAR: preenche o formulário a partir do rascunho (IA) em vez de buscar do banco.
   const initFromDraft = useCallback(async (d: ActivityDraft) => {
     setSelectedActivity(null);
@@ -629,6 +653,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormWorkflowId(d.workflow_id || '');
     setFormIsSystem(false);
     setFormIsManagement(!!d.is_management);
+    setNumeroAConfirmar(d.numero_a_confirmar || null);
     setFormWhatWasDone(draftRichText(d.what_was_done));
     setFormCurrentStatus(draftRichText(d.current_status_notes));
     setFormNextSteps(draftRichText(d.next_steps));
@@ -660,6 +685,38 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     }
   }, [loadContactsForLead, loadLeadPreview]);
 
+  // "É esse mesmo": só aqui o processo achado por reparo do número vira vínculo.
+  // Caso, lead e POP vêm juntos — é o mesmo pacote que o rascunho traria se o
+  // número tivesse vindo escrito certo do material.
+  const confirmarNumeroAchado = useCallback(async () => {
+    const n = numeroAConfirmar;
+    if (!n) return;
+    setFormProcessId(n.process_id);
+    setFormProcessTitle(n.process_title || n.achado);
+    if (n.case_id) {
+      setFormCaseId(n.case_id);
+      setFormCaseTitle(n.case_title || '');
+    }
+    if (n.workflow_id) setFormWorkflowId(n.workflow_id);
+    if (n.lead_id) {
+      setFormLeadId(n.lead_id);
+      setFormLeadName(n.lead_name || '');
+      const { data } = await externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', n.lead_id);
+      setLeadCases((data as CaseRow[]) || []);
+      loadContactsForLead(n.lead_id);
+      loadLeadPreview(n.lead_id);
+    }
+    if (n.case_id) {
+      const { data } = await externalSupabase
+        .from('lead_processes')
+        .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos')
+        .eq('case_id', n.case_id);
+      setCaseProcesses((data as ProcessRow[]) || []);
+    }
+    setNumeroAConfirmar(null);
+    toast.success(`Vinculado ao processo ${n.achado}.`);
+  }, [numeroAConfirmar, loadContactsForLead, loadLeadPreview]);
+
   // Evita reinicializar o rascunho a cada render enquanto o sheet fica aberto.
   const draftInitedRef = useRef(false);
 
@@ -673,6 +730,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       draftInitedRef.current = false;
       estimateTouchedRef.current = false; // próxima criação volta a aceitar sugestão
       setSelectedActivity(null); setCaseProcesses([]); setLeadPreview(null);
+      setNumeroAConfirmar(null);
       setLoadError(false); // senão a próxima abertura já nasce na tela de erro
     }
   }, [open, activityId, fetchActivity, isCreate, draft, initFromDraft]);
@@ -1868,6 +1926,37 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               </Button>
             )}
           </div>
+
+          {/* O material citou um nº que não existe e o reparo pelo dígito
+              verificador achou qual processo é. Perguntar é obrigatório: vincular
+              processo por número consertado, sem passar pelo assessor, é dar como
+              certo o que ninguém conferiu — e depois ninguém tem como desconfiar. */}
+          {numeroAConfirmar && (
+            <div className="mt-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-2 space-y-1.5">
+              <div className="flex items-start gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 mt-0.5" />
+                <div className="text-[11px] leading-snug">
+                  <p>
+                    O material cita o nº <span className="font-mono">{numeroAConfirmar.lido}</span> — não existe processo com esse número.
+                  </p>
+                  <p className="mt-0.5">
+                    O que existe é <span className="font-mono font-semibold">{numeroAConfirmar.achado}</span>
+                    {numeroAConfirmar.process_title ? ` — ${numeroAConfirmar.process_title}` : ''}
+                    {numeroAConfirmar.case_title ? ` · ${numeroAConfirmar.case_title}` : ''}
+                    {numeroAConfirmar.lead_name ? ` · ${numeroAConfirmar.lead_name}` : ''}.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5 pl-5">
+                <Button size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={confirmarNumeroAchado}>
+                  <CheckCircle2 className="h-3 w-3" /> É esse — vincular
+                </Button>
+                <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setNumeroAConfirmar(null)}>
+                  Não é esse
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Fluxo de trabalho: POP da atividade > workflow do processo > funil do lead
               `processId` NÃO é opcional quando a atividade tem processo: sem ele a

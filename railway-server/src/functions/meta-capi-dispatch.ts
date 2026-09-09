@@ -250,7 +250,8 @@ async function formularios() {
     const f = await (async () => {
       const r = await fetch(
         `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/leadgen_forms` +
-          `?fields=id,name,status,leads_count&limit=100&access_token=${encodeURIComponent(tokenPagina)}`,
+          `?fields=id,name,status,leads_count,is_optimized_for_quality,question_page_custom_headline` +
+            `&limit=100&access_token=${encodeURIComponent(tokenPagina)}`,
       );
       return (await r.json()) as any;
     })();
@@ -263,6 +264,8 @@ async function formularios() {
       nome: x.name,
       status: x.status,
       leads: x.leads_count ?? null,
+      // Diz se o formulario ja esta preparado para otimizacao por qualidade.
+      otimizado_para_qualidade: x.is_optimized_for_quality ?? null,
     }));
     resultado.push({
       page_id: pageId,
