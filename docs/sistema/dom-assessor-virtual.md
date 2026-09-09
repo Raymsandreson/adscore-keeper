@@ -3376,3 +3376,41 @@ passo casa o que bate e lista o resto com evidência. Não apaga, não renomeia.
   aposentar `legal_cases`/`case_number`) só depois deste passo estar limpo.
 
 Rollback: cabeçalho da migration (delete das pontes pelo `source` no log).
+
+## `dom-contexto` estava aberto para quem soubesse a URL (09/09/2026)
+
+A função devolve andamento processual — número de benefício, o que a peça diz, o
+que a equipe anotou. Estava com `verify_jwt = false` e **sem nenhuma checagem no
+código**, com CORS em `*`. Quem tivesse a URL e um `group_jid` do piloto puxava a
+ficha processual de um cliente sem credencial nenhuma.
+
+**Ligar só o `verify_jwt` não resolveria.** Ele exige um JWT válido, e a anon key
+é um JWT válido — publicada no bundle do front, à vista de quem abrir o DevTools.
+Trocaria "sem credencial" por "com a credencial pública". Por isso a proteção é no
+código, e o flag é a segunda camada.
+
+`autorizado()` exige a SERVICE_ROLE_KEY. Os dois únicos chamadores são edge
+functions nossas (`dom-rascunho` e `whatsapp-ai-agent-reply`), as duas mandam essa
+chave do mesmo `Deno.env` do mesmo projeto. Nenhum front chama, e nenhum deve. A
+comparação percorre a chave inteira mesmo quando o primeiro caractere já difere:
+sair cedo conta ao chamador, pelo tempo de resposta, quanto do começo ele acertou.
+O 401 não diz o que faltou e o log não grava o header.
+
+### A config de autenticação passou a morar no git
+
+O `scripts/deploy-edge-externo.mjs` **preservava** o `verify_jwt` do que estava no
+ar. A regra existe por um bom motivo — impedir que um deploy de rotina abra uma
+função caladamente — mas ela também congelou o erro: o `false` sobrevivia a todo
+deploy, e consertar exigia ir ao dashboard, fora do git e sem review.
+
+Agora existe `deploy.json` ao lado do `index.ts`:
+
+```json
+{ "verify_jwt": true }
+```
+
+Preservar continua sendo o padrão; sem o arquivo nada muda. Com ele, a intenção é
+versionada e revisável. O arquivo não sobe junto — o upload é só o `index.ts`.
+
+Estado: `dom-contexto` v17, `verify_jwt = true`, deployado 09/09 16:44.
+Rollback: trocar o `deploy.json` para `false` e redeployar.
