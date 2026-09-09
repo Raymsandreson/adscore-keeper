@@ -88,8 +88,8 @@ interface AbaLida {
   brutas: number;
   descartadas_nome: number;
   descartadas_telefone: number;
-  /** Onde nome/telefone aparecem nas linhas descartadas: `nome@20|tel@21|cols=26`. */
-  desalinho: { forma: string; qtd: number }[];
+  /** Quantas linhas descartadas tinham valor em cada indice de coluna. */
+  preenchidas_nas_descartadas: Record<number, number>;
 }
 
 async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: string }): Promise<AbaLida> {
@@ -111,7 +111,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   const json = (await resp.json()) as { values?: any[][] };
   const values: any[][] = json.values || [];
   if (values.length < 2)
-    return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0, desalinho: [] };
+    return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0, preenchidas_nas_descartadas: {} };
   const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
 
   const out: ParsedRow[] = [];
@@ -120,7 +120,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   let descNome = 0;
   let descTelefone = 0;
   let brutas = 0;
-  const desalinho: Record<string, number> = {};
+  const preenchidas: Record<number, number> = {};
   for (let i = 1; i < values.length; i++) {
     const r = values[i];
     if (!r || !r.length) continue;
@@ -131,16 +131,13 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     const name = o['nome_completo'] || o['full_name'] || '';
     if (isJunkName(name)) {
       descNome += 1;
-      // ONDE o dado realmente esta na linha descartada. Sem isto, "sem nome" e
-      // um numero sem acao: pode ser linha vazia de verdade ou coluna trocada.
-      // So indices e contagens — nenhum valor de cliente sai daqui.
-      const iTel = r.findIndex((c: any) => normalizePhone(String(c ?? '')).length >= 12);
-      const iNome = r.findIndex((c: any) => {
-        const v = String(c ?? '').trim();
-        return v.length >= 5 && /^[A-Za-zÀ-ú][A-Za-zÀ-ú .'-]+$/.test(v) && v.includes(' ');
-      });
-      const chave = `nome@${iNome}|tel@${iTel}|cols=${r.length}`;
-      desalinho[chave] = (desalinho[chave] || 0) + 1;
+      // Quais COLUNAS estao preenchidas nas linhas descartadas — contagem pura,
+      // sem interpretar valor. Detector esperto erra: `id` (l:108...) vira
+      // "telefone" ao tirar nao-digitos, e `form_name` ("MATEUS - BPC") casa
+      // como "nome". Contar celula preenchida por indice nao tem essa ambiguidade.
+      for (let c = 0; c < r.length; c++) {
+        if (String(r[c] ?? '').trim() !== '') preenchidas[c] = (preenchidas[c] || 0) + 1;
+      }
       continue;
     }
     const phone = normalizePhone(rawPhone);
@@ -176,10 +173,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     brutas,
     descartadas_nome: descNome,
     descartadas_telefone: descTelefone,
-    desalinho: Object.entries(desalinho)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-      .map(([forma, qtd]) => ({ forma, qtd })),
+    preenchidas_nas_descartadas: preenchidas,
   };
 }
 
@@ -253,7 +247,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const cabecalhos = new Set<string>();
   const diagPorAba = new Map<
     string,
-    { cabecalho: string[]; brutas: number; dn: number; dt: number; desalinho: { forma: string; qtd: number }[] }
+    { cabecalho: string[]; brutas: number; dn: number; dt: number; preenchidas: Record<number, number> }
   >();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
@@ -268,7 +262,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
           brutas: r.value.brutas,
           dn: r.value.descartadas_nome,
           dt: r.value.descartadas_telefone,
-          desalinho: r.value.desalinho,
+          preenchidas: r.value.preenchidas_nas_descartadas,
         });
       } else {
         tabErrors.push({ tab: meta.tab, error: String(r.reason?.message || r.reason).slice(0, 200) });
@@ -347,7 +341,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       // 'full_name'/'telefone', a aba nao tem linha de cabecalho e todo o resto
       // e lido deslocado — a uniao em `colunas_da_planilha` esconde isso.
       cabecalho: d?.cabecalho ?? [],
-      desalinho_das_descartadas: d?.desalinho ?? [],
+      preenchidas_nas_descartadas: d?.preenchidas ?? {},
       ...(brutas > 0 && linhas === 0
         ? { ALERTA: 'aba leu linhas e aproveitou ZERO — cabecalho ausente ou coluna com outro nome' }
         : {}),
