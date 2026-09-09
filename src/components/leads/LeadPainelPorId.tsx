@@ -26,9 +26,16 @@ import { db } from "@/integrations/supabase";
 interface Props {
   leadId: string;
   onClose: () => void;
+  /**
+   * Aba em que a ficha do lead abre. Serve a quem chega apontando para uma
+   * parte da ficha — a ficha do processo abre direto em "casos" quando o
+   * clique foi no caso vinculado. Sem isto o painel sempre abre em "basic" e
+   * a pessoa tem que procurar a aba de novo.
+   */
+  aba?: string;
 }
 
-export default function LeadPainelPorId({ leadId, onClose }: Props) {
+export default function LeadPainelPorId({ leadId, onClose, aba }: Props) {
   const { updateLead, loading: leadsCarregando } = useLeads();
   const { boards } = useKanbanBoards();
   const [lead, setLead] = useState<Lead | null>(null);
@@ -90,6 +97,7 @@ export default function LeadPainelPorId({ leadId, onClose }: Props) {
       }}
       boards={boards}
       mode="sheet"
+      initialTab={aba}
     />
   );
 }
