@@ -179,10 +179,15 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
       descTelefone += 1;
       continue;
     }
-    const st = (o['lead_status'] || o['status da lead'] || o['status'] || '').trim().toLowerCase();
-    if (st) {
-      statusPlanilha[st] = (statusPlanilha[st] || 0) + 1;
-      if (normalizaLeadIdMeta(o['id'])) statusComIdMeta[st] = (statusComIdMeta[st] || 0) + 1;
+    // CADA coluna separada. `lead_status` e campo da exportacao da Meta (vale
+    // sempre "created"); com `||` ele curto-circuita e a coluna que a EQUIPE
+    // preenche nunca era lida — foi o defeito da primeira medicao.
+    for (const col of ['lead_status', 'status da lead', 'status', 'observações', 'observacoes']) {
+      const v = String(o[col] || '').trim().toLowerCase();
+      if (!v) continue;
+      const chave = `${col} = ${v.slice(0, 40)}`;
+      statusPlanilha[chave] = (statusPlanilha[chave] || 0) + 1;
+      if (normalizaLeadIdMeta(o['id'])) statusComIdMeta[chave] = (statusComIdMeta[chave] || 0) + 1;
     }
     out.push({
       facebook_lead_id: normalizaLeadIdMeta(o['id']),
