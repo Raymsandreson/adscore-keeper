@@ -3059,3 +3059,10 @@ a fila rotula "requerimento INSS"; o cron re-varre grupo com mensagem nova de
 Rollback: `detectar_processos_em_grupos_antes_do_inss`,
 `dom_contexto_processual_antes_do_inss`; `delete from grupo_processo_detectado
 where tipo = 'inss'`. Migration `20260909030000`.
+
+**Decisão do Raym (09/09/2026): número citado pelo CLIENTE não entra na fila.**
+A regra "citado no grupo é do grupo" e a fila de 1 clique valem só para número
+escrito pela equipe (`origem = 'equipe'`). O que o cliente escreve segue o fluxo
+antigo de sugestão (07/09: `sugerido` / `sem_lead` / `ambiguo_lead` /
+`divergente`, em `pendencias_vinculo`), sem botão. Em 09/09 eram 3 números do
+INSS nessa situação. Não é pendência — é decisão. Não "consertar".
