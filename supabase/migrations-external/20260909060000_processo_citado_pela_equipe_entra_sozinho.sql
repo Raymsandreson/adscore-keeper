@@ -57,6 +57,14 @@
 --     continua a mesma).
 --   * Nada é apagado. resolver_processo_citado ganha só o case_id.
 --
+-- APLICADO em 09/09/2026 com aval do Raym. vincular_processos_citados_no_grupo()
+-- rodou em seguida: 110 processos_do_grupo (26 adoções, 84 cadastros, 89 com
+-- case_id), fila de citados 304 → 194. Família 50: citação processo_do_grupo,
+-- ficha com lead e caso 50, Dom devolve 3 processos. Cron jobid 5104 ativo;
+-- primeiro disparo manual: 10 processos, request 951997. Elegíveis no momento:
+-- 145 (os 60 de antes + os 84 cadastrados agora + adoções) — custo de uma vez
+-- na ordem de R$ 15–45, acima da estimativa de R$ 6–20 feita antes de rodar.
+--
 -- ROTA DE FUGA
 --   vincular_processos_citados_no_grupo_antes_da_adocao (cópia)
 --   resolver_processo_citado_antes_do_case_id (cópia)

@@ -3414,3 +3414,42 @@ versionada e revisável. O arquivo não sobe junto — o upload é só o `index.
 
 Estado: `dom-contexto` v17, `verify_jwt = true`, deployado 09/09 16:44.
 Rollback: trocar o `deploy.json` para `false` e redeployar.
+
+### Processo citado pela equipe entra sozinho, e vai ao Escavador ao ser ligado (09/09/2026)
+
+**O que o Raym viu.** "Família 50-Rosilei": a mensagem de atividade da equipe
+traz o CNJ, o grupo tem um lead, o lead tem um caso, e mesmo assim a coluna
+Processo dizia "—", Casos dizia "Processos (0)" e a ficha "Nunca buscado".
+
+**Causa.** A ficha do processo existia desde 18/08 (conferência Tab.Aux ×
+financeiro) com lead e caso nulos. O vinculador de 08/09 só resolvia citação
+cujo processo tinha dono; sem dono, caía na fila humana. Eram 110 assim em
+grupos com um lead só (26 fichas órfãs, 84 sem ficha). Escavador: só o botão
+da ficha, o backfill por POP e o push do e-mail buscavam; processo sem lead
+não entrava em nenhum.
+
+**Regra nova (migration `20260909060000`, aplicada).** Citação da equipe,
+CNJ válido, grupo com exatamente um lead, nenhum lead dono do processo:
+- ficha órfã → o lead do grupo adota (`lead_id`; `case_id` = o caso do lead
+  se ele tiver um só);
+- sem ficha → cadastra no lead do grupo (título da jurimetria quando houver).
+Marca em `lead_processes.notes` "(vincular_processos_citados_no_grupo)";
+reversível pelo cabeçalho da migration. Grupo sem lead ou com 2+ leads
+continua na fila; número citado pelo cliente continua fora.
+`resolver_processo_citado` (1 clique) também passa a preencher `case_id`.
+
+**Escavador ao ligar.** Cron `escavador-recem-vinculados` (*/5 min, jobid
+5104): até 10 processos judiciais com lead, CNJ no formato do tribunal e
+nunca buscados → edge `backfill-process-marcos` (mode backfill, process_ids,
+apenas_nunca_buscados). Trava: `escavador_busca_tentativas` (infra), máx. 3
+tentativas por processo com 1 h entre elas — a edge só carimba
+`data_ultima_verificacao` quando o Escavador responde, e sem a trava um CNJ
+com erro seria pago a cada 5 min. Custo ~R$ 0,10/consulta (+ capa quando falta
+data de início). Não chama a edge sem elegível.
+
+**Resultado (09/09).** 110 resolvidas (26 adoções + 84 cadastros, 89 com
+caso); fila 304 → 194; Família 50 com 3 processos no Dom. Elegíveis ao
+Escavador no momento: 145 (ordem de R$ 15–45 uma vez).
+
+**Aviso que fica.** O saldo do Escavador acaba em silêncio. Este cron tenta 3
+vezes e para, sem avisar. Alarme de saldo é outra entrega.
