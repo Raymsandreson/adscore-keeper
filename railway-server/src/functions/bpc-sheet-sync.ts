@@ -412,11 +412,16 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   // nao e enfeite: sem ordem estavel a paginacao pula e repete linhas.
   const PAGINA_DEDUP = 1000;
   const existingKeys = new Set<string>();
+  // Mesma varredura, dois usos: o Set decide quem criar, o Map permite achar o
+  // lead pelo TELEFONE na hora de aplicar status. Casar so por
+  // `facebook_lead_id` deixava de fora quem entrou por outro caminho — eram 6
+  // fechamentos invisiveis so no BPC.
+  const porTelefone = new Map<string, { id: string; lead_status: string }>();
   let lidosDedup = 0;
   for (let inicio = 0; ; inicio += PAGINA_DEDUP) {
     const { data: pagina, error: existErr } = await ext
       .from('leads')
-      .select('id, lead_phone')
+      .select('id, lead_phone, lead_status')
       .eq('board_id', boardId)
       .not('lead_phone', 'is', null)
       .order('id', { ascending: true })
@@ -426,7 +431,12 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
     lidosDedup += linhas.length;
     for (const l of linhas) {
       const k = phoneKey(String(l.lead_phone || '').replace(/\D/g, ''));
-      if (k) existingKeys.add(k);
+      if (k) {
+        existingKeys.add(k);
+        if (!porTelefone.has(k)) {
+          porTelefone.set(k, { id: String((l as any).id), lead_status: String((l as any).lead_status || '') });
+        }
+      }
     }
     if (linhas.length < PAGINA_DEDUP) break;
     // Trava: board absurdo nao pode virar loop infinito dentro do cron.
@@ -504,7 +514,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       for (const l of data || []) achados.set(String((l as any).facebook_lead_id), String((l as any).lead_status || ''));
     }
     for (const r of fechadosNaPlanilha) {
-      const st = achados.get(r.facebook_lead_id);
+      const st = achados.get(r.facebook_lead_id) ?? porTelefone.get(r.phone_key)?.lead_status;
       if (st === undefined) fechadosSemLeadNoCrm += 1;
       else if (st === 'closed') fechadosNoCrm += 1;
       else fechadosAindaAbertos += 1;
@@ -522,9 +532,9 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const statusIgnorado: Record<string, number> = {};
   let statusEscritos = 0;
   if (opts.aplicarStatus) {
-    const comStatus = sheetRows.filter((r) => r.facebook_lead_id && MAPA_STATUS[r.status_equipe]);
+    const comStatus = sheetRows.filter((r) => MAPA_STATUS[r.status_equipe]);
     const atual = new Map<string, { id: string; lead_status: string }>();
-    const ids = comStatus.map((r) => r.facebook_lead_id);
+    const ids = comStatus.map((r) => r.facebook_lead_id).filter(Boolean);
     for (let i = 0; i < ids.length; i += 100) {
       const { data } = await ext
         .from('leads')
@@ -540,7 +550,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
     const porAlvo: Record<string, string[]> = {};
     for (const r of comStatus) {
       const alvo = MAPA_STATUS[r.status_equipe];
-      const atualLead = atual.get(r.facebook_lead_id);
+      const atualLead = atual.get(r.facebook_lead_id) || porTelefone.get(r.phone_key);
       if (!atualLead) {
         statusIgnorado['lead nao existe no CRM'] = (statusIgnorado['lead nao existe no CRM'] || 0) + 1;
         continue;
