@@ -57,7 +57,16 @@ function convertContentPart(p: any): any {
       const header = url.substring(0, commaIdx);
       const data = url.substring(commaIdx + 1);
       const mediaType = header.match(/data:([^;]+)/)?.[1] || "image/jpeg";
+      // PDF não é imagem para a Anthropic: bloco "image" com media_type
+      // application/pdf volta 400. Quem chama manda PDF pelo mesmo image_url
+      // que o Google já aceita como inlineData, então a tradução é aqui.
+      if (mediaType === "application/pdf") {
+        return { type: "document", source: { type: "base64", media_type: "application/pdf", data } };
+      }
       return { type: "image", source: { type: "base64", media_type: mediaType, data } };
+    }
+    if (typeof url === "string" && /\.pdf($|\?)/i.test(url)) {
+      return { type: "document", source: { type: "url", url } };
     }
     return { type: "image", source: { type: "url", url } };
   }
