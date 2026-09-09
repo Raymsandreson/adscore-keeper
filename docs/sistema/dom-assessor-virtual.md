@@ -2821,9 +2821,10 @@ com o grupo da ficha pela ponte.
 
 ### O que muda de forma na aba
 
-- **Quatro abas em vez de seis.** "Nas conversas" procura em todos os grupos com
-  rascunho na fila (dentro de um cliente devolveria conversa de outro) e "Sem
-  ficha" é a lista dos grupos órfãos — esta ficha, por definição, não está lá.
+- **Quatro abas em vez de cinco, e sem campo de busca.** A busca procura em
+  todos os grupos com rascunho na fila (dentro de um cliente devolveria conversa
+  de outro) e "Sem ficha" é a lista dos grupos órfãos — esta ficha, por
+  definição, não está lá.
 - **A chave "responde sozinho"** aparece para o grupo da ficha em qualquer modo,
   não só nos que já respondem sozinhos: é onde ela precisa estar para ser ligada.
 - **Ficha sem grupo** não consulta nada e diz o porquê. Lista vazia sem
@@ -3183,3 +3184,140 @@ O Dom está em **0,3** (escolha do Raym, 09/09). Rollback:
 Na tela de configuração do agente, o rótulo "Temperatura" virou "Variação da
 escrita", com o efeito escrito em português e a ressalva de que baixar isso
 **não** impede invenção — o Imposto de Renda foi inventado rodando a 0,007.
+
+## A busca por texto: um campo só, e um índice que a sustenta (09/09/2026)
+
+A tela devolvia uma pilha de quinze erros vermelhos idênticos —
+`canceling statement due to statement timeout` — para quem digitasse uma frase
+no campo de busca. Dois problemas somados, um de cada lado.
+
+### O lado da tela: uma consulta por tecla
+
+O campo chamava a RPC no `onChange`. Digitar "imposto de renda" são 16 teclas,
+15 delas acima do mínimo de 3 letras: 15 consultas, cada uma varrendo 116 mil
+mensagens, todas estourando o corte de 8 s. O erro não era um, eram quinze, e
+o texto que aparecia era o do Postgres, que não diz nada a quem revisa fila.
+
+O conserto tem três partes, todas em `AtendenteVirtualPanel.tsx`:
+
+| peça | o que faz |
+|---|---|
+| `debounce` de 500 ms | a consulta sai depois da última tecla, não a cada uma. Enter atropela a espera |
+| `buscaSeq` (número de sequência) | resposta atrasada de termo já abandonado é descartada, em vez de sobrescrever o resultado do termo atual |
+| `toast` com id fixo | quinze erros idênticos viram um, e em português |
+
+O teste `uma consulta por termo, nao uma por tecla` trava isso: ele digita
+"imposto de renda" inteiro e exige **uma** chamada da RPC.
+
+### O lado da tela, parte 2: o campo saiu de dentro da aba
+
+O campo morava DENTRO de uma sexta aba chamada "Nas conversas". Para procurar
+era preciso primeiro adivinhar que a busca era um **lugar**, e não uma **ação**.
+
+Agora ele fica embaixo da fita de abas, sempre à mão, valendo para todas.
+Digitar leva o painel para os resultados; o X do campo (ou "Voltar para as
+abas") devolve a pessoa para a aba de onde ela saiu — o `abaAntesDaBusca` é
+esse endereço de volta. A fita perdeu um botão: cinco abas em vez de seis.
+
+### O lado do banco: a busca cresceu para dentro do timeout
+
+A RPC nasceu em 07/09/2026 medindo 200 ms sobre 77 grupos e 54.769 mensagens.
+Em 09/09/2026 são 149 grupos e 115.948 mensagens, e a mesma função leva
+**40,4 s**. Ninguém mexeu nela; ela dobrou de trabalho.
+
+Onde o tempo estava, medido com `EXPLAIN ANALYZE` no banco real:
+
+| custo | evidência |
+|---|---|
+| `unaccent()` por linha | 12,6 s com, 0,5 s sem, mesmo recorte e mesmo termo. É dicionário, não função barata. A forma de dois argumentos não salva: 17,5 s |
+| ler o heap | 33 mil páginas em disco: a varredura por `idx_whatsapp_messages_phone` toca uma página por mensagem do grupo |
+
+Os dois vêm da mesma coisa: **ler 116 mil mensagens inteiras para achar 10**.
+
+### O índice, e por que ele tem duas colunas
+
+A primeira tentativa indexou só o texto sem acento
+(`gin (f_unaccent(message_text) gin_trgm_ops)`). Não resolveu, e o plano diz o
+porquê: o índice acha os candidatos em 198 ms, mas eles são **145 mil na tabela
+inteira**, e o Postgres precisa reler **98.620 páginas do heap** para conferir
+cada um — trigrama é busca aproximada, a conferência é obrigatória. O filtro
+dos grupos da fila só entrava depois, no join. "bom dia": 28,5 s.
+
+O índice que ficou é `(phone, f_unaccent(message_text))`: a interseção
+*"deste grupo"* ∩ *"com este termo"* acontece **dentro** do índice, e o heap só
+é tocado no que sobra — 13.527 páginas em vez de 98.620.
+
+É a diferença entre procurar "bom dia" na cidade inteira e depois perguntar
+quem mora no bairro, ou já entrar procurando só no bairro.
+
+```
+create index concurrently idx_wam_grupo_texto_trgm
+  on public.whatsapp_messages
+  using gin (phone, public.f_unaccent(message_text) public.gin_trgm_ops)
+  where message_text is not null;
+```
+
+Duas coisas que o índice exige e que valem para qualquer próximo:
+
+- **`f_unaccent`** — índice de expressão pede `IMMUTABLE`, e o `unaccent(text)`
+  de um argumento é apenas `STABLE`. O envelope usa a forma de dois argumentos.
+- **`btree_gin`** — `phone` é igualdade, e GIN só indexa igualdade com essa
+  extensão.
+
+### O `offset 0` que não é enfeite
+
+Com o índice pronto, o planejador **continuava** ignorando a coluna `phone`:
+achatava o `LATERAL` num hash join, usava só a condição de texto e voltava às
+98 mil páginas. Ele faz isso porque estima 176 linhas onde vêm 145 mil —
+estimativa de seletividade de trigrama é chute.
+
+O `offset 0` dentro do `LATERAL` é a cerca que impede o achatamento. Com ela,
+`phone = <grupo>` entra no `Index Cond` junto com o texto. Sem ela, o índice de
+duas colunas existe e não serve para nada.
+
+### O que custou e o que ficou
+
+| resultado | antes | depois |
+|---|---|---|
+| `'acordo'` | — | 0,48 s |
+| `'pericia'` | — | 1,13 s |
+| `'bom dia'` (pior caso, 14.059 casam) | 28,5 s | 1,44 s |
+| `'imposto de renda'` | 40,4 s | 2,07 s |
+
+Termo longo custa mais que termo curto: são mais trigramas para cruzar em cada
+um dos ~173 grupos da fila. Todos com folga sob o corte de 8 s.
+
+Custo assumido, autorizado pelo dono: **+285 MB** de disco (os índices da tabela
+foram de 668 MB para 953 MB) e a manutenção do GIN em cada mensagem recebida.
+Em troca, o índice cobre a tabela inteira — 1,46 milhão de linhas com texto —
+então qualquer busca futura em mensagem já tem por onde começar.
+
+### Duas armadilhas do `CREATE INDEX CONCURRENTLY` aqui
+
+1. **O `statement_timeout` de 2 min do papel `postgres` mata o build.** A
+   primeira tentativa morreu aos 211 MB e deixou índice **inválido**, que ocupa
+   disco e não serve para nada. Suba para `30min`, crie, devolva:
+   `alter role postgres set statement_timeout = '30min'` … `reset`.
+2. **Confira `indisvalid` antes de comemorar.** Índice inválido não aparece
+   como erro em lugar nenhum: a busca só continua lenta.
+
+```sql
+select indisvalid from pg_index i join pg_class c on c.oid = i.indexrelid
+ where c.relname = 'idx_wam_grupo_texto_trgm';
+```
+
+### Conferido em dados reais, depois de aplicar
+
+- `'imposto de renda'` → as **mesmas 4** mensagens que a regra antiga achava
+  (24 linhas brutas, 0 divergências entre as duas regras de casamento e entre
+  as duas chaves de dedup);
+- `'PERÍCIA'` e `'pericia'` → 50 e 50: acento e maiúscula não mudam o resultado;
+- `'pe'`, `'   '`, `null`, `'%%%'` → 0 linhas sem consultar o banco. O `'%%%'`
+  prova que curinga de `ILIKE` não vaza: `%` e `_` são escapados antes;
+- chamada como papel `authenticated` → 4 linhas, permissão ok.
+
+| arquivo | o que mudou |
+|---|---|
+| `AtendenteVirtualPanel.tsx` | campo único embaixo das abas; debounce; sequência; toast com id; aba controlada |
+| `AtendenteVirtualPanel.busca-conversas.test.tsx` | 5 testes, incluindo "uma consulta por termo, nao uma por tecla" |
+| `20260909130000_busca_nas_conversas_por_indice_trigram.sql` | `f_unaccent`, `btree_gin`, o índice e a RPC reescrita |
