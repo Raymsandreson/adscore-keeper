@@ -167,6 +167,56 @@ Dois achados da primeira varredura:
   palavra-chave de atendente, então lê 0 linhas — mas basta uma aba passar a se
   chamar "MATEUS" para entrar lixo no funil.
 
+## O import lia 379 de 3.297 linhas (09/09/2026)
+
+Eu havia concluído que "a integração Meta → Planilha morreu em agosto", porque o
+BPC lia **379 linhas e 0 recentes**. Estava errado: **a planilha sempre esteve
+sendo alimentada**. Quem estava quebrado era o leitor.
+
+| | antes | depois |
+|---|---:|---:|
+| Linhas lidas | 379 | **2.171** |
+| Recentes (30 dias) | **0** | **1.733** |
+
+Duas causas independentes, as duas silenciosas:
+
+### 1. Nome e telefone trocados de coluna (1.828 linhas)
+
+A mesma aba acumula exportações de **duas versões do formulário**, com a ordem
+das colunas invertida entre elas. O cabeçalho é o da primeira versão, então as
+linhas da segunda traziam o telefone na coluna que se lia como `full_name`. O
+descarte aparecia como "nome inválido" — 1.851 linhas reprovadas pela regra
+"não tem uma única letra". Eram telefones.
+
+Dá para ver a olho na aba `MATEUS - 2`, cuja primeira linha de dados é lida como
+cabeçalho: índice 19 = `4299685755`, índice 20 = `evelin iasmin castilho`.
+
+**Conserto sem adivinhação:** o nome é o candidato **que tem letra**, o telefone
+é o candidato **que tem dígito**. Se as duas células se desmentirem, a troca é
+inequívoca; se nenhuma servir, a linha cai como antes. `recuperadas_por_troca`
+por aba mostra quantas foram recuperadas.
+
+### 2. Aba sem linha de cabeçalho (802 linhas, AINDA ABERTO)
+
+`MATEUS - 2` (766 linhas) e `KAROLYNE` (36) **não têm linha de cabeçalho**: a
+primeira linha já é dado, e vira "cabeçalho" com nomes como
+`l:1086829373844173`. Todo o resto é lido deslocado e nada se aproveita.
+
+Isso **não** se conserta por heurística: adivinhar qual coluna é o nome pode
+trazer `qual_o_nome_da_criança_?` no lugar do responsável. O conserto é inserir a
+linha de cabeçalho na planilha — ou ler esses formulários pela API da Meta
+(`meta-leads-sync`), que não depende de formatação nenhuma.
+
+### O que impedia de ver isso
+
+`total_rows_in_sheet` contava linhas **depois** do descarte, e o descarte não
+aparecia em lugar nenhum. Agora cada aba devolve `brutas`,
+`descartadas_sem_nome`, `descartadas_sem_telefone`, `recuperadas_por_troca`, o
+próprio `cabecalho` e um **ALERTA** quando lê linhas e aproveita zero.
+
+**Regra que fica:** aba que lê linha e aproveita zero é bug, nunca "não tem lead
+novo". Os dois números têm que ser mostrados juntos.
+
 ## Limites conhecidos
 
 - **Cota do Sheets**: ler duas planilhas em sequência já devolveu HTTP 429

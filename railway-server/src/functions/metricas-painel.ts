@@ -10,6 +10,7 @@
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
 import { CAPI_TOKEN, GRAPH_VERSION } from '../lib/metaCapi';
+import { hojeISO, diasAtras, corteDeDias, diaDoInstante, diaDaColuna } from '../lib/diasSaoPaulo';
 
 // PostgREST corta em 1000. Não é teoria: o dedup da planilha leu 1000 de 7.255
 // e teria recriado lead por 10 minutos até alguém notar. Toda leitura de volume
@@ -17,8 +18,8 @@ import { CAPI_TOKEN, GRAPH_VERSION } from '../lib/metaCapi';
 const PAGINA = 1000;
 const TETO_PAGINAS = 20;
 
-const hojeISO = () => new Date().toISOString().slice(0, 10);
-const diasAtras = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+// Dia civil brasileiro vem de `lib/diasSaoPaulo` — modulo puro, com teste.
+// Ver o comentario de la: o dia UTC fazia "hoje" comecar as 21h de ontem.
 
 async function leTudo<T>(
   monta: (de: number, ate: number) => any,
@@ -70,7 +71,7 @@ async function investimento() {
   }
 
   const hoje = hojeISO();
-  const corte7 = diasAtras(7);
+  const corte7 = corteDeDias(7);
   const porDia: Record<string, number> = {};
   const detalhe: Array<Record<string, unknown>> = [];
   let t30 = 0, t7 = 0, tHoje = 0;
@@ -126,8 +127,8 @@ async function investimento() {
 export const handler: RequestHandler = async (_req, res) => {
   try {
     const hoje = hojeISO();
-    const corte7 = diasAtras(7);
-    const corte30 = diasAtras(30);
+    const corte7 = corteDeDias(7);
+    const corte30 = corteDeDias(30);
 
     const [boards, leads, fechados, gasto, filaCapi] = await Promise.all([
       supabase.from('kanban_boards').select('id, name'),
@@ -136,7 +137,9 @@ export const handler: RequestHandler = async (_req, res) => {
           .from('leads')
           .select('created_at, source, board_id, facebook_lead_id')
           .is('deleted_at', null)
-          .gte('created_at', `${corte30}T00:00:00Z`)
+          // -03:00 e nao Z: `corte30` ja e dia de Sao Paulo. Com `Z` a busca
+          // comecava 3h antes e `leads.length` (o card "em 30") contava a mais.
+          .gte('created_at', `${corte30}T00:00:00-03:00`)
           .order('created_at', { ascending: false })
           .range(de, ate),
       ),
@@ -165,22 +168,21 @@ export const handler: RequestHandler = async (_req, res) => {
     const nomeBoard: Record<string, string> = {};
     for (const b of (boards.data || []) as any[]) nomeBoard[b.id] = b.name;
 
-    const dia = (v: any) => String(v || '').slice(0, 10);
     const leadsPorDia: Record<string, number> = {};
     for (const l of leads) {
-      const d = dia(l.created_at);
+      const d = diaDoInstante(l.created_at);
       if (d) leadsPorDia[d] = (leadsPorDia[d] || 0) + 1;
     }
     const fechPorDia: Record<string, number> = {};
     for (const f of fechados) {
-      const d = dia(f.became_client_date);
+      const d = diaDaColuna(f.became_client_date);
       if (d) fechPorDia[d] = (fechPorDia[d] || 0) + 1;
     }
 
-    const leads7 = leads.filter((l) => dia(l.created_at) >= corte7).length;
-    const leadsHoje = leads.filter((l) => dia(l.created_at) === hoje).length;
-    const fech7 = fechados.filter((f) => dia(f.became_client_date) >= corte7).length;
-    const fechHoje = fechados.filter((f) => dia(f.became_client_date) === hoje).length;
+    const leads7 = leads.filter((l) => diaDoInstante(l.created_at) >= corte7).length;
+    const leadsHoje = leads.filter((l) => diaDoInstante(l.created_at) === hoje).length;
+    const fech7 = fechados.filter((f) => diaDaColuna(f.became_client_date) >= corte7).length;
+    const fechHoje = fechados.filter((f) => diaDaColuna(f.became_client_date) === hoje).length;
 
     // Lead pago = veio de formulário de anúncio. Duas provas independentes:
     // o `source` que a planilha de Lead Ads carimba, ou o id do lead na Meta.
@@ -188,8 +190,8 @@ export const handler: RequestHandler = async (_req, res) => {
       Boolean(l.facebook_lead_id) || String(l.source || '').toLowerCase().includes('planilha meta ads');
     const leadsPagos = leads.filter(ehPago);
     const fechamentosPagos = fechados.filter(ehPago).length;
-    const pagos7 = leadsPagos.filter((l) => dia(l.created_at) >= corte7).length;
-    const diasPagos = leadsPagos.map((l) => dia(l.created_at)).filter(Boolean).sort();
+    const pagos7 = leadsPagos.filter((l) => diaDoInstante(l.created_at) >= corte7).length;
+    const diasPagos = leadsPagos.map((l) => diaDoInstante(l.created_at)).filter(Boolean).sort();
     const primeiroDiaPago = diasPagos[0] || null;
     // "Completo" = existe lead pago desde o inicio da janela. Sem isso o CPL de
     // 30 dias divide gasto de 30 por lead de 7 e mente para baixo.

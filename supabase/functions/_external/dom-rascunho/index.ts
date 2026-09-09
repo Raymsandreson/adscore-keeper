@@ -51,6 +51,49 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+/**
+ * TEMPERATURA — o banco guarda 0 a 1, e este arquivo dividia por 100.
+ *
+ * `(agente.temperature ?? 70) / 100` só faz sentido numa coluna que guarda 0 a
+ * 100. A de `wjia_command_shortcuts` não é: o slider da tela de configuração vai
+ * de 0 a 1 com passo 0,1, o `wjia-agent` lê o mesmo campo e usa DIRETO
+ * (`matchedShortcut.temperature ?? 0.1`), e as 16 linhas da tabela, medidas em
+ * 09/09/2026, vão de 0,2 a 0,7. Não havia ambiguidade de escala: havia um
+ * divisor a mais aqui.
+ *
+ * O efeito: o Dom rodava a 0,007 — praticamente guloso — enquanto a tela dizia
+ * 0,7. Quem mexesse no slider não mudava nada perceptível, porque qualquer
+ * valor daquela faixa dividido por 100 dá quase zero.
+ *
+ * Isto NÃO era a causa do Imposto de Renda inventado. Temperatura baixa não
+ * impede invenção: ela só faz o modelo escolher sempre o caminho mais provável
+ * — e o caminho mais provável ERA a invenção, repetida em 3 dos 4 rascunhos.
+ * Quem impede é a trava do valor sem lastro.
+ *
+ * Fora da faixa não é aceito calado: um 70 gravado na mão viraria 70 no corpo
+ * da chamada, e o Gemini recusa acima de 2. Reescala e diz no log que reescalou.
+ */
+const TEMPERATURA_PADRAO = 0.3;
+
+function temperaturaDoAgente(valor: unknown): number {
+  // Coluna vazia é "ninguém configurou", e cai no padrão. Sem esta linha o
+  // `Number(null)` daria 0 — um valor legítimo da faixa — e uma coluna nula
+  // viraria o agente mais determinístico possível sem ninguém ter pedido.
+  // `0` gravado de propósito continua valendo 0.
+  if (valor === null || valor === undefined || valor === "") return TEMPERATURA_PADRAO;
+  const n = Number(valor);
+  if (!Number.isFinite(n) || n < 0) return TEMPERATURA_PADRAO;
+  if (n <= 1) return n;
+  if (n <= 100) {
+    console.warn(
+      `[dom-rascunho] temperatura ${n} está fora da faixa 0–1 do banco; ` +
+      `usando ${n / 100}. Corrija na tela de configuração do agente.`,
+    );
+    return n / 100;
+  }
+  return TEMPERATURA_PADRAO;
+}
+
 const DOM_AGENT_ID = "d6ad8eee-d6a3-452c-b852-b94ef8dd54bf";
 
 // A JANELA ENTRE ESCREVER E FALAR — E POR QUE ELA ENCOLHE
@@ -583,20 +626,51 @@ function chaveDoValor(v: string): string {
 /** Dinheiro e porcentagem citados num texto. Porcentagem POR EXTENSO entra com
  *  chave vazia de propósito: "trinta por cento" não tem dígito para conferir,
  *  então nunca casa com o contexto e sempre cai como não conferida. */
-function valoresCitados(texto: string): { texto: string; chave: string }[] {
-  const achados: { texto: string; chave: string }[] = [];
-  const guarda = (bruto: string, chave: string) => {
+function valoresCitados(texto: string): { texto: string; chave: string; tipo: Tipo }[] {
+  const achados: { texto: string; chave: string; tipo: Tipo }[] = [];
+  const guarda = (bruto: string, chave: string, tipo: Tipo) => {
     // Tira a pontuação da frase que a captura levou junto: "R$ 1.443." vira
     // "R$ 1.443". Só afeta o que a pessoa lê no motivo — a chave já foi tirada
     // do primeiro número, sem depender disto.
     const limpo = bruto.trim().replace(/[.,;:]+$/, "");
-    if (limpo && !achados.some((a) => a.texto === limpo)) achados.push({ texto: limpo, chave });
+    if (limpo && !achados.some((a) => a.texto === limpo)) achados.push({ texto: limpo, chave, tipo });
   };
-  for (const m of texto.matchAll(/R\$\s*\d[\d.,]*/gi)) guarda(m[0], chaveDoValor(m[0]));
-  for (const m of texto.matchAll(/\d[\d.,]*\s*rea(?:l|is)\b/gi)) guarda(m[0], chaveDoValor(m[0]));
-  for (const m of texto.matchAll(/\d[\d.,]*\s*%/g)) guarda(m[0], chaveDoValor(m[0]));
-  for (const m of texto.matchAll(/\S+\s+por\s+cento\b/gi)) guarda(m[0], "");
+  for (const m of texto.matchAll(/R\$\s*\d[\d.,]*/gi)) guarda(m[0], chaveDoValor(m[0]), "dinheiro");
+  for (const m of texto.matchAll(/\d[\d.,]*\s*rea(?:l|is)\b/gi)) guarda(m[0], chaveDoValor(m[0]), "dinheiro");
+  for (const m of texto.matchAll(/\d[\d.,]*\s*%/g)) guarda(m[0], chaveDoValor(m[0]), "porcentagem");
+  for (const m of texto.matchAll(/\S+\s+por\s+cento\b/gi)) guarda(m[0], "", "porcentagem");
   return achados;
+}
+
+type Tipo = "dinheiro" | "porcentagem";
+
+/**
+ * SÓ O BLOCO DE ANDAMENTO É LASTRO — medido em produção, 09/09/2026.
+ *
+ * A primeira versão comparava o valor da resposta com o system prompt INTEIRO.
+ * Dois furos apareceram no mesmo grupo, em quatro minutos:
+ *
+ *  1. A chave de um valor é a parte inteira, então "30%" casava com QUALQUER
+ *     "30" do prompt — e o bloco do INSS diz "normalmente 30 dias". Resultado:
+ *     "os 30% são sobre o valor que você recebe" passou, sem nenhum contrato
+ *     lido. Agora dinheiro só casa com dinheiro e porcentagem só com
+ *     porcentagem.
+ *
+ *  2. O motivo que ESTA trava escreve vira atividade ("Pendência do atendente
+ *     virtual: valor sem lastro no processo (R$ 864,53)"), e a atividade volta
+ *     para o prompt no bloco da equipe. Dois minutos depois, o valor barrado
+ *     tinha "lastro" — o nosso próprio bilhete. O modelo chegou a copiar a
+ *     frase e devolver `[REVISAR: valor sem lastro no processo]`.
+ *
+ * Fato é o que veio da base e das peças lidas: o bloco de andamento. Anotação
+ * interna da equipe não é fonte, exemplo antigo não é fonte, e recado que nós
+ * mesmos escrevemos nunca pode virar prova.
+ */
+function andamentoDoContexto(blocos: string): string {
+  const i = blocos.indexOf("=== ANDAMENTO PROCESSUAL");
+  if (i < 0) return "";
+  const j = blocos.indexOf("=== FIM ANDAMENTO PROCESSUAL ===", i);
+  return j < 0 ? blocos.slice(i) : blocos.slice(i, j);
 }
 
 /** Os valores da resposta que NÃO têm lastro: os que não aparecem no bloco de
@@ -618,10 +692,20 @@ function valoresSemLastro(resposta: string, blocos: string): string[] {
   const citados = valoresCitados(resposta);
   if (citados.length === 0) return [];
 
-  const contexto = juntaMilhar(blocos);
-  return citados
-    .filter((c) => !c.chave || !new RegExp(`(?<!\\d)${c.chave}(?!\\d)`).test(contexto))
-    .map((c) => c.texto);
+  const andamento = juntaMilhar(andamentoDoContexto(blocos));
+  const doAndamento = valoresCitados(andamento);
+
+  const temLastro = (c: { chave: string; tipo: Tipo }) => {
+    if (!c.chave) return false; // "trinta por cento" não tem dígito para conferir
+    if (doAndamento.some((d) => d.tipo === c.tipo && d.chave === c.chave)) return true;
+    // Dinheiro escrito sem o "R$" no resumo da peça ("valor de 1.660,00")
+    // continua sendo lastro. Porcentagem NÃO ganha esta folga: é dela que veio
+    // o furo do "30 dias".
+    return c.tipo === "dinheiro"
+      && new RegExp(`(?<!\\d)${c.chave}(?!\\d)`).test(andamento);
+  };
+
+  return citados.filter((c) => !temLastro(c)).map((c) => c.texto);
 }
 
 /** O que vai para o cliente quando o valor foi barrado. Não pede desculpa e não
@@ -1554,7 +1638,7 @@ Deno.serve(async (req) => {
           systemPrompt,
           historico,
           Math.min(Math.max(agente.max_tokens || 1024, 256), 4096),
-          (agente.temperature ?? 70) / 100,
+          temperaturaDoAgente(agente.temperature),
         );
       } catch (e) {
         pulados.push({ grupo: g.group_jid, motivo: `modelo falhou: ${(e as Error).message}` });

@@ -15,7 +15,7 @@
  * A última existe porque um atendente que nunca fala parece estar funcionando.
  * Sem ver o silêncio, não dá para saber se ele está calando demais ou de menos.
  */
-import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { db, ensureExternalSession, externalFunctionUrl } from '@/integrations/supabase';
 import { Card, CardContent } from '@/components/ui/card';
@@ -401,6 +401,27 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
   const [buscaConversa, setBuscaConversa] = useState('');
   const [nasConversas, setNasConversas] = useState<NaConversa[]>([]);
   const [buscandoConversas, setBuscandoConversas] = useState(false);
+  /**
+   * A aba é controlada porque a busca vive FORA dela.
+   *
+   * O campo fica embaixo da fita de abas e vale para todas: quem digita não
+   * escolheu "ir para a aba de busca", escolheu procurar. Então digitar leva o
+   * painel para os resultados, e apagar devolve para a aba de onde a pessoa
+   * saiu — `abaAntesDaBusca` é esse endereço de volta.
+   */
+  const [aba, setAba] = useState('fila');
+  const abaAntesDaBusca = useRef('fila');
+  /**
+   * Sem estes dois, cada tecla vira uma consulta ao banco.
+   *
+   * Medido em 09/09/2026: digitar "imposto de renda" disparava 15 chamadas da
+   * RPC, cada uma varrendo 116 mil mensagens, e as 15 estouravam o statement
+   * timeout — a tela virou uma pilha de erros vermelhos. `debounceBusca`
+   * espera a pessoa parar de digitar; `buscaSeq` descarta resposta atrasada de
+   * termo antigo, que senão sobrescreve o resultado do termo atual.
+   */
+  const debounceBusca = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const buscaSeq = useRef(0);
   const [totalGrupos, setTotalGrupos] = useState(0);
   /**
    * Os grupos DESTE lead, no formato curto do jid — o recorte da aba da ficha.
@@ -845,23 +866,60 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
    * mora no banco — a mesma mensagem de grupo é gravada uma vez por instância
    * da casa que está lá dentro, e sem isso a mesma frase voltaria 4 vezes.
    */
-  const procurarNasConversas = async (termo: string) => {
-    setBuscaConversa(termo);
-    const t = termo.trim();
-    if (t.length < 3) { setNasConversas([]); return; }
+  const procurarNasConversas = async (t: string) => {
+    const meu = ++buscaSeq.current;
     setBuscandoConversas(true);
     try {
       const { data, error } = await (dbAny as any)
         .rpc('buscar_nas_conversas_da_fila', { p_termo: t, p_limite: 50 });
+      if (meu !== buscaSeq.current) return; // resposta de termo já abandonado
       if (error) throw error;
       setNasConversas((data as NaConversa[]) || []);
     } catch (e: any) {
-      toast.error('Falha ao buscar nas conversas: ' + (e?.message || ''));
+      if (meu !== buscaSeq.current) return;
       setNasConversas([]);
+      const bruto = e?.message || '';
+      // "canceling statement due to statement timeout" não diz nada a quem
+      // revisa fila. O id fixo no toast é o que impede a pilha de erros
+      // idênticos empilhados na tela.
+      toast.error(
+        /statement timeout/i.test(bruto)
+          ? 'A busca demorou demais e o banco cortou. Tente um termo mais específico.'
+          : 'Falha ao buscar nas conversas: ' + bruto,
+        { id: 'busca-nas-conversas' },
+      );
     } finally {
-      setBuscandoConversas(false);
+      if (meu === buscaSeq.current) setBuscandoConversas(false);
     }
   };
+
+  /**
+   * O que acontece a cada tecla: quase nada, de propósito.
+   *
+   * Só marca o termo, leva o painel para os resultados e agenda a consulta para
+   * meio segundo depois da última tecla. Enter atropela a espera para quem já
+   * sabe o que quer.
+   */
+  const digitarNasConversas = (termo: string, agora = false) => {
+    setBuscaConversa(termo);
+    if (debounceBusca.current) clearTimeout(debounceBusca.current);
+    const t = termo.trim();
+    if (t.length < 3) {
+      buscaSeq.current++; // invalida o que estiver em voo
+      setBuscandoConversas(false);
+      setNasConversas([]);
+      if (aba === 'busca') setAba(abaAntesDaBusca.current);
+      return;
+    }
+    if (aba !== 'busca') { abaAntesDaBusca.current = aba; setAba('busca'); }
+    setBuscandoConversas(true);
+    if (agora) { procurarNasConversas(t); return; }
+    debounceBusca.current = setTimeout(() => procurarNasConversas(t), 500);
+  };
+
+  const limparBuscaNasConversas = () => digitarNasConversas('');
+
+  useEffect(() => () => { if (debounceBusca.current) clearTimeout(debounceBusca.current); }, []);
 
   const procurar = async (termo: string) => {
     setBusca(termo);
@@ -1045,12 +1103,12 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
         </p>
       </div>
 
-      <Tabs defaultValue="fila">
-        {/* Dentro da ficha caem duas abas. "Nas conversas" procura em TODOS os
-            grupos com rascunho na fila — dentro de um cliente ela devolveria
+      <Tabs value={aba} onValueChange={setAba}>
+        {/* Dentro da ficha cai uma aba e some a busca. Ela procura em TODOS os
+            grupos com rascunho na fila — dentro de um cliente devolveria
             conversa de outro. E "Sem ficha" é a lista de grupos órfãos: esta
             ficha, por definição, não está lá. */}
-        <TabsList className={`grid w-full ${noLead ? 'grid-cols-4' : 'grid-cols-6'}`}>
+        <TabsList className={`grid w-full ${noLead ? 'grid-cols-4' : 'grid-cols-5'}`}>
           <TabsTrigger value="fila" className="text-xs gap-1">
             <Inbox className="h-3.5 w-3.5" />Na fila
             {filaF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filaF.length}</Badge>}
@@ -1067,11 +1125,6 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
             <VolumeX className="h-3.5 w-3.5" />Silenciadas
             {silenciadasF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{silenciadasF.length}</Badge>}
           </TabsTrigger>
-          {!noLead && (
-            <TabsTrigger value="conversas" className="text-xs gap-1">
-              <Search className="h-3.5 w-3.5" />Nas conversas
-            </TabsTrigger>
-          )}
           {/* A sexta é a que dói: grupos que ele atende sem saber de quem são. */}
           {!noLead && (
             <TabsTrigger value="semficha" className="text-xs gap-1">
@@ -1082,6 +1135,41 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
             </TabsTrigger>
           )}
         </TabsList>
+
+        {/*
+          Um campo só, embaixo da fita, valendo para todas as abas.
+          Antes ele morava DENTRO de uma sexta aba: para procurar era preciso
+          primeiro adivinhar que a busca era um lugar, não uma ação. Aqui ela
+          está sempre à mão, e o resultado toma o lugar da lista até a pessoa
+          limpar — o X devolve para a aba de onde ela saiu.
+        */}
+        {!noLead && (
+          <div className="pt-2">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                value={buscaConversa}
+                onChange={(e) => digitarNasConversas(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') digitarNasConversas(buscaConversa, true); }}
+                placeholder="Procurar no que foi dito nos grupos que estão esperando revisão…"
+                className="h-8 text-xs pl-7 pr-7"
+              />
+              {buscaConversa.length > 0 && (
+                <button
+                  type="button"
+                  onClick={limparBuscaNasConversas}
+                  aria-label="Limpar busca"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {buscaConversa.trim().length > 0 && buscaConversa.trim().length < 3 && (
+              <p className="text-[10px] text-muted-foreground pt-1">Digite ao menos 3 letras.</p>
+            )}
+          </div>
+        )}
 
         <TabsContent value="fila" className="space-y-2 pt-3">
           {filaF.length > 0 && (
@@ -1142,25 +1230,22 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
           ))}
         </TabsContent>
 
-        {!noLead && <TabsContent value="conversas" className="space-y-2 pt-3">
-          <Input
-            value={buscaConversa}
-            onChange={(e) => procurarNasConversas(e.target.value)}
-            placeholder="Procurar no que foi dito nos grupos que estão esperando revisão…"
-            className="h-8 text-xs"
-          />
-          <p className="text-[10px] text-muted-foreground">
-            Procura só dentro dos grupos com rascunho na fila — é o recorte que deixa a busca
-            rápida. Cada resultado abre a conversa por cima, no ponto em que a frase apareceu.
-          </p>
+        {!noLead && <TabsContent value="busca" className="space-y-2 pt-3">
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] text-muted-foreground flex-1">
+              Procura só dentro dos grupos com rascunho na fila — é o recorte que deixa a busca
+              rápida. Cada resultado abre a conversa por cima, no ponto em que a frase apareceu.
+            </p>
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px] gap-1 shrink-0"
+              onClick={limparBuscaNasConversas}>
+              <X className="h-3 w-3" />Voltar para as abas
+            </Button>
+          </div>
 
           {buscandoConversas && (
             <p className="text-[10px] text-muted-foreground flex items-center gap-1 py-2">
               <Loader2 className="h-3 w-3 animate-spin" />procurando…
             </p>
-          )}
-          {!buscandoConversas && buscaConversa.trim().length > 0 && buscaConversa.trim().length < 3 && (
-            <p className="text-[10px] text-muted-foreground py-2">Digite ao menos 3 letras.</p>
           )}
           {!buscandoConversas && buscaConversa.trim().length >= 3 && nasConversas.length === 0 && (
             <p className="text-[10px] text-muted-foreground py-2">

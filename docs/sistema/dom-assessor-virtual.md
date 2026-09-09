@@ -3132,6 +3132,58 @@ telas mostram o nome do grupo onde hoje mostram "Caso N" → só depois aposenta
 Rollback da view: recriar com `where g.contact_name ~* 'caso'` na CTE grupo
 (versão em `20260909030000`, seção 4).
 
+## A trava vazou duas vezes, e as duas eram dela mesma (09/09/2026)
+
+Conferindo a fila do dia, no mesmo grupo da Bianca, quatro rascunhos em oito
+minutos, todos com `processos: 0` e `requerimentos: 0`:
+
+| Hora | Resultado |
+|---|---|
+| 11:54 | barrou certo — `valor sem lastro (R$ 864,53) — texto descartado` |
+| 11:56 | **passou** — "os 30% são sobre o valor que você recebe em cada parcela" |
+| 11:58 | **passou** — "R$ 864,53 ... e sobre os 30%, sim, conforme o contrato" |
+
+Nenhum contrato lido. Os dois furos eram da trava:
+
+1. **Número solto casa com qualquer coisa.** A chave de um valor era só a parte
+   inteira, comparada contra o system prompt INTEIRO — então `30%` casava com o
+   "30" de `normalmente 30 dias`, que o bloco do INSS escreve. Agora a
+   comparação é por tipo: dinheiro com dinheiro, porcentagem com porcentagem.
+
+2. **A trava se auto-envenenava.** O `motivo_revisao` que ela escreve vira
+   atividade (`Pendência do atendente virtual: valor sem lastro no processo
+   (R$ 864,53)`), e `blocoAtividade` devolve a atividade para o prompt. Dois
+   minutos depois, o valor barrado tinha lastro — o nosso próprio bilhete. O
+   modelo chegou a copiar a frase e emitir `[REVISAR: valor sem lastro no
+   processo]`. A comparação passou a olhar SÓ o trecho entre
+   `=== ANDAMENTO PROCESSUAL` e `=== FIM ANDAMENTO PROCESSUAL ===`.
+
+Dinheiro escrito sem `R$` no resumo da peça continua sendo lastro; porcentagem
+não ganha essa folga, porque foi dela que veio o furo.
+
+Nada chegou a cliente: os quatro estavam `pendente`, modo rascunho. Mas um
+clique em "Aprovar e enviar" às 11:58 teria mandado os 30% "conforme o contrato"
+para a cliente de novo.
+
+## Temperatura: a tela dizia 0,7 e o Dom rodava 0,007 (09/09/2026)
+
+`dom-rascunho` fazia `(agente.temperature ?? 70) / 100`, divisor que só faz
+sentido numa coluna de 0 a 100. A de `wjia_command_shortcuts` é de 0 a 1: o
+slider da tela vai de 0 a 1 com passo 0,1, o `wjia-agent` lê o mesmo campo e usa
+direto, e as 16 linhas da tabela vão de 0,2 a 0,7.
+
+`temperaturaDoAgente()` passa a usar o valor como está. Coluna vazia cai no
+padrão 0,3 e não em 0 — `Number(null)` é zero, e isso deixaria o agente guloso
+sem ninguém pedir. Valor fora da faixa é reescalado com aviso no log, em vez de
+mandar 70 ao Gemini, que recusa acima de 2.
+
+O Dom está em **0,3** (escolha do Raym, 09/09). Rollback:
+`update wjia_command_shortcuts set temperature = 0.7 where id = 'd6ad8eee-...'`.
+
+Na tela de configuração do agente, o rótulo "Temperatura" virou "Variação da
+escrita", com o efeito escrito em português e a ressalva de que baixar isso
+**não** impede invenção — o Imposto de Renda foi inventado rodando a 0,007.
+
 ## "O grupo é o caso" — passo 1: casar caso ↔ grupo (09/09/2026)
 
 **O pedido.** A palavra "caso" tem que sumir; o caso é o grupo do WhatsApp com
