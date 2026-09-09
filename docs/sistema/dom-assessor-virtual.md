@@ -3029,3 +3029,44 @@ Para deployar depois que o secret existir: `workflow_dispatch` com
    Ele lê `group_jid` do corpo e devolve andamento processual, com CORS `*`.
    Quem souber a URL puxa dado de cliente sem credencial. O `dom-rascunho` já
    chama com SERVICE_ROLE_KEY, então dá para fechar sem quebrar.
+
+### O número do INSS citado no grupo também é do grupo (09/09/2026)
+
+Nos PREV a equipe cita o **requerimento do INSS** (9–10 dígitos), não CNJ. O
+número não tem dígito verificador, então a trava não pode ser a forma: medido
+em 400 PREV, os de 11 dígitos são telefone/CPF (399 distintos, zero batem com o
+INSS) e os de 9–10 batem com `inss_admin_processes` em ~75% dos casos mesmo
+sem palavra-âncora. **A trava é existir**: só entra número de 8–10 dígitos que
+já seja requerimento/benefício em `inss_admin_processes` ou processo
+administrativo em `lead_processes`. Número desconhecido não entra nem na fila.
+
+Mesma regra, mesmo caminho: `grupo_processo_detectado.tipo = 'inss'` (a coluna
+`cnj` guarda os dígitos; a constraint aceita 8–10 quando `tipo = 'inss'`); o
+detector extrai os dois tipos (11+ dígitos não casam por fronteira de palavra;
+os CNJs são removidos do texto antes); "já está no lead" olha também os
+números administrativos e os requerimentos do lead; o vinculador e a RPC de 1
+clique sabem o dono via `inss_admin_processes.lead_id`; a
+`dom_contexto_processual` lê `requerimentos_inss = do lead ∪ citados no grupo`;
+a fila rotula "requerimento INSS"; o cron re-varre grupo com mensagem nova de
+8–10 dígitos.
+
+**Primeira carga (09/09/2026, 2.464 grupos re-varridos):**
+
+| | |
+|---|---|
+| números do INSS reconhecidos | 708, em 632 grupos (592 PREV, 40 trabalhistas) |
+| já estavam no lead do grupo | 553 |
+| viraram "do grupo" sozinhos | 35 (32 grupos) |
+| fila humana | 117 |
+| CNJ (não-regressão) | idêntico |
+
+Rollback: `detectar_processos_em_grupos_antes_do_inss`,
+`dom_contexto_processual_antes_do_inss`; `delete from grupo_processo_detectado
+where tipo = 'inss'`. Migration `20260909030000`.
+
+**Decisão do Raym (09/09/2026): número citado pelo CLIENTE não entra na fila.**
+A regra "citado no grupo é do grupo" e a fila de 1 clique valem só para número
+escrito pela equipe (`origem = 'equipe'`). O que o cliente escreve segue o fluxo
+antigo de sugestão (07/09: `sugerido` / `sem_lead` / `ambiguo_lead` /
+`divergente`, em `pendencias_vinculo`), sem botão. Em 09/09 eram 3 números do
+INSS nessa situação. Não é pendência — é decisão. Não "consertar".
