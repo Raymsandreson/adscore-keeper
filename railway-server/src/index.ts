@@ -11,6 +11,7 @@ import {
   WEBHOOK_PUBLIC_FUNCTIONS,
 } from './lib/functionAuth';
 import { observeUazapiOriginAsync, uazapiOriginStats } from './lib/webhookOrigin';
+import { diagnosticoDoCatalogo } from './lib/schemaCatalog';
 // Aliases explícitos: no Railway `SUPABASE_URL` sem prefixo é o Cloud (ver
 // CLOUD_FUNCTIONS_URL abaixo). Estes dois são do Externo.
 import {
@@ -328,6 +329,12 @@ app.get('/health', (_req, res) => {
     // Aqui se mede se da pra exigir o instance_token como prova de origem —
     // `sem_token_por_evento` e a lista que precisa esvaziar antes disso.
     origem_webhook: uazapiOriginStats(),
+    // Mapa do banco que o analista de relatórios recebe no prompt. `fonte`
+    // precisa dizer "banco": em "degradado" a leitura do schema falhou e a IA
+    // está respondendo sem saber quais colunas existem. `fora_do_catalogo` > 0
+    // significa tabela de negócio nova que ninguém liberou pro relatório ainda.
+    // Só contagens — nome de tabela não sai daqui, /health é rota pública.
+    schema_catalog: diagnosticoDoCatalogo(),
     functions: Object.keys(functionHandlers),
     gmailKeys,
   });
