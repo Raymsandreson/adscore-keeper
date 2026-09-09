@@ -517,7 +517,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
         });
       }
     }
-    const hojeData = new Date().toISOString().slice(0, 10);
+    const porAlvo: Record<string, string[]> = {};
     for (const r of comStatus) {
       const alvo = MAPA_STATUS[r.status_equipe];
       const atualLead = atual.get(r.facebook_lead_id);
@@ -538,18 +538,30 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
         statusAplicado[`${r.status_equipe} -> ${alvo}`] = (statusAplicado[`${r.status_equipe} -> ${alvo}`] || 0) + 1;
         continue;
       }
+      // Agrupa por status alvo em vez de gravar linha a linha. Uma escrita por
+      // lead eram 349 chamadas HTTP em sequencia: a requisicao passava de dez
+      // minutos e morria pela metade. Agrupado, sao 4.
+      (porAlvo[alvo] ||= []).push(atualLead.id);
+      statusAplicado[`${r.status_equipe} -> ${alvo}`] = (statusAplicado[`${r.status_equipe} -> ${alvo}`] || 0) + 1;
+    }
+
+    const hojeISO2 = new Date().toISOString().slice(0, 10);
+    for (const [alvo, idsAlvo] of Object.entries(porAlvo)) {
       const patch: Record<string, unknown> = { lead_status: alvo };
       // `became_client_date` = HOJE, e nao a data do formulario: a planilha nao
       // guarda quando fechou, e a Meta descarta evento com mais de 7 dias. Com
       // data antiga o Purchase seria recusado e a conversao se perderia.
-      if (alvo === 'closed') patch.became_client_date = hojeData;
-      const { error: errUp } = await ext.from('leads').update(patch).eq('id', atualLead.id);
-      if (errUp) {
-        statusIgnorado[`erro: ${errUp.message.slice(0, 60)}`] =
-          (statusIgnorado[`erro: ${errUp.message.slice(0, 60)}`] || 0) + 1;
-      } else {
-        statusEscritos += 1;
-        statusAplicado[`${r.status_equipe} -> ${alvo}`] = (statusAplicado[`${r.status_equipe} -> ${alvo}`] || 0) + 1;
+      if (alvo === 'closed') patch.became_client_date = hojeISO2;
+      // Lotes de 200: `in` com 300+ uuids estoura o tamanho da querystring.
+      for (let i = 0; i < idsAlvo.length; i += 200) {
+        const fatia = idsAlvo.slice(i, i + 200);
+        const { error: errUp } = await ext.from('leads').update(patch).in('id', fatia);
+        if (errUp) {
+          statusIgnorado[`erro: ${errUp.message.slice(0, 60)}`] =
+            (statusIgnorado[`erro: ${errUp.message.slice(0, 60)}`] || 0) + (fatia.length as number);
+        } else {
+          statusEscritos += fatia.length;
+        }
       }
     }
   }
