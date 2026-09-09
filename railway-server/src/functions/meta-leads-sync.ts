@@ -91,6 +91,30 @@ function pegaCampo(
 
 const NAO_E_O_TITULAR = ['criança', 'crianca', 'filho', 'filha', 'dependente', 'menor'];
 
+/** Campos ja mapeados para coluna propria — nao repetir no texto da ficha. */
+const JA_TEM_COLUNA = new Set([
+  'full_name', 'nome_completo', 'nome',
+  'phone_number', 'telefone', 'celular',
+  'email', 'e-mail',
+  'city', 'cidade',
+]);
+
+/**
+ * Respostas do formulario em texto legivel na ficha.
+ *
+ * E o que a planilha jogava fora: renda, CadUnico, laudo medico, se ja tem
+ * advogado. Chega antes do primeiro contato e muda a conversa.
+ */
+function formataRespostas(respostas: Record<string, string>): string {
+  const linhas = Object.entries(respostas)
+    .filter(([k, v]) => v && !JA_TEM_COLUNA.has(k.toLowerCase()))
+    .map(([k, v]) => {
+      const pergunta = k.replace(/_/g, ' ').replace(/\s*\?\s*$/, '').trim();
+      return `• ${pergunta}: ${v}`;
+    });
+  return linhas.length ? `\nRespostas do formulário:\n${linhas.join('\n')}` : '';
+}
+
 interface LeadDaMeta {
   meta_lead_id: string;
   criado_em: string;
@@ -335,14 +359,19 @@ export const handler: RequestHandler = async (req, res) => {
             adset_id: l.adset_id || null,
             adset_name: l.adset_name || null,
             ad_name: l.ad_name || null,
-            // As respostas de qualificação são o que a planilha jogava fora.
-            details: { meta_form: { formulario: l.formulario, respostas: l.respostas } },
+            // As respostas de qualificação vão para `notes`, e não para uma
+            // coluna jsonb: `leads` não tem `details` (eu copiei essa suposição
+            // do zapsign-webhook, que grava `details` E `closed_at` — as duas
+            // inexistentes, e por isso aquele caminho nunca criou um lead).
+            // Em `notes` o atendente lê renda, CadÚnico e laudo na própria
+            // ficha, que é onde a informação serve para alguma coisa.
             notes: [
               `Lido direto da Meta — formulário ${l.formulario}`,
               l.cidade && `Cidade: ${l.cidade}`,
               l.campaign_name && `Campanha: ${l.campaign_name}`,
               l.ad_name && `Ad: ${l.ad_name}`,
               `facebook_lead_id: ${l.meta_lead_id}`,
+              formataRespostas(l.respostas),
             ]
               .filter(Boolean)
               .join('\n'),
