@@ -287,6 +287,10 @@ function extrairIdDaPlanilha(url: string | null): string | null {
 interface OpcoesSync {
   /** Escreve no CRM o status que a equipe preencheu na planilha. */
   aplicarStatus?: boolean;
+  /** Só sincroniza status: não cria lead nenhum. É assim que o cron horário roda. */
+  somenteStatus?: boolean;
+  /** Cria os marcados como "fechado" que não existem no CRM, ignorando a janela. */
+  criarFechadosAusentes?: boolean;
   spreadsheetIdOverride?: string;
   sinceDays: number;
   dryRun: boolean;
@@ -430,7 +434,23 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   }
 
   // 4) Decide quem criar
-  const toCreate = uniqueRows.filter((r) => !existingKeys.has(r.phone_key));
+  // FECHADO NAO TEM JANELA.
+  //
+  // `recentRows` corta por data do formulario, e fechamento marcado pela equipe
+  // pode ser de lead antigo — sao 12 conversoes que ficaram de fora da importacao
+  // de 30 dias so por isso. Quando `criarFechadosAusentes` esta ligado, esses
+  // entram independente da janela: a conversao vale mais que a idade do lead.
+  const candidatosCriacao = opts.criarFechadosAusentes
+    ? [
+        ...uniqueRows,
+        ...sheetRows.filter(
+          (r) => r.status_equipe === 'fechado' && !uniqueRows.some((u) => u.phone_key === r.phone_key),
+        ),
+      ]
+    : uniqueRows;
+  const toCreate = opts.somenteStatus
+    ? []
+    : candidatosCriacao.filter((r) => !existingKeys.has(r.phone_key));
 
   // Contagem por aba. Sem ela, "li 8 abas" e promessa sem prova: uma aba pode
   // voltar vazia (renomeada, range errado, permissao) que o total geral nao
@@ -658,6 +678,11 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
             .filter(Boolean)
             .join('\n'),
           created_at: r.created_at || new Date().toISOString(),
+          // Ja nasce fechado quando a planilha diz que fechou — senao o lead
+          // entra aberto e a conversao so sairia na proxima sincronizacao.
+          ...(r.status_equipe === 'fechado'
+            ? { lead_status: 'closed', became_client_date: new Date().toISOString().slice(0, 10) }
+            : {}),
         })
         .select('id')
         .single();
@@ -704,12 +729,16 @@ export const handler: RequestHandler = async (req, res) => {
       since_days?: number;
       dry_run?: boolean;
       aplicar_status?: boolean;
+      somente_status?: boolean;
+      criar_fechados_ausentes?: boolean;
     };
 
     const sinceDays = Math.max(1, Math.min(365, Number(since_days) || 7));
     const dryRun = !!dry_run;
     // Fora do cron de proposito: o cron so cria lead, nunca reescreve status.
     const aplicarStatus = !!(req.body as any)?.aplicar_status;
+    const somenteStatus = !!(req.body as any)?.somente_status;
+    const criarFechadosAusentes = !!(req.body as any)?.criar_fechados_ausentes;
     const COLUNAS = 'id, name, stages, sheet_source_url';
 
     // Um board: o formato da resposta e o de sempre, pra nao quebrar quem ja chama.
@@ -722,6 +751,8 @@ export const handler: RequestHandler = async (req, res) => {
         sinceDays,
         dryRun,
         aplicarStatus,
+        somenteStatus,
+        criarFechadosAusentes,
       });
       return ok(r);
     }
@@ -739,7 +770,7 @@ export const handler: RequestHandler = async (req, res) => {
 
     const resultados: Record<string, unknown>[] = [];
     for (const b of boards) {
-      resultados.push(await sincronizaBoard(b, { sinceDays, dryRun, aplicarStatus }));
+      resultados.push(await sincronizaBoard(b, { sinceDays, dryRun, aplicarStatus, somenteStatus, criarFechadosAusentes }));
       // A API do Sheets tem cota por minuto e ja devolveu 429 numa leitura
       // dupla: espacar os boards custa segundos e evita perder a varredura.
       if (boards.indexOf(b) < boards.length - 1) await new Promise((r) => setTimeout(r, 5000));
