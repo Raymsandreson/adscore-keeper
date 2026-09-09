@@ -1016,8 +1016,48 @@ function blocoIdentidadeERevisao(modo: string): string {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * QUEM PODE PERGUNTAR — a função devolve dado de cliente.
+ *
+ * Ela responde com andamento processual: número de benefício, o que a peça diz,
+ * o que a equipe anotou. Até 09/09/2026 estava com `verify_jwt = false` e sem
+ * nenhuma checagem no código: quem soubesse a URL e um `group_jid` do piloto
+ * puxava a ficha processual sem credencial nenhuma. CORS em `*` por cima.
+ *
+ * `verify_jwt = true` sozinho NÃO resolveria. Ele exige um JWT válido, e a anon
+ * key é um JWT válido — e está no bundle do front, à vista de qualquer um que
+ * abra o DevTools. Trocaria "sem credencial" por "com a credencial pública".
+ *
+ * Os dois únicos chamadores são edge functions nossas — `dom-rascunho` e
+ * `whatsapp-ai-agent-reply` — e as duas mandam a SERVICE_ROLE_KEY do mesmo
+ * projeto, lida do mesmo `Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")`. Então a
+ * regra é essa: só passa quem apresenta a chave de serviço. Nenhum front chama
+ * esta função, e nenhum deve.
+ *
+ * A comparação é feita inteira mesmo quando o primeiro caractere já difere: sair
+ * no primeiro erro conta ao chamador, pelo tempo de resposta, quanto do começo
+ * ele acertou.
+ */
+function autorizado(req: Request): boolean {
+  const esperado = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const veio = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!esperado || veio.length !== esperado.length) return false;
+  let diferenca = 0;
+  for (let i = 0; i < esperado.length; i++) {
+    diferenca |= veio.charCodeAt(i) ^ esperado.charCodeAt(i);
+  }
+  return diferenca === 0;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+
+  if (!autorizado(req)) {
+    // Log sem o que veio no header: registrar tentativa não pode virar registro
+    // de credencial. E a resposta não diz o que faltou, para não ensinar.
+    console.warn("[dom-contexto] chamada sem a chave de serviço, recusada");
+    return json({ error: "não autorizado" }, 401);
+  }
 
   try {
     const { group_jid, pergunta, limite_exemplos, panorama } = await req.json();

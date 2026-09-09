@@ -75,9 +75,33 @@ for (const slug of slugs) {
   //
   // Função nova (o POST) nasce com JWT exigido. Quem precisa de função aberta
   // abre de propósito, uma vez, e o deploy respeita a partir dali.
-  const meta = await fetch(`${base}/${slug}`, { headers: auth });
-  const verifyJwt = meta.ok ? ((await meta.json()).verify_jwt !== false) : true;
-  console.log(`  ${slug}: verify_jwt preservado = ${verifyJwt}`);
+  //
+  // PRESERVAR TAMBÉM CONGELA O ERRO (09/09/2026). O `dom-contexto` estava no ar
+  // com `verify_jwt: false` e sem checagem no código: quem soubesse a URL puxava
+  // andamento processual de cliente sem credencial. Preservar mantinha isso
+  // deploy após deploy, e consertar exigia ir no dashboard — fora do git, sem
+  // review, invisível para quem lê o repositório.
+  //
+  // Então: preservar continua sendo o padrão, e quem quer decidir escreve
+  // `deploy.json` ao lado do `index.ts`. O arquivo é o pedido explícito, versionado
+  // e revisável; sem ele nada muda, que é a garantia contra o deploy de rotina
+  // abrir uma função caladamente. Ele não é enviado junto — o upload é só o
+  // `index.ts`.
+  const confArquivo = `${RAIZ}/${slug}/deploy.json`;
+  let verifyJwt;
+  if (existsSync(confArquivo)) {
+    const conf = JSON.parse(readFileSync(confArquivo, 'utf8'));
+    if (typeof conf.verify_jwt !== 'boolean') {
+      console.error(`  ${slug}: ${confArquivo} precisa de "verify_jwt" true ou false`);
+      falhou = true; continue;
+    }
+    verifyJwt = conf.verify_jwt;
+    console.log(`  ${slug}: verify_jwt = ${verifyJwt} (pedido em deploy.json)`);
+  } else {
+    const meta = await fetch(`${base}/${slug}`, { headers: auth });
+    verifyJwt = meta.ok ? ((await meta.json()).verify_jwt !== false) : true;
+    console.log(`  ${slug}: verify_jwt preservado = ${verifyJwt}`);
+  }
 
   // MULTIPART, NÃO JSON — e a diferença derrubou o Dom (09/09/2026, 02:56)
   //
