@@ -21,15 +21,38 @@ const GATEWAY = 'https://connector-gateway.lovable.dev/google_sheets/v4';
 
 const SKIP_TABS = new Set(['BASE_UNIFICADA']);
 
+/**
+ * Chamada ao Sheets que aguenta o 429.
+ *
+ * A cota do Sheets e POR MINUTO, e aqui ela e disputada por tres consumidores: o
+ * cron de 10 em 10 minutos, a varredura manual e as leituras de diagnostico. Em
+ * 09/09/2026 uma sincronizacao de status morreu logo na descoberta das abas com
+ * `discoverSheetTabs 429` — nada foi escrito, mas o trabalho todo se perdeu por
+ * um limite que passa sozinho em segundos.
+ *
+ * Espera crescente (2s, 6s, 14s) so no 429. Qualquer outro erro sobe na hora:
+ * insistir em 403 ou 404 e desperdicio.
+ */
+async function buscaComEspera(url: string, init: RequestInit, oQue: string): Promise<Response> {
+  const esperas = [2000, 4000, 8000];
+  for (let tentativa = 0; ; tentativa++) {
+    const resp = await fetch(url, init);
+    if (resp.status !== 429 || tentativa >= esperas.length) return resp;
+    await new Promise((r) => setTimeout(r, esperas[tentativa]));
+    console.warn(`[bpc-sheet-sync] 429 em ${oQue}: aguardando ${esperas[tentativa]}ms`);
+  }
+}
+
 async function discoverSheetTabs(
   spreadsheetId: string,
 ): Promise<{ lidas: { tab: string; operator: string }[]; ignoradas: string[] }> {
   const lovableKey = process.env.LOVABLE_API_KEY;
   const gsKey = process.env.GOOGLE_SHEETS_API_KEY;
   if (!lovableKey || !gsKey) throw new Error('Missing connector keys');
-  const resp = await fetch(
+  const resp = await buscaComEspera(
     `${GATEWAY}/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
     { headers: { Authorization: `Bearer ${lovableKey}`, 'X-Connection-Api-Key': gsKey } },
+    'descoberta das abas',
   );
   if (!resp.ok) throw new Error(`discoverSheetTabs ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
   const json: any = await resp.json();
@@ -105,12 +128,11 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   if (!lovableKey || !gsKey) throw new Error('Missing connector keys (LOVABLE_API_KEY / GOOGLE_SHEETS_API_KEY)');
 
   const url = `${GATEWAY}/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(meta.tab)}'!A1:Z5000`;
-  const resp = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${lovableKey}`,
-      'X-Connection-Api-Key': gsKey,
-    },
-  });
+  const resp = await buscaComEspera(
+    url,
+    { headers: { Authorization: `Bearer ${lovableKey}`, 'X-Connection-Api-Key': gsKey } },
+    `aba "${meta.tab}"`,
+  );
   if (!resp.ok) {
     const txt = await resp.text();
     throw new Error(`sheet "${meta.tab}" ${resp.status}: ${txt.slice(0, 200)}`);
