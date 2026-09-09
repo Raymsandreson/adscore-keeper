@@ -3639,3 +3639,50 @@ A aba "Fila do atendente" virou **"Atendente virtual"** e tem as duas metades:
 (aberto, porque olhar é diário). O que é igual para todo agente — prompt,
 modelo, variação da escrita, limites de resposta — continua no formulário do
 agente, que é onde faz sentido. O que só existe no Dom saiu de lá.
+
+### E a tela nova enterrou o que ela tinha acabado de ganhar (09/09/2026)
+
+Mudei a config de lugar e, na primeira vez que o Raym foi usar, ele não achou o
+campo do atendente do financeiro. **Estava lá — embaixo de 1.149 linhas de
+grupo.**
+
+```
+dom_grupos_piloto:  2.484 no total
+                    1.149 na lista da tela (so_varredura = false)
+                      dos 1.149:  1.149 em rascunho, 1.149 ligados
+```
+
+Mil cento e quarenta e nove linhas, e as 1.149 dizendo **a mesma coisa**. Uma
+lista em que toda linha é idêntica à anterior não informa nada, e ainda enterra
+tudo o que vem depois dela.
+
+**Três consertos:**
+
+1. **"Quem recebe as pendências" subiu para antes dos grupos.** É a diferença
+   entre achar o campo e desistir de rolar. Travado por teste com
+   `compareDocumentPosition` — se alguém trocar a ordem de novo, quebra.
+
+2. **A lista mostra só quem foge do padrão**, e diz quantos são os outros
+   ("Fora do padrão (N de 1.149)"). Para achar um grupo específico existe a
+   busca — que vai ao **banco**, não à lista carregada, e por isso alcança
+   também os 1.335 que hoje são só varredura. É assim que dá para **incluir**
+   um grupo, e não só mexer nos que já estão.
+
+3. **"Tirar" não apaga.** Vira `so_varredura = true`: ele para de falar ali e
+   continua lendo número de processo. Apagar a linha levaria a varredura junto
+   — e é ela que faz processo citado pela equipe entrar sozinho na ficha.
+   Reversível pelo mesmo botão ("Passar a atender").
+
+### Voz clonada que sumia calada
+
+A lista de vozes filtrava `status = 'ready'`. Voz ainda em preparo
+simplesmente não aparecia — e quem acabou de mandar clonar procura, não acha, e
+conclui que a clonagem falhou. Agora ela aparece **desabilitada, com o status
+escrito** ("ainda não dá para usar (processing)"), e a lista sem nenhuma voz
+clonada diz que quase sempre é sessão sem permissão de leitura em
+`custom_voices`.
+
+**O que não consegui verificar:** `custom_voices` mora no Supabase **Cloud**
+(`gliigkupoebmlbwyvijp`), onde o MCP desta sessão não tem permissão, e a
+leitura com a chave publicável volta `[]` por RLS. Se a voz "Kely" existe e
+não estava aparecendo, esta mudança passa a dizer o porquê na própria tela.
