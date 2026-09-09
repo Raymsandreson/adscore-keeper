@@ -57,6 +57,8 @@ interface ParsedRow {
   phone: string; // normalizado, só dígitos (com 55 quando aplicável)
   phone_key: string; // últimos 8 dígitos (chave de match)
   operator: string;
+  /** O que a EQUIPE escreveu na coluna `status da lead`. */
+  status_equipe: string;
   campaign_id: string;
   campaign_name: string;
   adset_id: string;
@@ -190,6 +192,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
       if (normalizaLeadIdMeta(o['id'])) statusComIdMeta[chave] = (statusComIdMeta[chave] || 0) + 1;
     }
     out.push({
+      status_equipe: String(o['status da lead'] || '').trim().toLowerCase(),
       facebook_lead_id: normalizaLeadIdMeta(o['id']),
       created_at: o['created_time'] || '',
       name: name.trim(),
@@ -401,6 +404,34 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
     };
   });
 
+  // FECHADOS MARCADOS NA PLANILHA.
+  //
+  // A equipe escreve o desfecho na coluna `status da lead`, e o CRM nunca soube
+  // disso. Cada "fechado" ali e uma conversao real — e, diferente dos
+  // fechamentos que vem por webhook, esta TEM o id da Meta, que e o que casa a
+  // conversao com o formulario do anuncio.
+  const fechadosNaPlanilha = sheetRows.filter((r) => r.status_equipe === 'fechado');
+  let fechadosNoCrm = 0;
+  let fechadosAindaAbertos = 0;
+  let fechadosSemLeadNoCrm = 0;
+  if (fechadosNaPlanilha.length) {
+    const ids = fechadosNaPlanilha.map((r) => r.facebook_lead_id).filter(Boolean);
+    const achados = new Map<string, string>();
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data } = await ext
+        .from('leads')
+        .select('facebook_lead_id, lead_status')
+        .in('facebook_lead_id', ids.slice(i, i + 100));
+      for (const l of data || []) achados.set(String((l as any).facebook_lead_id), String((l as any).lead_status || ''));
+    }
+    for (const r of fechadosNaPlanilha) {
+      const st = achados.get(r.facebook_lead_id);
+      if (st === undefined) fechadosSemLeadNoCrm += 1;
+      else if (st === 'closed') fechadosNoCrm += 1;
+      else fechadosAindaAbertos += 1;
+    }
+  }
+
   const comum = {
     success: true,
     board_id: boardId,
@@ -420,6 +451,13 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
     // aqui antes de virar coluna vazia no banco.
     colunas_da_planilha: [...cabecalhos].sort(),
     com_facebook_lead_id: toCreate.filter((r) => r.facebook_lead_id).length,
+    fechados_marcados_na_planilha: {
+      total: fechadosNaPlanilha.length,
+      com_id_da_meta: fechadosNaPlanilha.filter((r) => r.facebook_lead_id).length,
+      ja_fechados_no_crm: fechadosNoCrm,
+      abertos_no_crm: fechadosAindaAbertos,
+      sem_lead_no_crm: fechadosSemLeadNoCrm,
+    },
     // Quantos telefones o dedup realmente conhecia. Se isto vier redondo em
     // 1000 num board maior que isso, a paginacao quebrou de novo.
     dedup_leads_lidos: lidosDedup,
