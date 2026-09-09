@@ -21,18 +21,24 @@
  *      o modelo também só enxerga o dado já mascarado.
  *   8. Grava pergunta e resposta na conversa + auditoria em ai_query_log.
  *
+ * O mapa do banco que vai no prompt NÃO é escrito à mão: vem de
+ * lib/schemaCatalog, que lê as colunas do próprio banco (cache de 1h) e junta
+ * com a curadoria de vocabulário/joins. Catálogo à mão envelhece e a IA passa a
+ * dizer que campo existente "não existe" — foi o que aconteceu em 09/09/2026.
+ *
  * REGRA DURA (CLAUDE.md, "solução estrutural, nunca band-aid na tela"): a IA
  * aponta o dado estranho no texto, mas NUNCA filtra nem esconde linha do
  * resultado. A tabela mostra o que está no banco; o conserto é na origem.
  *
  * Só devolve dados pra tela — não há geração de arquivo/download.
  * Custo: 2 a 4 chamadas Claude Opus 5 por pergunta (1 por consulta + a resposta).
- * Ordem de grandeza por pergunta: ~30k tokens de entrada (o catálogo de schema
- * repete a cada passo, mas vai cacheado) + ~4k de saída ≈ US$ 0,15–0,25.
+ * Ordem de grandeza por pergunta: ~35k tokens de entrada (o catálogo de schema
+ * repete a cada passo, mas vai cacheado) + ~4k de saída ≈ US$ 0,15–0,30.
  */
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { aiChat } from '../lib/gemini';
+import { catalogoDeSchema } from '../lib/schemaCatalog';
 
 /**
  * Chama o LLM. Tenta o modelo primário e, em qualquer falha, cai no fallback —
@@ -90,146 +96,6 @@ const REPORT_EFFORT = process.env.REPORT_QUERY_EFFORT || 'medium';
 const ADMIN_EMAILS = (process.env.REPORT_ADMIN_EMAILS || 'processual@rprudencioadv.com')
   .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 const DEFAULT_DAILY_LIMIT = Number(process.env.REPORT_DAILY_LIMIT || 100);
-
-// ============================================================
-// Catálogo de schema — SÓ tabelas de negócio, colunas curadas.
-// A IA só conhece o que está aqui. Nada de auth/whatsapp_messages/etc.
-// ============================================================
-const SCHEMA_CATALOG = `
-Banco Postgres (Supabase) de um escritório de advocacia brasileiro. Todas as tabelas no schema public.
-Regras de ouro:
-- SOMENTE SELECT. Nunca escreva. A conexão é read-only.
-- SEMPRE filtre "deleted_at IS NULL" nas tabelas que têm essa coluna (registros apagados).
-- Para filtrar por NOME de pessoa (responsável, cliente, acolhedor), use ILIKE '%termo%' (case-insensitive). Seja tolerante a acento e nome parcial.
-- Datas em português: "hoje", "essa semana", "esse mês", "atrasado" (deadline < CURRENT_DATE). Use CURRENT_DATE / date_trunc.
-- Sempre inclua colunas legíveis (nomes, títulos, datas, status) — evite despejar só IDs.
-- Ordene por algo útil (data desc, deadline asc) e use LIMIT razoável (ex: 500). Para "relação completa/todos", use LIMIT 5000.
-- Nunca invente coluna. Use só as listadas abaixo.
-
-== TABELAS ==
-
-leads (16k) — leads do CRM / clientes captados. tem deleted_at.
-  id, lead_name, lead_phone, lead_email, status, lead_status, source, city, state,
-  case_type, victim_name, accident_date, cpf, rg, created_at, became_client_date,
-  processual_responsible_id (uuid → profiles.user_id: O RESPONSÁVEL PROCESSUAL do cliente/lead),
-  acolhedor (texto), board_id (uuid→kanban_boards: O FUNIL onde o lead está), lead_number.
-  IMPORTANTE: o responsável processual do escritório fica AQUI, no lead (processual_responsible_id),
-  e é herdado pelos processos e casos daquele lead (via lead_id). Sempre junte por profiles.user_id.
-  FUNIL/PIPELINE: "funil X" ou "pipeline X" = leads cujo board_id aponta pra um kanban_boards
-    com aquele nome. Ex.: "funil BPC" = leads JOIN kanban_boards b ON b.id=l.board_id WHERE b.name ILIKE '%bpc%'.
-  lead_status (VOCABULÁRIO REAL, em inglês — use estes valores exatos, não invente):
-    'closed' = FECHADO (o que o usuário chama de "fechado"/"ganho"/"cliente fechado");
-    'no_response' = sem resposta;  'refused' = recusou;  'inviavel' = inviável;
-    'cancelled' = cancelado;  'in_progress' = em andamento.
-    Para "fechados" use l.lead_status = 'closed'.
-  status (texto) = a COLUNA atual do lead dentro do funil/kanban (nomes gerados, ex.:
-    'procuracao_assinada', 'prospecção_e_triagem_...'). NÃO é o mesmo que lead_status. Para "fechado"
-    prefira lead_status='closed'; para etapa específica do funil, filtre status ILIKE '%termo%'.
-  became_client_date = data em que virou cliente (preenchida quando fechou contrato).
-
-lead_activities (30k) — ATIVIDADES/tarefas. tem deleted_at.
-  id, title, description, activity_type, status, priority, deadline, notification_date,
-  completed_at, completed_by_name, what_was_done, next_steps,
-  assigned_to (uuid→profiles), assigned_to_name (texto: RESPONSÁVEL principal),
-  assigned_to_names (text[]: responsáveis quando em grupo), lead_name, case_title, process_title,
-  created_at, is_management. Responsável = assigned_to_name (ou algum de assigned_to_names).
-  "atrasada" = completed_at IS NULL AND deadline < CURRENT_DATE.
-
-legal_cases (1.5k) — CASOS jurídicos. tem deleted_at.
-  id, case_number, title, description, status, outcome, outcome_date, benefit_type,
-  acolhedor, lead_id (→leads), nucleus_id (→specialized_nuclei), created_at, closed_at.
-  RESPONSÁVEL: assigned_to está vazio; use o responsável do LEAD
-  (legal_cases.lead_id → leads.processual_responsible_id → profiles.user_id).
-
-lead_processes (1.5k) — PROCESSOS judiciais vinculados a lead. tem deleted_at.
-  id, process_number, title, status, process_type, tribunal, tribunal_sigla, grau, classe, area,
-  valor_causa, valor_causa_formatado, polo_ativo, polo_passivo, cliente_polo, fee_percentage,
-  lead_id (→leads), case_id, data_ultima_movimentacao, quantidade_movimentacoes,
-  arquivado, segredo_justica, created_at, started_at.
-  RESPONSÁVEL: NÃO use responsible_user_id (quase sempre nulo). O responsável vem do LEAD:
-  junte lead_processes.lead_id → leads.id → leads.processual_responsible_id → profiles.user_id.
-
-inss_admin_processes (600) — PROCESSOS/REQUERIMENTOS ADMINISTRATIVOS no INSS. tem deleted_at.
-  id, requerimento_number, benefit_number, current_status, benefit_type,
-  nome_segurado, cpf_segurado, protocol_date, case_id, lead_id, last_email_at, created_at.
-  ESTA é a fonte da verdade de "protocolo administrativo".
-  "protocolado administrativamente" = protocol_date IS NOT NULL.
-  "NÃO protocolado / sem protocolo administrativo" = NÃO existir aqui um registro do lead com protocol_date
-    preenchido. Padrão: NOT EXISTS (SELECT 1 FROM inss_admin_processes i WHERE i.lead_id = l.id
-    AND i.deleted_at IS NULL AND i.protocol_date IS NOT NULL). Junte por lead_id (ou case_id).
-  current_status (vocabulário real): 'Exigência', 'Concluída', 'Em análise'/'Em Análise', 'Cancelada', 'Pendente'.
-
-hearings (500) — AUDIÊNCIAS. tem deleted_at.
-  id, process_number, hearing_type, category, hearing_date, hearing_time, status, location,
-  assigned_user_id (texto), lead_id, legal_case_id, created_at.
-
-case_process_tracking (2k) — planilha LEGADA importada. USO LIMITADO.
-  id, cliente, caso, cpf, tipo, acolhedor, numero_processo, pendencia, status_processo,
-  data_protocolo_cancelamento, protocolado, tempo_dias, data_decisao_final, pago_acolhedor, created_at.
-  (não tem deleted_at)
-  ATENÇÃO: colunas status_processo, protocolado e tipo estão QUASE SEMPRE NULAS (dados nunca migrados).
-  NÃO use esta tabela para responder "fechado", "protocolado" ou "tipo/funil BPC" — daria 0 resultados.
-  Para status do cliente use leads.lead_status; para funil use kanban_boards; para protocolo
-  administrativo use inss_admin_processes.protocol_date. Só use case_process_tracking se o pedido citar
-  explicitamente acolhedor/pagamento de acolhedor (pago_acolhedor) ou tempo_dias.
-
-process_movements (250) — marcos/movimentações processuais (append-only).
-  id, process_id (→lead_processes), lead_id, numero_cnj, tipo_movimentacao, marco_ordem,
-  data_movimentacao, valor_indenizacao_fixado, descricao, fonte, created_at. (sem deleted_at)
-
-contacts (26k) — CONTATOS (agenda ampla, redes). tem deleted_at.
-  id, full_name, phone, email, city, state, classification, profession, cpf, rg,
-  lead_id, converted_to_lead_at, created_at. (não confundir com leads)
-
-profiles (2.7k) — USUÁRIOS/equipe (para resolver responsáveis por nome).
-  id, user_id, full_name, email, oab_number, oab_uf, treatment_title.
-  Para achar um responsável por nome: filtre profiles.full_name ILIKE '%nome%' e junte pelo id
-  correspondente (assigned_to / responsible_user_id / assigned_to em legal_cases costumam referenciar profiles.id;
-  quando não casar por id, tente também a coluna de texto *_name).
-
-specialized_nuclei — núcleos. id, name.
-kanban_boards — FUNIS/quadros do CRM. id, name, board_type ('funnel' = funil de captação, 'workflow' = fluxo operacional).
-  É a tabela dos FUNIS. Leads se ligam por leads.board_id. Para "funil BPC/LOAS" filtre name ILIKE '%bpc%'
-  (existem "BPC - Autismo" e "Fluxo BPC - Administrativo"). Para outros: name ILIKE '%acidente%', '%maternidade%' etc.
-activity_types — tipos de atividade. id, key, label.
-
-== DICAS DE JOIN P/ RESPONSÁVEL (padrões testados neste banco) ==
-- Processos de um responsável (ex: Gisele) — responsável vem do LEAD via profiles.user_id:
-    SELECT p.process_number, p.title, p.status, p.tribunal, l.lead_name AS cliente, pr.full_name AS responsavel
-    FROM lead_processes p
-    JOIN leads l ON l.id = p.lead_id
-    JOIN profiles pr ON pr.user_id = l.processual_responsible_id
-    WHERE p.deleted_at IS NULL AND l.deleted_at IS NULL AND pr.full_name ILIKE '%gisele%'
-    ORDER BY p.created_at DESC LIMIT 500;
-- Casos de um responsável — mesmo padrão via lead:
-    SELECT c.case_number, c.title, c.status, l.lead_name AS cliente, pr.full_name AS responsavel
-    FROM legal_cases c
-    JOIN leads l ON l.id = c.lead_id
-    JOIN profiles pr ON pr.user_id = l.processual_responsible_id
-    WHERE c.deleted_at IS NULL AND l.deleted_at IS NULL AND pr.full_name ILIKE '%nome%'
-    ORDER BY c.created_at DESC LIMIT 500;
-- Atividades de um responsável (ex: João Manoel) — o nome já está no texto da própria atividade:
-    SELECT a.title, a.status, a.deadline, a.assigned_to_name, a.lead_name
-    FROM lead_activities a
-    WHERE a.deleted_at IS NULL
-      AND (a.assigned_to_name ILIKE '%joão manoel%' OR EXISTS (
-            SELECT 1 FROM unnest(a.assigned_to_names) n WHERE n ILIKE '%joão manoel%'))
-    ORDER BY a.deadline ASC NULLS LAST LIMIT 500;
-- Clientes/leads de um responsável: leads l JOIN profiles pr ON pr.user_id = l.processual_responsible_id WHERE pr.full_name ILIKE '%nome%'.
-- Leads de um FUNIL fechados e SEM protocolo administrativo (ex.: "funil BPC fechados não protocolados"):
-    SELECT l.lead_name, l.lead_phone, b.name AS funil, l.became_client_date,
-           pr.full_name AS responsavel
-    FROM leads l
-    JOIN kanban_boards b ON b.id = l.board_id
-    LEFT JOIN profiles pr ON pr.user_id = l.processual_responsible_id
-    WHERE l.deleted_at IS NULL
-      AND b.name ILIKE '%bpc%'
-      AND l.lead_status = 'closed'
-      AND NOT EXISTS (
-        SELECT 1 FROM inss_admin_processes i
-        WHERE i.lead_id = l.id AND i.deleted_at IS NULL AND i.protocol_date IS NOT NULL)
-    ORDER BY l.became_client_date DESC NULLS LAST LIMIT 500;
-`.trim();
 
 // Quantas consultas a IA pode rodar numa mesma pergunta. Definido ANTES do
 // SYSTEM_PROMPT porque o prompt interpola esse número (TDZ se vier depois).
@@ -294,13 +160,24 @@ FORMATO DA RESPOSTA
 - NUNCA escreva SQL na resposta. Nada de SELECT, JOIN, WHERE, nome de tabela ou de coluna crua, e nada de "rodei esta consulta: ...". Quem lê é a diretoria, não quer ver código, e a consulta já fica registrada sozinha no botão "Ver a consulta usada" embaixo da tabela. Fale do dado em português: "olhei os 229 BPC concluídos", não "rodei um COUNT(*) em inss_admin_processes".
 - Se quiser um recorte que você ainda não mediu, não escreva a consulta dele: ou rode (se ainda tiver rodada disponível), ou diga em uma linha, em português, qual pergunta valeria a próxima consulta.
 
-${SCHEMA_CATALOG}
+CAMPO QUE VOCÊ NÃO ENCONTRA
+O catálogo abaixo é o mapa das tabelas — as colunas nele são lidas do banco na hora, não escritas à mão.
+- "Não está no catálogo" e "não existe no sistema" são coisas DIFERENTES. Você pode dizer a primeira; a segunda, só se a consulta tiver recusado a coluna.
+- Nunca conclua que "ninguém preenche isso" / "o escritório não registra isso" sem MEDIR: conte quantos registros estão nulos e mostre o número. Ausência de campo no seu mapa não é ausência de dado no banco.
+- Achou plausível que exista um campo que você não vê (resultado, decisão, valor)? Diga em uma linha qual seria a próxima consulta em vez de afirmar que o dado não existe.
 
 Nunca use INSERT/UPDATE/DELETE/DDL. Nunca acesse auth, vault, pg_catalog, information_schema, whatsapp_messages.`;
 
-/** Prompt do turno: contexto de tempo do momento da pergunta + o prompt fixo. */
-function buildSystemPrompt(): string {
-  return `${contextoDeTempo()}\n\n${SYSTEM_PROMPT}`;
+/**
+ * Prompt do turno: contexto de tempo do momento da pergunta + instruções fixas
+ * + o catálogo de schema LIDO DO BANCO (lib/schemaCatalog, cache de 1h).
+ *
+ * É async por causa do catálogo. Antes ele era uma constante escrita à mão e
+ * envelheceu: colunas que existiam no banco ficaram de fora e a IA respondeu
+ * que o campo "não existe" — obedecendo o mapa. Ver o cabeçalho de schemaCatalog.ts.
+ */
+async function buildSystemPrompt(): Promise<string> {
+  return `${contextoDeTempo()}\n\n${SYSTEM_PROMPT}\n\n${await catalogoDeSchema()}`;
 }
 
 const runSqlTool = {
@@ -775,7 +652,7 @@ export const handler = async (req: Request, res: Response) => {
       : question;
 
     const messages: any[] = [
-      { role: 'system', content: buildSystemPrompt() },
+      { role: 'system', content: await buildSystemPrompt() },
       ...priorMessages,
       { role: 'user', content: conteudoDaPergunta },
     ];

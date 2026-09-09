@@ -49,6 +49,28 @@ const VOZES_PRONTAS: Voz[] = [
   { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', genero: 'feminina' },
 ];
 
+/**
+ * O QUE CADA PESSOA RECEBE.
+ *
+ * Até 09/09/2026 esta tela cadastrava todo mundo como 'geral', e o rodízio
+ * pedia sempre 'reclamacao' — então dinheiro, prazo e desistência caíam na
+ * mesma fila. Dinheiro é a família em que responder errado custa dinheiro de
+ * verdade, e quem responde valor quase nunca é quem acompanha o cliente no
+ * grupo: virou escopo próprio (migration 20260909230000).
+ *
+ * 'geral' é o fallback da `pick_dom_atendente`: quem está aqui pega o que
+ * sobrar dos escopos vazios. Deixar pelo menos uma pessoa em 'geral' é o que
+ * garante que nenhuma pendência fique sem dono.
+ */
+const ESCOPOS: { valor: string; rotulo: string; ajuda: string }[] = [
+  { valor: 'geral', rotulo: 'Tudo o que sobrar', ajuda: 'pega o que os outros escopos não cobrirem — deixe pelo menos uma pessoa aqui' },
+  { valor: 'financeiro', rotulo: 'Dinheiro e cobrança', ajuda: 'valor, parcela, cobrança e pedido de adiantamento' },
+  { valor: 'reclamacao', rotulo: 'Reclamação e desistência', ajuda: 'quem reclamou, quem falou em desistir, quem quer falar com gente' },
+  { valor: 'saida_de_grupo', rotulo: 'Saiu do grupo', ajuda: 'cliente que saiu da conversa' },
+];
+
+const rotuloDoEscopo = (v: string) => ESCOPOS.find(e => e.valor === v)?.rotulo || v;
+
 const MODOS: Record<string, string> = {
   rascunho: 'Rascunho — escreve e guarda. Nada chega ao cliente.',
   hibrido: 'Híbrido — envia o factual, guarda o sensível.',
@@ -69,6 +91,7 @@ export function AtendenteDeCasoSection({ agentId }: { agentId: string | null | u
   const [atendentes, setAtendentes] = useState<Atendente[]>([]);
   const [novoNome, setNovoNome] = useState('');
   const [novoZap, setNovoZap] = useState('');
+  const [novoEscopo, setNovoEscopo] = useState('geral');
 
   const vozes = useMemo(() => [...VOZES_PRONTAS, ...vozesClonadas], [vozesClonadas]);
 
@@ -140,9 +163,9 @@ export function AtendenteDeCasoSection({ agentId }: { agentId: string | null | u
       return;
     }
     const { error } = await dbAny.from('dom_atendentes')
-      .insert({ nome: novoNome.trim(), whatsapp: zap, escopo: 'geral', position: atendentes.length } as never);
+      .insert({ nome: novoNome.trim(), whatsapp: zap, escopo: novoEscopo, position: atendentes.length } as never);
     if (error) { toast.error(error.message); return; }
-    setNovoNome(''); setNovoZap('');
+    setNovoNome(''); setNovoZap(''); setNovoEscopo('geral');
     carregar();
   };
 
@@ -246,8 +269,10 @@ export function AtendenteDeCasoSection({ agentId }: { agentId: string | null | u
           <div className="space-y-2">
             <Label className="text-xs">Quem recebe quando precisa de humano</Label>
             <p className="text-[10px] text-muted-foreground">
-              Reclamação, dinheiro, prazo ou pedido de falar com alguém. Com mais de um,
-              o rodízio entrega para quem faz mais tempo que não pega.
+              Cada pessoa recebe o que o escopo dela diz. Com mais de uma no mesmo escopo,
+              o rodízio entrega para quem faz mais tempo que não pega. Escopo sem ninguém
+              cai em <strong>Tudo o que sobrar</strong> — por isso nenhuma pendência fica
+              sem dono, mesmo com um escopo vazio.
             </p>
             {atendentes.map((a, i) => (
               <div key={a.id} className="flex items-center gap-1.5 border rounded p-2">
@@ -256,6 +281,22 @@ export function AtendenteDeCasoSection({ agentId }: { agentId: string | null | u
                   <p className="text-[11px] font-medium truncate">{a.nome}</p>
                   <p className="text-[10px] text-muted-foreground">{a.whatsapp}</p>
                 </div>
+                {/* O escopo é editável na própria linha: trocar quem cuida do
+                    dinheiro não pode exigir apagar e cadastrar de novo. */}
+                <Select value={a.escopo} onValueChange={async v => {
+                  const { error } = await dbAny.from('dom_atendentes')
+                    .update({ escopo: v } as never).eq('id', a.id);
+                  if (error) { toast.error(error.message); return; }
+                  toast.success(`${a.nome} passa a receber: ${rotuloDoEscopo(v).toLowerCase()}`);
+                  carregar();
+                }}>
+                  <SelectTrigger className="h-7 w-[150px] text-[10px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ESCOPOS.map(e => (
+                      <SelectItem key={e.valor} value={e.valor} className="text-[11px]">{e.rotulo}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => moverAtendente(a, -1)}>
                   <ArrowUp className="h-3 w-3" />
                 </Button>
@@ -284,10 +325,24 @@ export function AtendenteDeCasoSection({ agentId }: { agentId: string | null | u
                 <Input className="h-7 text-[11px]" placeholder="5586999998888" value={novoZap}
                   onChange={e => setNovoZap(e.target.value)} />
               </div>
+              <div className="flex-1 space-y-1">
+                <Label className="text-[10px]">Recebe o quê</Label>
+                <Select value={novoEscopo} onValueChange={setNovoEscopo}>
+                  <SelectTrigger className="h-7 text-[10px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ESCOPOS.map(e => (
+                      <SelectItem key={e.valor} value={e.valor} className="text-[11px]">{e.rotulo}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={addAtendente}>
                 <Plus className="h-3 w-3" />Adicionar
               </Button>
             </div>
+            <p className="text-[10px] text-muted-foreground">
+              {ESCOPOS.map(e => `${e.rotulo}: ${e.ajuda}`).join(' · ')}
+            </p>
           </div>
 
           <p className="text-[10px] text-muted-foreground">

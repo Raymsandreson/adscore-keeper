@@ -11,6 +11,7 @@ import {
   WEBHOOK_PUBLIC_FUNCTIONS,
 } from './lib/functionAuth';
 import { observeUazapiOriginAsync, uazapiOriginStats } from './lib/webhookOrigin';
+import { catalogoDeSchema, diagnosticoDoCatalogo } from './lib/schemaCatalog';
 // Aliases explícitos: no Railway `SUPABASE_URL` sem prefixo é o Cloud (ver
 // CLOUD_FUNCTIONS_URL abaixo). Estes dois são do Externo.
 import {
@@ -328,6 +329,12 @@ app.get('/health', (_req, res) => {
     // Aqui se mede se da pra exigir o instance_token como prova de origem —
     // `sem_token_por_evento` e a lista que precisa esvaziar antes disso.
     origem_webhook: uazapiOriginStats(),
+    // Mapa do banco que o analista de relatórios recebe no prompt. `fonte`
+    // precisa dizer "banco": em "degradado" a leitura do schema falhou e a IA
+    // está respondendo sem saber quais colunas existem. `fora_do_catalogo` > 0
+    // significa tabela de negócio nova que ninguém liberou pro relatório ainda.
+    // Só contagens — nome de tabela não sai daqui, /health é rota pública.
+    schema_catalog: diagnosticoDoCatalogo(),
     functions: Object.keys(functionHandlers),
     gmailKeys,
   });
@@ -480,6 +487,18 @@ app.listen(PORT, () => {
       ` | internal_key:${process.env.RAILWAY_INTERNAL_KEY ? 'set' : 'unset'}` +
       ` api_key:${API_KEY ? 'set' : 'unset'} jwt_cloud:${process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY ? 'ok' : 'SEM ANON KEY'}`,
   );
+  // Lê o schema já no boot: o /health passa a dizer a verdade sobre o mapa do
+  // banco sem esperar a primeira pergunta da diretoria, e essa primeira
+  // pergunta não paga a leitura. Falha aqui não derruba o server — o catálogo
+  // tenta de novo (e em modo degradado avisa a IA) na hora da pergunta.
+  catalogoDeSchema()
+    .then(() => {
+      const d: any = diagnosticoDoCatalogo();
+      console.log(`🗂️  catálogo do relatório: fonte=${d.fonte} tabelas=${d.tabelas} colunas=${d.colunas}` +
+        `${d.faltando?.length ? ` faltando=${d.faltando.join(',')}` : ''}` +
+        `${d.fora_do_catalogo ? ` fora_do_catalogo=${d.fora_do_catalogo}` : ''}`);
+    })
+    .catch((e) => console.warn('[schemaCatalog] falhou no boot:', e instanceof Error ? e.message : e));
 });
 
 // ============================================================

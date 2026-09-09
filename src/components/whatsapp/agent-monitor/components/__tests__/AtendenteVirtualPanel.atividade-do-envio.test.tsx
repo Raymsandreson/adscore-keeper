@@ -70,7 +70,12 @@ vi.mock('@/components/activities/ActivityFullSheet', () => ({
 // `profiles.user_id` do Externo → UUID do Cloud. O mapa real vive em
 // `auth_uuid_mapping`; aqui basta provar que a tradução é aplicada.
 vi.mock('@/integrations/supabase/uuid-remap', () => ({
-  remapToCloud: async (ext: string) => (ext === 'EXT-KELIANE' ? 'CLOUD-KELIANE' : ext),
+  remapToCloud: async (ext: string) =>
+    ({
+      'EXT-KELIANE': 'CLOUD-KELIANE',
+      'EXT-KAROLYNE': 'CLOUD-KAROLYNE',
+      'EXT-FINANCEIRO': 'CLOUD-FINANCEIRO',
+    } as Record<string, string>)[ext] ?? ext,
 }));
 
 import { AtendenteVirtualPanel } from '../AtendenteVirtualPanel';
@@ -90,7 +95,7 @@ const pendente = (extra: Record<string, unknown> = {}) => ({
   status: 'pendente', criado_em: '2026-09-09T11:54:00Z', enviado_em: null,
   atendente_id: 'at-1', lead_id: LEAD,
   contexto_usado: null,
-  dom_atendentes: { nome: 'Keliane', user_id: 'PROFILE-ID-KELIANE' },
+  dom_atendentes: { nome: 'Keliane', user_id: 'PROFILE-ID-KELIANE', escopo: 'geral' },
   ...extra,
 });
 
@@ -175,6 +180,80 @@ describe('Atendente virtual — a atividade que a resposta prometeu', () => {
     expect(String(d.current_status_notes)).toMatch(/Mas porque cada mes/);
     expect(String(d.what_was_done)).toMatch(/A gente entende a sua duvida/);
     expect(d.action_source_detail).toBe('atendente-virtual:r1');
+  });
+
+  it('avisa ANTES de enviar que a pergunta vem depois', async () => {
+    render(<AtendenteVirtualPanel />);
+    fireEvent.click(await screen.findByText(/Mas porque cada mes/i));
+
+    // A pergunta aparece só depois do clique, e quem não a vê chegar conclui
+    // que ela não existe — foi o que aconteceu na estreia da tela.
+    expect(await screen.findByText(/Depois de enviar, eu pergunto aqui mesmo/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Criar a atividade correspondente/i)).toBeNull();
+  });
+
+  it('quem cuida do cliente vem antes do rodizio', async () => {
+    // A ficha diz quem acolhe — e o nome do grupo diz o mesmo ("- KAROLYNE").
+    dados.leads = [{ lead_name: 'Bianca', acolhedor_user_id: 'EXT-KAROLYNE' }];
+    dados.profiles = [{ user_id: 'EXT-KAROLYNE', full_name: 'Maria Karolyne de Aguiar Nunes' }];
+
+    render(<AtendenteVirtualPanel />);
+    await aprovarEEnviar();
+
+    expect(await screen.findByText(/Maria Karolyne/)).toBeInTheDocument();
+    expect(screen.getByText(/acolhedora da ficha/i)).toBeInTheDocument();
+    // O plantão nem entra: sugerir a fila de reclamação para um cliente que já
+    // tem quem o acompanhe joga fora a única informação que faz a atividade
+    // chegar em quem sabe do que se trata.
+    expect(screen.queryByText(/rodízio/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Revisar e criar/i }));
+    await screen.findByTestId('form-atividade');
+    expect(rascunhoRecebido.atual!.assigned_to).toBe('CLOUD-KAROLYNE');
+  });
+
+  it('sem ninguem na ficha, cai no rodizio — e diz que caiu', async () => {
+    render(<AtendenteVirtualPanel />);
+    await aprovarEEnviar();
+
+    expect(await screen.findByText(/Keliane/)).toBeInTheDocument();
+    expect(screen.getByText(/rodízio do atendente virtual/i)).toBeInTheDocument();
+  });
+
+  it('dinheiro vai para o financeiro, mesmo com acolhedora na ficha', async () => {
+    // A acolhedora acompanha o cliente; ela não é quem responde valor. E
+    // responder valor errado é a única falha aqui que custa dinheiro.
+    dados.dom_respostas_pendentes = [pendente({
+      intencao: 'E17',
+      dom_atendentes: { nome: 'Ana do financeiro', user_id: 'PROFILE-ID-FIN', escopo: 'financeiro' },
+    })];
+    dados.leads = [{ lead_name: 'Bianca', acolhedor_user_id: 'EXT-KAROLYNE' }];
+    dados.profiles = [{ user_id: 'EXT-FINANCEIRO', full_name: 'Ana do Financeiro' }];
+
+    render(<AtendenteVirtualPanel />);
+    await aprovarEEnviar();
+
+    expect(await screen.findByText(/atendente do financeiro/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Revisar e criar/i }));
+    await screen.findByTestId('form-atividade');
+    expect(rascunhoRecebido.atual!.assigned_to).toBe('CLOUD-FINANCEIRO');
+    // O vínculo com o cliente continua: quem muda é o dono, não a ficha.
+    expect(rascunhoRecebido.atual!.lead_id).toBe(LEAD);
+  });
+
+  it('sem ninguem no financeiro, dinheiro volta para quem cuida do cliente', async () => {
+    // A pick_dom_atendente cai no 'geral' quando o escopo está vazio — e quem
+    // veio do 'geral' NÃO é do financeiro. Testar pela intenção sozinha faria
+    // a tela sugerir o plantão para um cliente que tem quem o acompanhe.
+    dados.dom_respostas_pendentes = [pendente({ intencao: 'E17' })];
+    dados.leads = [{ lead_name: 'Bianca', acolhedor_user_id: 'EXT-KAROLYNE' }];
+    dados.profiles = [{ user_id: 'EXT-KAROLYNE', full_name: 'Maria Karolyne de Aguiar Nunes' }];
+
+    render(<AtendenteVirtualPanel />);
+    await aprovarEEnviar();
+
+    expect(await screen.findByText(/acolhedora da ficha/i)).toBeInTheDocument();
+    expect(screen.queryByText(/atendente do financeiro/i)).toBeNull();
   });
 
   it('grupo sem ficha nao oferece criar — e diz por que', async () => {
