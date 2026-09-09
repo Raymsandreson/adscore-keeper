@@ -254,3 +254,103 @@ begin
 end $fn$;
 
 select cron.schedule('escavador-saldo', '7 * * * *', $$select public.escavador_saldo_tick()$$);
+
+-- =============================================================================
+-- ADENDO (09/09/2026, 21h UTC): o primeiro teste NÃO chegou. A instância "Dom"
+-- está desconectada no uazapi (503 "WhatsApp disconnected: session is not
+-- reconnectable"). Sondado /instance/status nas candidatas: conectadas = Raym,
+-- Atendimento Previdenciário, Atendimento Processual; desconectadas = Dom,
+-- WHATSJUD IA; prudencio_advogados = token inválido.
+--
+-- O remetente passa a ser uma LISTA com fallback: Atendimento Processual →
+-- Atendimento Previdenciário → Dom. A cada tick, se o último envio da leitura
+-- falhou (status ≠ 2xx ou "error":true no corpo), tenta a próxima instância —
+-- não espera 24 h para descobrir que o aviso não saiu.
+-- =============================================================================
+alter table public.escavador_saldo
+  add column if not exists alerta_tentativas integer not null default 0,
+  add column if not exists alerta_instancia  text;
+
+create or replace function public.escavador_alertar_saldo(p_forcar boolean default false)
+returns jsonb
+language plpgsql
+security definer
+set search_path to 'public'
+as $fn$
+declare
+  c_ordem constant text[] := array['Atendimento Processual', 'Atendimento Previdenciário', 'Dom'];
+  v      record;
+  ult    record;   -- linha da leitura atual, com o estado do último envio
+  resp   record;   -- resposta do uazapi ao último envio
+  inst   record;
+  v_falhou boolean := false;
+  v_nome text;
+  v_para text;
+  v_texto text;
+  v_req bigint;
+begin
+  select * into v from vw_escavador_saldo limit 1;
+  if v.saldo_reais is null then
+    return jsonb_build_object('enviado', false, 'motivo', 'sem leitura');
+  end if;
+
+  select * into ult from escavador_saldo where saldo_reais is not null order by lido_em desc limit 1;
+
+  -- o último envio (de qualquer leitura) falhou? então o "já avisei" não vale.
+  select r.status_code, r.content into resp
+    from escavador_saldo s join net._http_response r on r.id = s.alerta_request_id
+   where s.alerta_request_id is not null order by s.alerta_enviado_em desc limit 1;
+  if resp is not null then
+    v_falhou := coalesce(resp.status_code, 0) not between 200 and 299
+                or coalesce((resp.content::jsonb->>'error')::boolean, false);
+  end if;
+
+  if not p_forcar and not v.alerta then
+    return jsonb_build_object('enviado', false, 'alerta', false);
+  end if;
+  if not p_forcar and not v_falhou and v.alertado_em is not null and v.alertado_em > now() - interval '24 hours' then
+    return jsonb_build_object('enviado', false, 'alerta', true, 'alertado_em', v.alertado_em);
+  end if;
+
+  -- próxima instância da lista, pela contagem de tentativas desta leitura
+  v_nome := c_ordem[(coalesce(ult.alerta_tentativas, 0) % cardinality(c_ordem)) + 1];
+  select instance_name, instance_token, coalesce(nullif(base_url, ''), 'https://abraci.uazapi.com') as base_url
+    into inst from whatsapp_instances where instance_name = v_nome and is_active limit 1;
+  if inst is null then
+    raise exception 'instância "%" não está ativa — sem por onde avisar', v_nome;
+  end if;
+  select regexp_replace(owner_phone, '\D', '', 'g') into v_para
+    from whatsapp_instances where instance_name = 'Raym' and is_active limit 1;
+  if coalesce(v_para, '') = '' then
+    raise exception 'instância "Raym" sem owner_phone — sem para quem avisar';
+  end if;
+
+  v_texto := '⚠️ *Escavador — saldo*' || E'\n'
+          || 'Saldo: R$ ' || to_char(v.saldo_reais, 'FM999G999D00') || ' (' || v.creditos || ' créditos)' || E'\n'
+          || case when v.gasto_7d_media_dia > 0 then 'Ritmo: ~R$ ' || to_char(v.gasto_7d_media_dia, 'FM999G999D00') || '/dia → dá para ~' || floor(v.dias_restantes) || ' dias' || E'\n' else '' end
+          || case when coalesce(v.motivo, '') <> '' then 'Motivo: ' || v.motivo || E'\n' else '' end
+          || case when p_forcar and not v.alerta then '(teste do alarme — sem alerta de verdade agora)' || E'\n' else '' end
+          || 'Lido ' || to_char(v.lido_em at time zone 'America/Sao_Paulo', 'DD/MM HH24:MI') || '. Painel: sino → Saldo do Escavador.';
+
+  select net.http_post(
+    url := rtrim(inst.base_url, '/') || '/send/text',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'token', inst.instance_token),
+    body := jsonb_build_object('number', v_para, 'text', v_texto),
+    timeout_milliseconds := 30000
+  ) into v_req;
+
+  update escavador_saldo
+     set alerta_motivo = coalesce(v.motivo, case when p_forcar then 'teste' end),
+         alerta_enviado_em = now(), alerta_request_id = v_req,
+         alerta_tentativas = coalesce(alerta_tentativas, 0) + 1, alerta_instancia = inst.instance_name
+   where id = ult.id;
+
+  return jsonb_build_object('enviado', true, 'request_id', v_req, 'instancia', inst.instance_name,
+                            'tentativa', coalesce(ult.alerta_tentativas, 0) + 1, 'alerta', v.alerta, 'forcado', p_forcar,
+                            'ultimo_envio_tinha_falhado', v_falhou);
+end $fn$;
+
+comment on function public.escavador_alertar_saldo(boolean) is
+  'WhatsApp para o dono da instância Raym quando vw_escavador_saldo.alerta. Remetente: Atendimento Processual → '
+  'Atendimento Previdenciário → Dom, trocando a cada tentativa que falha. 1 aviso por 24 h quando o envio deu certo. '
+  'p_forcar = true manda um teste.';
