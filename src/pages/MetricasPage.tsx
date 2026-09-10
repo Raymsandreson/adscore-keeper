@@ -145,6 +145,56 @@ function desdeQuando(iso: string | null): string {
 }
 
 /**
+ * Dinheiro que saiu e não virou lead no funil.
+ *
+ * Sai da mesma tabela de baixo, mas separado de propósito: numa lista de 24
+ * conjuntos ordenada por gasto, um conjunto que gastou R$ 373 e trouxe zero
+ * lead não se distingue de um que gastou R$ 373 e trouxe 130. É o número que
+ * alguém precisa ver hoje, não rolar até encontrar.
+ *
+ * Dois casos diferentes, e a diferença importa:
+ *  - lead na Meta e zero no CRM = formulário preenchido que não chegou ao funil;
+ *  - zero dos dois lados = anúncio rodando sem gerar formulário nenhum.
+ */
+function GastoSemLead({ itens }: { itens: Painel['desempenho_por_conjunto'] }) {
+  const mudos = (itens || []).filter((c) => (c.gasto_7d ?? 0) > 0 && c.leads_crm_7d === 0);
+  if (!mudos.length) return null;
+  const total = mudos.reduce((t, c) => t + (c.gasto_7d ?? 0), 0);
+  return (
+    <Card className="border-amber-500/40">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2 text-amber-700 dark:text-amber-500">
+          <AlertTriangle className="h-4 w-4" />Gasto sem lead no funil (7 dias)
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold tabular-nums text-amber-700 dark:text-amber-500">{brl(total)}</div>
+        <div className="mt-3 space-y-1.5">
+          {mudos.map((c) => (
+            <div key={c.nome} className="flex items-baseline justify-between gap-3 text-sm">
+              <span className="truncate" title={c.nome}>
+                {c.nome_invalido ? 'conjunto sem nome válido' : c.nome}
+                {!c.ativo && <span className="text-xs text-muted-foreground ml-2">pausado</span>}
+              </span>
+              <span className="shrink-0 tabular-nums">
+                {brl(c.gasto_7d)}
+                <span className="text-xs text-muted-foreground ml-2">
+                  {c.leads_meta_7d ? `${num(c.leads_meta_7d)} na Meta, 0 no funil` : 'nenhum formulário'}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-3 border-t pt-2">
+          Conjunto com formulário na Meta e zero no CRM é lead comprado que não chegou ao funil — vale
+          conferir o roteamento. Zero dos dois lados é anúncio rodando sem gerar formulário.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
  * Desempenho por conjunto de anúncio.
  *
  * É a tabela que responde "de quem vem o contrato": os conjuntos são nomeados
@@ -437,6 +487,8 @@ export default function MetricasPage() {
                 aviso={custo?.cobertura_completa_30d ? null : custo?.aviso_30d}
               />
             </div>
+
+            <GastoSemLead itens={dados.desempenho_por_conjunto || []} />
 
             <DesempenhoPorConjunto itens={dados.desempenho_por_conjunto || []} />
 

@@ -121,3 +121,31 @@ mesma pergunta vista de dois lados.
 Os contadores **zeram a cada deploy** — são de processo, não de banco. Por isso a
 tela mostra a última execução, e não o total: `execucoes: 0` logo depois de uma
 publicação significa "ainda não rodou nesta versão", não "está parado".
+
+## Gasto sem lead no funil (10/09/2026)
+
+Conferência que só apareceu quando a tabela passou a incluir conjunto pausado:
+a soma da coluna de gasto (**R$ 5.577,30**) bate com o total das contas
+(**R$ 5.569,67**) — a diferença de R$ 7,63 é o gasto que continua correndo entre
+as duas chamadas.
+
+Com a soma fechando, sobra o que não fecha: **R$ 756,70 em 7 dias em 3 conjuntos
+que não trouxeram lead nenhum ao CRM.**
+
+| Conjunto | Gasto 7d | Na Meta | No CRM |
+|---|---:|---:|---:|
+| CONJUNTO 1 | R$ 373,57 | 0 | 0 |
+| C1 | R$ 373,01 | 26 | 0 |
+| C2-[ESTAGIÁRIO] | R$ 10,12 | 3 | 0 |
+
+Os dois casos pedem conserto diferente, e por isso o card os distingue:
+
+- **formulário na Meta e zero no CRM** (C1, C2) — lead comprado que não chegou ao
+  funil. É roteamento: o formulário não está mapeado em `meta-leads-sync` nem cai
+  numa aba conhecida da planilha.
+- **zero dos dois lados** (CONJUNTO 1) — anúncio consumindo verba sem gerar
+  formulário.
+
+O card fica separado da tabela de propósito: numa lista de 24 conjuntos ordenada
+por gasto, quem gastou R$ 373 e trouxe zero lead não se distingue de quem gastou
+R$ 373 e trouxe 130.
