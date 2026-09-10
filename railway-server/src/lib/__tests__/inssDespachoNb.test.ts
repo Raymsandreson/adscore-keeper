@@ -71,6 +71,12 @@ describe('extractTipoBeneficio', () => {
       .toBe('APOSENTADORIA POR IDADE');
   });
 
+
+  it('corta no rótulo do e-mail de agendamento (5 registros em 09/09/2026)', () => {
+    expect(extractTipoBeneficio('Serviço : Agendamento - Perícia Médica de Auxílio-Acidente Data e hora agendada : 31/07/2026 (14:20)'))
+      .toBe('Agendamento - Perícia Médica de Auxílio-Acidente');
+  });
+
   it('devolve undefined quando não há nenhum dos dois rótulos', () => {
     expect(extractTipoBeneficio('Prezado(a) Sr(a), seu pedido foi recebido.')).toBeUndefined();
   });

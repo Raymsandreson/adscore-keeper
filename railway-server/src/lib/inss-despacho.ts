@@ -88,7 +88,7 @@ export function extractDespacho(body: string): string | undefined {
 
 /** Extrai o campo "Serviço:" (tipo real do benefício) do corpo. */
 export function extractServico(body: string): string | undefined {
-  const m = body.match(/servi[çc]o\s*:\s*([^\n]+?)(?:\s+Data do Protocolo|\s+Unidade respons|\n|$)/i);
+  const m = body.match(/servi[çc]o\s*:\s*([^\n]+?)(?:\s+Data do Protocolo|\s+Unidade respons|\s+Data e hora agendada|\n|$)/i);
   if (!m) return undefined;
   const v = m[1].replace(/\s+/g, ' ').trim();
   return v ? v.slice(0, 200) : undefined;
@@ -107,7 +107,7 @@ export function extractServico(body: string): string | undefined {
 export function extractTipoBeneficio(body: string): string | undefined {
   const servico = extractServico(body);
   if (servico) return servico;
-  const m = body.match(/benef[íi]cio\s*:\s*([^\n]+?)(?:\s+Data do Protocolo|\s+Unidade respons|\s+Status atual|\n|$)/i);
+  const m = body.match(/benef[íi]cio\s*:\s*([^\n]+?)(?:\s+Data do Protocolo|\s+Unidade respons|\s+Status atual|\s+Data e hora agendada|\n|$)/i);
   if (!m) return undefined;
   const v = m[1].replace(/\s+/g, ' ').trim();
   return v ? v.slice(0, 200) : undefined;
