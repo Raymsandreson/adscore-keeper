@@ -239,3 +239,23 @@ Dois casos de formulário registrado na Meta que nunca chegou ao CRM:
 `[CAMPANHA REPRESENTANTE COMERCIAL]` com **59** e `[CBO][VENDAS][MÃES-ATÍPICAS]`
 com **26**. Ou é roteamento faltando, ou é lead de produto que não usa o CRM — e
 a diferença entre as duas respostas vale dinheiro.
+
+## Apelidos de compatibilidade (temporário)
+
+Os filtros renomearam campos do payload (`total_7d` → `na_janela`, `gasto_7d` →
+`gasto`, e assim por diante). Numa SPA isso **não** é um problema de deploy que
+passa em minutos: quem está com a aba aberta continua rodando o bundle antigo até
+recarregar, e isso dura horas (ver [[deploy-front-lovable-verificacao]]).
+
+Sem apelido, essa pessoa veria meia tela de "—" e concluiria que o painel quebrou
+— pior que o número velho, porque parece defeito de dado.
+
+Então o handler devolve os nomes antigos **junto** com os novos. Eles só são
+corretos para a janela padrão (30 dias até hoje), que é a única que o bundle
+antigo pede: fora dela vão `null`, em vez de número de outro recorte com nome
+antigo.
+
+**Como remover:** conferir que o chunk publicado da página contém "Todos os
+acolhedores" (string que só existe na versão com filtros), esperar 24h para as
+abas abertas rodarem, e apagar o bloco `compat` do handler e os apelidos
+`*_7d`/`*_30d` de `desempenho_por_conjunto`.

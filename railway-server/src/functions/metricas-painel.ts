@@ -404,6 +404,14 @@ export const handler: RequestHandler = async (req, res) => {
           // tanto quanto esconder o número.
           custo_por_fechamento: g && g > 0 && crm.fechados > 0 ? Number((g / crm.fechados).toFixed(2)) : null,
           taxa_fechamento: crm.leads > 0 ? Number(((crm.fechados / crm.leads) * 100).toFixed(2)) : null,
+          // Apelidos do bundle antigo — ver o bloco COMPATIBILIDADE mais abaixo.
+          gasto_7d: g,
+          leads_meta_7d: m?.leads_meta ?? null,
+          leads_crm_7d: crm.leads,
+          leads_crm_30d: crm.leads,
+          fechados_30d: crm.fechados,
+          custo_por_lead_7d: g && g > 0 && crm.leads > 0 ? Number((g / crm.leads).toFixed(2)) : null,
+          taxa_fechamento_30d: crm.leads > 0 ? Number(((crm.fechados / crm.leads) * 100).toFixed(2)) : null,
         };
       })
       .sort((a, b) => (b.gasto ?? -1) - (a.gasto ?? -1) || b.leads_crm - a.leads_crm);
@@ -480,6 +488,56 @@ export const handler: RequestHandler = async (req, res) => {
     const diasPagos = leadsPagos.map((l) => diaDoInstante(l.created_at)).filter(Boolean).sort();
     const primeiroDiaPago = diasPagos[0] || null;
     const cobertura_completa = Boolean(primeiroDiaPago && primeiroDiaPago <= de);
+    const avisoDeCobertura = `lead pago só existe no CRM desde ${primeiroDiaPago || 'nunca'}; a janela começa antes disso, então o custo por lead divide gasto inteiro por lead incompleto.`;
+
+    // COMPATIBILIDADE COM O BUNDLE ANTIGO DA ABA.
+    //
+    // Os filtros trocaram os nomes dos campos (`total_7d` virou `na_janela`, e
+    // por aí vai). Numa SPA isso não é um problema de deploy que passa em
+    // minutos: quem está com a aba aberta continua rodando o bundle velho até
+    // recarregar, o que dura horas. Sem estes apelidos, essa pessoa veria meia
+    // tela de "—" e concluiria que o painel quebrou.
+    //
+    // A janela padrão (sem corpo na requisição) é a que o bundle velho pede, e é
+    // exatamente para ela que estes campos são corretos. Fora dela vão nulos, em
+    // vez de números de outro recorte com nome antigo.
+    const corte7 = corteDeDias(7);
+    const janelaEhPadrao = de <= corte7 && ate === hoje;
+    const em7 = <T,>(linhas: T[], dia: (l: T) => string) =>
+      janelaEhPadrao ? linhas.filter((l) => dia(l) >= corte7).length : null;
+    const leads7 = em7(leads, (l: any) => diaDoInstante(l.created_at));
+    const pagos7 = em7(leadsPagos, (l: any) => diaDoInstante(l.created_at));
+    const fech7 = em7(fechados, (f: any) => diaDaColuna(f.became_client_date));
+    const gasto7 = janelaEhPadrao
+      ? somaGasto(linhasDeGasto.filter((g) => g.dia >= corte7))
+      : null;
+    const compat = {
+      investimento_antigo: {
+        total_hoje: investidoHoje ?? 0,
+        total_7d: gasto7 ?? 0,
+        total_30d: investidoJanela,
+      },
+      leads_antigo: {
+        hoje: leadsPorDia[hoje] || 0,
+        pagos_hoje: pagosPorDia[hoje] || 0,
+        ultimos_7d: leads7,
+        pagos_7d: pagos7,
+        ultimos_30d: leads.length,
+        pagos_30d: leadsPagos.length,
+        entraram_no_funil_hoje: entraramHoje,
+        entraram_no_funil_7d: janelaEhPadrao ? entraramNaJanela : null,
+      },
+      fechamentos_antigo: { hoje: fechPorDia[hoje] || 0, ultimos_7d: fech7, ultimos_30d: fechados.length },
+      custo_antigo: {
+        leads_pagos_7d: pagos7,
+        leads_pagos_30d: leadsPagos.length,
+        por_lead_pago_7d: gasto7 && gasto7 > 0 && pagos7 ? Number((gasto7 / pagos7).toFixed(2)) : null,
+        por_lead_pago_30d: cobertura_completa ? cpl : null,
+        por_fechamento_pago_30d: cobertura_completa ? cpf_ : null,
+        cobertura_completa_30d: cobertura_completa,
+        aviso_30d: cobertura_completa ? null : avisoDeCobertura,
+      },
+    };
 
     return res.status(200).json({
       gerado_em: new Date().toISOString(),
@@ -491,6 +549,7 @@ export const handler: RequestHandler = async (req, res) => {
         max_dias: MAX_DIAS_JANELA,
       },
       investimento: {
+        ...compat.investimento_antigo,
         disponivel: !gasto.erro,
         erro: gasto.erro,
         na_janela: investidoJanela,
@@ -507,6 +566,7 @@ export const handler: RequestHandler = async (req, res) => {
       // custou anuncio nenhum). Total ao lado do investimento convida a leitura
       // errada, e o custo por lead ja usava so os pagos.
       leads: {
+        ...compat.leads_antigo,
         na_janela: leads.length,
         pagos_na_janela: leadsPagos.length,
         hoje: janelaInclutHoje ? (leadsPorDia[hoje] || 0) : null,
@@ -517,6 +577,7 @@ export const handler: RequestHandler = async (req, res) => {
         por_board: contaPor(leads, (l) => nomeBoard[l.board_id] || null).slice(0, 15),
       },
       fechamentos: {
+        ...compat.fechamentos_antigo,
         na_janela: fechados.length,
         pagos_na_janela: fechadosPagos.length,
         hoje: janelaInclutHoje ? (fechPorDia[hoje] || 0) : null,
@@ -558,6 +619,7 @@ export const handler: RequestHandler = async (req, res) => {
       // Rotinas: contador zera a cada deploy, entao quem responde e `ultima_em`.
       rotinas: rotinasParaOPainel(),
       custo: {
+        ...compat.custo_antigo,
         leads_pagos: leadsPagos.length,
         // Os dois lados do mesmo investimento, nomeados. Ver o comentário acima.
         gasto_sem_lead_no_crm: gastoSemLead,
@@ -571,9 +633,7 @@ export const handler: RequestHandler = async (req, res) => {
         cobertura_pagos_desde: primeiroDiaPago,
         cobertura_completa,
         // A tela precisa poder dizer POR QUE o número está vazio ou torto.
-        aviso: cobertura_completa
-          ? null
-          : `lead pago só existe no CRM desde ${primeiroDiaPago || 'nunca'}; a janela começa antes disso, então o custo por lead divide gasto inteiro por lead incompleto.`,
+        aviso: cobertura_completa ? null : avisoDeCobertura,
       },
     });
   } catch (err) {
