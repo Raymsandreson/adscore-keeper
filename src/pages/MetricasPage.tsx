@@ -6,22 +6,31 @@
 //
 // REGRA DESTA TELA: número que não pode ser calculado com honestidade aparece
 // como "—" com o motivo do lado. Nunca como zero, nunca como estimativa.
-import { useCallback, useEffect, useState } from 'react';
+//
+// FILTROS: período, funil e acolhedor. Os três são resolvidos no servidor e
+// alcançam os DOIS lados (gasto da Meta e lead do CRM), justamente para que o
+// custo por lead nunca some numerador de um recorte com denominador de outro.
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft, RefreshCw, TrendingUp, Users, Handshake, Wallet, AlertTriangle, Send, Check, X, Link2,
-  Target, Timer, Filter,
+  Target, Timer, Filter, CalendarRange, UserRound,
 } from 'lucide-react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cloudFunctions } from '@/lib/functionRouter';
 
 const ATUALIZA_MS = 60_000;
+const TODOS = '__todos__';
 
 const brl = (v: number | null | undefined) =>
   typeof v === 'number'
@@ -29,51 +38,72 @@ const brl = (v: number | null | undefined) =>
     : '—';
 const num = (v: number | null | undefined) =>
   typeof v === 'number' ? new Intl.NumberFormat('pt-BR').format(v) : '—';
+const pct = (v: number | null | undefined) =>
+  typeof v === 'number' ? `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%` : '—';
 const diaCurto = (iso: string) => iso.slice(8, 10) + '/' + iso.slice(5, 7);
+
+/** Dia civil de São Paulo, não o de Greenwich: `toISOString` faria "hoje" começar às 21h de ontem. */
+function hojeSP(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+}
+function diasAtrasSP(n: number): string {
+  const d = new Date(`${hojeSP()}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
 
 interface Painel {
   gerado_em: string;
-  janela: { de: string; ate: string };
+  janela: { de: string; ate: string; dias: number; inclui_hoje: boolean };
+  filtros: { funil: string | null; acolhedor: string | null };
+  opcoes: {
+    funis: Array<{ chave: string; rotulo: string }>;
+    acolhedores: Array<{ chave: string; rotulo: string }>;
+    max_dias: number;
+  };
   investimento: {
-    disponivel: boolean;
-    erro?: string;
-    total_hoje: number; total_7d: number; total_30d: number;
-    contas: Array<{ conta: string; id: string; moeda?: string; ativa?: boolean; hoje?: number; ultimos_7d?: number; ultimos_30d?: number; erro?: string }>;
+    disponivel: boolean; erro?: string | null;
+    na_janela: number; hoje: number | null;
+    contas: Array<{ conta: string; valor: number }>;
   };
-  leads: { hoje: number; pagos_hoje: number; ultimos_7d: number; pagos_7d: number; ultimos_30d: number; pagos_30d: number; entraram_no_funil_hoje: number; entraram_no_funil_7d: number; por_fonte: Array<{ nome: string; qtd: number }>; por_board: Array<{ nome: string; qtd: number }> };
-  fechamentos: { hoje: number; ultimos_7d: number; ultimos_30d: number; por_fonte: Array<{ nome: string; qtd: number }>; por_board: Array<{ nome: string; qtd: number }> };
-  serie: Array<{ dia: string; leads: number; fechamentos: number; investido: number }>;
-  capi: Record<string, any>;
-  funil_por_status: Record<string, number>;
-  integracao: {
-    disponivel: boolean;
-    erro?: string;
-    dataset_id?: string;
-    conjuntos_ativos?: number;
-    conjuntos_otimizando_conversao?: number;
-    conjuntos_usando_dataset?: number;
-    detalhe?: Array<{ nome: string; conta: string; otimizacao: string; usa_dataset: boolean }>;
+  leads: {
+    na_janela: number; pagos_na_janela: number; hoje: number | null; pagos_hoje: number | null;
+    entraram_no_funil: number; entraram_no_funil_hoje: number | null;
+    por_fonte: Array<{ nome: string; qtd: number }>; por_board: Array<{ nome: string; qtd: number }>;
   };
+  fechamentos: {
+    na_janela: number; pagos_na_janela: number; hoje: number | null;
+    por_fonte: Array<{ nome: string; qtd: number }>; por_board: Array<{ nome: string; qtd: number }>;
+  };
+  serie: Array<{ dia: string; leads: number; leads_pagos: number; fechamentos: number; investido: number }>;
   desempenho_por_conjunto: Array<{
-    nome: string; nome_invalido: boolean; conta: string | null; campanha: string | null;
-    ativo: boolean; otimizacao: string | null; piloto_conversao: boolean; usa_dataset: boolean | null;
-    gasto_7d: number | null; leads_meta_7d: number | null; leads_crm_7d: number;
-    leads_crm_30d: number; fechados_30d: number; custo_por_lead_7d: number | null;
-    taxa_fechamento_30d: number | null;
+    nome: string; nome_invalido: boolean; acolhedor: string | null; conta: string | null;
+    campanha: string | null; ativo: boolean; otimizacao: string | null; piloto_conversao: boolean;
+    gasto: number | null; leads_meta: number | null; leads_crm: number; fechados: number;
+    custo_por_lead: number | null; custo_por_fechamento: number | null; taxa_fechamento: number | null;
+  }>;
+  por_acolhedor: Array<{
+    chave: string; rotulo: string; conjuntos: number; gasto: number; leads: number; fechados: number;
+    custo_por_lead: number | null; custo_por_fechamento: number | null; taxa_fechamento: number | null;
   }>;
   funil_pago: {
     total: number; sem_resposta: number; em_atendimento: number; fechados: number;
-    inviaveis: number; recusados: number; taxa_contato: number | null; taxa_fechamento: number | null;
+    inviaveis: number; recusados: number;
+  };
+  capi: Record<string, any>;
+  funil_por_status: Record<string, number>;
+  integracao: {
+    disponivel: boolean; erro?: string; dataset_id?: string;
+    conjuntos_ativos?: number; conjuntos_otimizando_conversao?: number; conjuntos_usando_dataset?: number;
   };
   rotinas: Array<{
     chave: string; rotulo: string; a_cada: string; ligado: boolean; execucoes: number;
     ultima_em: string | null; ultimo_resultado: string | null; acumulado: string;
   }>;
   custo: {
-    leads_pagos_7d: number; leads_pagos_30d: number;
-    por_lead_pago_7d: number | null; por_lead_pago_30d: number | null;
-    por_fechamento_pago_30d: number | null;
-    cobertura_pagos_desde: string | null; cobertura_completa_30d: boolean; aviso_30d: string | null;
+    leads_pagos: number; fechamentos_pagos: number;
+    por_lead_pago: number | null; por_fechamento_pago: number | null;
+    cobertura_pagos_desde: string | null; cobertura_completa: boolean; aviso: string | null;
   };
 }
 
@@ -103,7 +133,6 @@ function Kpi({
   );
 }
 
-
 const ROTULO_STATUS: Record<string, string> = {
   no_response: 'Sem resposta',
   in_progress: 'Em atendimento',
@@ -130,8 +159,28 @@ function Passo({ ok, texto, detalhe }: { ok: boolean; texto: string; detalhe?: s
   );
 }
 
-const pct = (v: number | null | undefined) =>
-  typeof v === 'number' ? `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%` : '—';
+function Ranking({ titulo, itens }: { titulo: string; itens: Array<{ nome: string; qtd: number }> }) {
+  const maior = itens[0]?.qtd || 1;
+  return (
+    <Card>
+      <CardHeader className="pb-3"><CardTitle className="text-sm">{titulo}</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        {itens.length === 0 && <p className="text-sm text-muted-foreground">Nada na janela.</p>}
+        {itens.map((i) => (
+          <div key={i.nome} className="space-y-1">
+            <div className="flex justify-between text-sm gap-2">
+              <span className="truncate" title={i.nome}>{i.nome}</span>
+              <span className="tabular-nums text-muted-foreground shrink-0">{num(i.qtd)}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+              <div className="h-full bg-primary/60" style={{ width: `${Math.max(2, (i.qtd / maior) * 100)}%` }} />
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
 
 /** "há 4 min", "há 2 h". Rotina que nunca rodou nesta versão diz isso, não "há 56 anos". */
 function desdeQuando(iso: string | null): string {
@@ -145,26 +194,149 @@ function desdeQuando(iso: string | null): string {
 }
 
 /**
+ * Barra de filtros: período, funil e acolhedor.
+ *
+ * O período tem atalhos porque é o que se troca o tempo todo, e campos de data
+ * porque "a semana passada inteira" não é atalho nenhum. Os três filtros vão
+ * para o servidor juntos — filtrar no navegador só recortaria o que já foi
+ * baixado, e o gasto da Meta nunca esteve no navegador.
+ */
+function BarraDeFiltros({
+  de, ate, funil, acolhedor, opcoes, ocupado, onPeriodo, onFunil, onAcolhedor,
+}: {
+  de: string; ate: string; funil: string | null; acolhedor: string | null;
+  opcoes: Painel['opcoes'] | null; ocupado: boolean;
+  onPeriodo: (de: string, ate: string) => void;
+  onFunil: (v: string | null) => void;
+  onAcolhedor: (v: string | null) => void;
+}) {
+  const hoje = hojeSP();
+  const atalhos = [
+    { rot: 'Hoje', de: hoje, ate: hoje },
+    { rot: '7 dias', de: diasAtrasSP(6), ate: hoje },
+    { rot: '30 dias', de: diasAtrasSP(29), ate: hoje },
+    { rot: '90 dias', de: diasAtrasSP(89), ate: hoje },
+  ];
+  const ativo = (a: { de: string; ate: string }) => a.de === de && a.ate === ate;
+  const filtrando = Boolean(funil || acolhedor);
+
+  return (
+    <Card>
+      <CardContent className="pt-4 pb-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground flex items-center gap-1.5 mr-1">
+            <CalendarRange className="h-3.5 w-3.5" />Período
+          </span>
+          {atalhos.map((a) => (
+            <Button
+              key={a.rot}
+              size="sm"
+              variant={ativo(a) ? 'default' : 'outline'}
+              disabled={ocupado}
+              onClick={() => onPeriodo(a.de, a.ate)}
+            >
+              {a.rot}
+            </Button>
+          ))}
+          <div className="flex items-center gap-2 ml-auto">
+            <Input
+              type="date"
+              value={de}
+              max={ate}
+              disabled={ocupado}
+              onChange={(e) => e.target.value && onPeriodo(e.target.value, ate)}
+              className="h-9 w-[150px]"
+              aria-label="Data inicial"
+            />
+            <span className="text-muted-foreground text-sm">até</span>
+            <Input
+              type="date"
+              value={ate}
+              min={de}
+              max={hoje}
+              disabled={ocupado}
+              onChange={(e) => e.target.value && onPeriodo(de, e.target.value)}
+              className="h-9 w-[150px]"
+              aria-label="Data final"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Filter className="h-3.5 w-3.5" />Funil
+            </span>
+            <Select
+              value={funil ?? TODOS}
+              disabled={ocupado}
+              onValueChange={(v) => onFunil(v === TODOS ? null : v)}
+            >
+              <SelectTrigger className="h-9 w-[190px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TODOS}>Todos os funis</SelectItem>
+                {(opcoes?.funis || []).map((f) => (
+                  <SelectItem key={f.chave} value={f.chave}>{f.rotulo}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <UserRound className="h-3.5 w-3.5" />Acolhedor
+            </span>
+            <Select
+              value={acolhedor ?? TODOS}
+              disabled={ocupado}
+              onValueChange={(v) => onAcolhedor(v === TODOS ? null : v)}
+            >
+              <SelectTrigger className="h-9 w-[190px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TODOS}>Todos os acolhedores</SelectItem>
+                {(opcoes?.acolhedores || []).map((a) => (
+                  <SelectItem key={a.chave} value={a.chave}>{a.rotulo}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {filtrando && (
+            <Button size="sm" variant="ghost" disabled={ocupado} onClick={() => { onFunil(null); onAcolhedor(null); }}>
+              Limpar filtros
+            </Button>
+          )}
+        </div>
+
+        {acolhedor && (
+          <p className="text-[11px] text-muted-foreground border-t pt-2">
+            O acolhedor vem do nome do conjunto de anúncio — é o único vínculo que existe entre um lead
+            pago e quem o atende. Lead sem conjunto (orgânico, notícia, cadastro manual) fica de fora
+            deste recorte.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
  * Dinheiro que saiu e não virou lead no funil.
  *
- * Sai da mesma tabela de baixo, mas separado de propósito: numa lista de 24
- * conjuntos ordenada por gasto, um conjunto que gastou R$ 373 e trouxe zero
- * lead não se distingue de um que gastou R$ 373 e trouxe 130. É o número que
- * alguém precisa ver hoje, não rolar até encontrar.
- *
- * Dois casos diferentes, e a diferença importa:
- *  - lead na Meta e zero no CRM = formulário preenchido que não chegou ao funil;
- *  - zero dos dois lados = anúncio rodando sem gerar formulário nenhum.
+ * Separado da tabela de propósito: numa lista de 24 conjuntos ordenada por
+ * gasto, um conjunto que gastou R$ 373 e trouxe zero lead não se distingue de um
+ * que gastou R$ 373 e trouxe 130. É o número que alguém precisa ver hoje, não
+ * rolar até encontrar.
  */
 function GastoSemLead({ itens }: { itens: Painel['desempenho_por_conjunto'] }) {
-  const mudos = (itens || []).filter((c) => (c.gasto_7d ?? 0) > 0 && c.leads_crm_7d === 0);
+  const mudos = (itens || []).filter((c) => (c.gasto ?? 0) > 0 && c.leads_crm === 0);
   if (!mudos.length) return null;
-  const total = mudos.reduce((t, c) => t + (c.gasto_7d ?? 0), 0);
+  const total = mudos.reduce((t, c) => t + (c.gasto ?? 0), 0);
   return (
     <Card className="border-amber-500/40">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2 text-amber-700 dark:text-amber-500">
-          <AlertTriangle className="h-4 w-4" />Gasto sem lead no funil (7 dias)
+          <AlertTriangle className="h-4 w-4" />Gasto sem lead no funil
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -177,9 +349,9 @@ function GastoSemLead({ itens }: { itens: Painel['desempenho_por_conjunto'] }) {
                 {!c.ativo && <span className="text-xs text-muted-foreground ml-2">pausado</span>}
               </span>
               <span className="shrink-0 tabular-nums">
-                {brl(c.gasto_7d)}
+                {brl(c.gasto)}
                 <span className="text-xs text-muted-foreground ml-2">
-                  {c.leads_meta_7d ? `${num(c.leads_meta_7d)} na Meta, 0 no funil` : 'nenhum formulário'}
+                  {c.leads_meta ? `${num(c.leads_meta)} na Meta, 0 no funil` : 'nenhum formulário'}
                 </span>
               </span>
             </div>
@@ -194,13 +366,69 @@ function GastoSemLead({ itens }: { itens: Painel['desempenho_por_conjunto'] }) {
   );
 }
 
+/** A mesma tabela de conjuntos, somada por pessoa. É a leitura que a operação faz. */
+function PorAcolhedor({ itens, ativo, onEscolher }: {
+  itens: Painel['por_acolhedor']; ativo: string | null; onEscolher: (v: string | null) => void;
+}) {
+  if (!itens?.length) return null;
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2"><UserRound className="h-4 w-4" />Por acolhedor</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Some os conjuntos de cada pessoa. Clique numa linha para filtrar a aba inteira por ela.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[560px]">
+            <thead>
+              <tr className="text-left text-xs text-muted-foreground border-b">
+                <th className="pb-2 font-medium">Acolhedor</th>
+                <th className="pb-2 font-medium text-right">Investido</th>
+                <th className="pb-2 font-medium text-right">Leads</th>
+                <th className="pb-2 font-medium text-right">Custo/lead</th>
+                <th className="pb-2 font-medium text-right">Fechados</th>
+                <th className="pb-2 font-medium text-right">Custo/contrato</th>
+                <th className="pb-2 font-medium text-right">Taxa</th>
+              </tr>
+            </thead>
+            <tbody>
+              {itens.map((a) => (
+                <tr
+                  key={a.chave}
+                  onClick={() => onEscolher(ativo === a.chave ? null : a.chave)}
+                  className={`border-b last:border-0 cursor-pointer hover:bg-muted/50 ${ativo === a.chave ? 'bg-primary/5' : ''}`}
+                >
+                  <td className="py-2">
+                    {a.rotulo}
+                    <span className="text-xs text-muted-foreground ml-2">{num(a.conjuntos)} conjunto(s)</span>
+                  </td>
+                  <td className="py-2 text-right tabular-nums">{brl(a.gasto)}</td>
+                  <td className="py-2 text-right tabular-nums">{num(a.leads)}</td>
+                  <td className="py-2 text-right tabular-nums">{brl(a.custo_por_lead)}</td>
+                  <td className="py-2 text-right tabular-nums">{num(a.fechados)}</td>
+                  <td className="py-2 text-right tabular-nums">{brl(a.custo_por_fechamento)}</td>
+                  <td className="py-2 text-right tabular-nums">{pct(a.taxa_fechamento)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-3">
+          "Custo/contrato" fica vazio para quem ainda não fechou na janela: dividir por zero e escrever
+          R$ 0,00 mentiria, e "infinito" não ajuda a decidir nada.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 /**
  * Desempenho por conjunto de anúncio.
  *
- * É a tabela que responde "de quem vem o contrato": os conjuntos são nomeados
- * por acolhedor, então cada linha é também uma pessoa. Gasto e formulário vêm da
- * Meta; lead e fechamento vêm do CRM — nenhum dos dois lados sabe sozinho quanto
- * custa um cliente.
+ * Gasto e formulário vêm da Meta; lead e fechamento vêm do CRM. Nenhum dos dois
+ * lados sabe sozinho quanto custa um cliente.
  */
 function DesempenhoPorConjunto({ itens }: { itens: Painel['desempenho_por_conjunto'] }) {
   if (!itens?.length) return null;
@@ -211,8 +439,8 @@ function DesempenhoPorConjunto({ itens }: { itens: Painel['desempenho_por_conjun
           <Target className="h-4 w-4" />Desempenho por conjunto de anúncio
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Gasto e formulários vêm da Meta (7 dias). Leads e fechamentos vêm do CRM. Conjunto pausado
-          continua na lista enquanto tiver gasto ou lead na janela.
+          Gasto e formulários vêm da Meta. Leads e fechamentos vêm do CRM. Conjunto pausado continua na
+          lista enquanto tiver gasto ou lead no período.
         </p>
       </CardHeader>
       <CardContent>
@@ -221,10 +449,9 @@ function DesempenhoPorConjunto({ itens }: { itens: Painel['desempenho_por_conjun
             <thead>
               <tr className="text-left text-xs text-muted-foreground border-b">
                 <th className="pb-2 font-medium">Conjunto</th>
-                <th className="pb-2 font-medium text-right">Gasto 7d</th>
-                <th className="pb-2 font-medium text-right">Leads 7d</th>
+                <th className="pb-2 font-medium text-right">Investido</th>
+                <th className="pb-2 font-medium text-right">Leads</th>
                 <th className="pb-2 font-medium text-right">Custo/lead</th>
-                <th className="pb-2 font-medium text-right">Leads 30d</th>
                 <th className="pb-2 font-medium text-right">Fechados</th>
                 <th className="pb-2 font-medium text-right">Taxa</th>
               </tr>
@@ -247,27 +474,26 @@ function DesempenhoPorConjunto({ itens }: { itens: Painel['desempenho_por_conjun
                     <span className="text-xs text-muted-foreground">
                       {c.nome_invalido
                         ? 'a Graph API gravou um erro no lugar do nome do conjunto — os leads são reais'
-                        : [c.campanha, c.conta].filter(Boolean).join(' · ') || 'fora das contas ativas'}
+                        : [c.campanha, c.conta].filter(Boolean).join(' · ') || 'sem gasto no período'}
                     </span>
                   </td>
-                  <td className="py-2 text-right tabular-nums">{brl(c.gasto_7d)}</td>
+                  <td className="py-2 text-right tabular-nums">{brl(c.gasto)}</td>
                   <td className="py-2 text-right tabular-nums">
-                    {num(c.leads_crm_7d)}
-                    {typeof c.leads_meta_7d === 'number' && c.leads_meta_7d !== c.leads_crm_7d && (
-                      <span className="block text-[11px] text-muted-foreground">{num(c.leads_meta_7d)} na Meta</span>
+                    {num(c.leads_crm)}
+                    {typeof c.leads_meta === 'number' && c.leads_meta !== c.leads_crm && (
+                      <span className="block text-[11px] text-muted-foreground">{num(c.leads_meta)} na Meta</span>
                     )}
                   </td>
-                  <td className="py-2 text-right tabular-nums">{brl(c.custo_por_lead_7d)}</td>
-                  <td className="py-2 text-right tabular-nums">{num(c.leads_crm_30d)}</td>
-                  <td className="py-2 text-right tabular-nums">{num(c.fechados_30d)}</td>
-                  <td className="py-2 text-right tabular-nums">{pct(c.taxa_fechamento_30d)}</td>
+                  <td className="py-2 text-right tabular-nums">{brl(c.custo_por_lead)}</td>
+                  <td className="py-2 text-right tabular-nums">{num(c.fechados)}</td>
+                  <td className="py-2 text-right tabular-nums">{pct(c.taxa_fechamento)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <p className="text-[11px] text-muted-foreground mt-3">
-          "Leads 7d" é o que entrou no CRM. Quando a contagem da Meta difere, ela aparece embaixo — a
+          "Leads" é o que entrou no CRM. Quando a contagem da Meta difere, ela aparece embaixo — a
           diferença é lead que o formulário registrou e o funil ainda não recebeu.
         </p>
       </CardContent>
@@ -276,9 +502,9 @@ function DesempenhoPorConjunto({ itens }: { itens: Painel['desempenho_por_conjun
 }
 
 /** O caminho do lead pago: quantos falam, quantos fecham. Cada degrau com o que sobrou. */
-function FunilPago({ f }: { f: Painel['funil_pago'] }) {
+function FunilPago({ f, dias }: { f: Painel['funil_pago']; dias: number }) {
   const degraus = [
-    { rot: 'Leads de anúncio (30 dias)', v: f.total, cor: 'bg-primary/70' },
+    { rot: 'Leads de anúncio', v: f.total, cor: 'bg-primary/70' },
     { rot: 'Responderam', v: f.total - f.sem_resposta, cor: 'bg-primary/55' },
     { rot: 'Em atendimento', v: f.em_atendimento, cor: 'bg-primary/40' },
     { rot: 'Fecharam contrato', v: f.fechados, cor: 'bg-emerald-600' },
@@ -291,7 +517,7 @@ function FunilPago({ f }: { f: Painel['funil_pago'] }) {
           <Filter className="h-4 w-4" />Funil dos leads de anúncio
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Só quem veio de formulário pago, nos últimos 30 dias.
+          Só quem veio de formulário pago, no período selecionado ({num(dias)} dia(s)).
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -311,25 +537,25 @@ function FunilPago({ f }: { f: Painel['funil_pago'] }) {
         ))}
         <div className="pt-2 border-t text-xs text-muted-foreground space-y-1">
           <p>{num(f.inviaveis)} marcados inviáveis · {num(f.recusados)} recusaram ou cancelaram</p>
-          <p>
-            O degrau que mais come lead é o primeiro: {num(f.sem_resposta)} nunca responderam. Isso é
-            volume comprado que não virou conversa — é onde a otimização por conversão morde.
-          </p>
+          {f.sem_resposta > 0 && (
+            <p>
+              O degrau que mais come lead é o primeiro: {num(f.sem_resposta)} nunca responderam. É volume
+              comprado que não virou conversa — onde a otimização por conversão morde.
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>
   );
 }
 
-/** As quatro rotinas que mantêm o painel vivo. Número velho e rotina parada é a mesma pergunta. */
+/** As quatro rotinas que mantêm o painel vivo. Não seguem o filtro: são do sistema, não do período. */
 function Rotinas({ itens }: { itens: Painel['rotinas'] }) {
   if (!itens?.length) return null;
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <Timer className="h-4 w-4" />Rotinas automáticas
-        </CardTitle>
+        <CardTitle className="text-sm flex items-center gap-2"><Timer className="h-4 w-4" />Rotinas automáticas</CardTitle>
         <p className="text-xs text-muted-foreground">
           O que alimenta esta tela sozinho. Os contadores zeram a cada publicação — quem responde
           "está de pé?" é a última execução.
@@ -363,37 +589,21 @@ function Rotinas({ itens }: { itens: Painel['rotinas'] }) {
   );
 }
 
-function Ranking({ titulo, itens }: { titulo: string; itens: Array<{ nome: string; qtd: number }> }) {
-  const maior = itens[0]?.qtd || 1;
-  return (
-    <Card>
-      <CardHeader className="pb-3"><CardTitle className="text-sm">{titulo}</CardTitle></CardHeader>
-      <CardContent className="space-y-2">
-        {itens.length === 0 && <p className="text-sm text-muted-foreground">Nada na janela.</p>}
-        {itens.map((i) => (
-          <div key={i.nome} className="space-y-1">
-            <div className="flex justify-between text-sm gap-2">
-              <span className="truncate" title={i.nome}>{i.nome}</span>
-              <span className="tabular-nums text-muted-foreground shrink-0">{num(i.qtd)}</span>
-            </div>
-            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-              <div className="h-full bg-primary/60" style={{ width: `${Math.max(2, (i.qtd / maior) * 100)}%` }} />
-            </div>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
 export default function MetricasPage() {
   const [dados, setDados] = useState<Painel | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
+  const [de, setDe] = useState(() => diasAtrasSP(29));
+  const [ate, setAte] = useState(() => hojeSP());
+  const [funil, setFunil] = useState<string | null>(null);
+  const [acolhedor, setAcolhedor] = useState<string | null>(null);
 
   const buscar = useCallback(async () => {
+    setCarregando(true);
     try {
-      const { data, error } = await cloudFunctions.invoke('metricas-painel', { body: {} });
+      const { data, error } = await cloudFunctions.invoke('metricas-painel', {
+        body: { de, ate, funil, acolhedor },
+      });
       if (error) throw new Error(error.message);
       if ((data as any)?.error) throw new Error((data as any).error);
       setDados(data as Painel);
@@ -403,7 +613,7 @@ export default function MetricasPage() {
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [de, ate, funil, acolhedor]);
 
   useEffect(() => {
     buscar();
@@ -413,6 +623,12 @@ export default function MetricasPage() {
 
   const inv = dados?.investimento;
   const custo = dados?.custo;
+  const filtrado = Boolean(funil || acolhedor);
+  const rotuloJanela = useMemo(() => {
+    if (!dados) return '';
+    if (dados.janela.de === dados.janela.ate) return diaCurto(dados.janela.de);
+    return `${diaCurto(dados.janela.de)} a ${diaCurto(dados.janela.ate)}`;
+  }, [dados]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -427,7 +643,9 @@ export default function MetricasPage() {
                 <TrendingUp className="h-6 w-6 text-primary" />Métricas
               </h1>
               <p className="text-sm text-muted-foreground truncate">
-                {dados ? `Janela de ${diaCurto(dados.janela.de)} a ${diaCurto(dados.janela.ate)} · atualiza sozinho a cada minuto` : 'Investimento, leads e fechamentos'}
+                {dados
+                  ? `${rotuloJanela} · atualiza sozinho a cada minuto`
+                  : 'Investimento, leads e fechamentos'}
               </p>
             </div>
           </div>
@@ -438,6 +656,18 @@ export default function MetricasPage() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
+        <BarraDeFiltros
+          de={de}
+          ate={ate}
+          funil={funil}
+          acolhedor={acolhedor}
+          opcoes={dados?.opcoes ?? null}
+          ocupado={carregando && !dados}
+          onPeriodo={(d, a) => { setDe(d); setAte(a); }}
+          onFunil={setFunil}
+          onAcolhedor={setAcolhedor}
+        />
+
         {erro && (
           <Card className="border-destructive/50">
             <CardContent className="pt-6 text-sm text-destructive flex items-start gap-2">
@@ -458,35 +688,50 @@ export default function MetricasPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Kpi
                 destaque
-                titulo="Investido hoje"
-                valor={inv?.disponivel ? brl(inv.total_hoje) : '—'}
-                sub={inv?.disponivel ? `${brl(inv.total_7d)} em 7 dias · ${brl(inv.total_30d)} em 30` : inv?.erro || 'sem acesso à conta de anúncios'}
+                titulo="Investido no período"
+                valor={inv?.disponivel ? brl(inv.na_janela) : '—'}
+                sub={
+                  inv?.disponivel
+                    ? typeof inv.hoje === 'number' ? `${brl(inv.hoje)} hoje` : 'período fechado, sem hoje'
+                    : inv?.erro || 'sem acesso à conta de anúncios'
+                }
                 icone={<Wallet className="h-3.5 w-3.5" />}
               />
               <Kpi
-                titulo="Leads de anúncio hoje"
-                valor={num(dados.leads.pagos_hoje)}
-                sub={`${num(dados.leads.pagos_7d)} em 7 dias · ${num(dados.leads.pagos_30d)} em 30`}
+                titulo="Leads de anúncio"
+                valor={num(dados.leads.pagos_na_janela)}
+                sub={
+                  typeof dados.leads.pagos_hoje === 'number'
+                    ? `${num(dados.leads.pagos_hoje)} hoje`
+                    : `${num(dados.janela.dias)} dia(s) no período`
+                }
                 rodape={
-                  `${num(dados.leads.hoje)} no total hoje (o resto é notícia e orgânico) · ` +
-                  `${num(dados.leads.entraram_no_funil_hoje)} entraram no funil hoje`
+                  `${num(dados.leads.na_janela)} leads no total (o resto é notícia e orgânico) · ` +
+                  `${num(dados.leads.entraram_no_funil)} entraram no funil`
                 }
                 icone={<Users className="h-3.5 w-3.5" />}
               />
               <Kpi
-                titulo="Fechamentos hoje"
-                valor={num(dados.fechamentos.hoje)}
-                sub={`${num(dados.fechamentos.ultimos_7d)} em 7 dias · ${num(dados.fechamentos.ultimos_30d)} em 30`}
+                titulo="Fechamentos"
+                valor={num(dados.fechamentos.na_janela)}
+                sub={`${num(dados.fechamentos.pagos_na_janela)} vieram de anúncio`}
                 icone={<Handshake className="h-3.5 w-3.5" />}
               />
               <Kpi
-                titulo="Custo por lead pago (7d)"
-                valor={brl(custo?.por_lead_pago_7d)}
-                sub={`${num(custo?.leads_pagos_7d)} leads de anúncio em 7 dias`}
+                titulo="Custo por lead pago"
+                valor={brl(custo?.por_lead_pago)}
+                sub={`${num(custo?.leads_pagos)} leads de anúncio no período`}
+                rodape={
+                  custo?.por_fechamento_pago
+                    ? `${brl(custo.por_fechamento_pago)} por contrato fechado`
+                    : 'sem fechamento pago no período para calcular o custo por contrato'
+                }
                 icone={<TrendingUp className="h-3.5 w-3.5" />}
-                aviso={custo?.cobertura_completa_30d ? null : custo?.aviso_30d}
+                aviso={custo?.aviso}
               />
             </div>
+
+            <PorAcolhedor itens={dados.por_acolhedor || []} ativo={acolhedor} onEscolher={setAcolhedor} />
 
             <GastoSemLead itens={dados.desempenho_por_conjunto || []} />
 
@@ -494,9 +739,9 @@ export default function MetricasPage() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Últimos 30 dias</CardTitle>
+                <CardTitle className="text-sm">Dia a dia</CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  Barras: leads e fechamentos por dia. Linha: investimento do dia.
+                  Barras: leads de anúncio e fechamentos por dia. Linha: investimento do dia.
                 </p>
               </CardHeader>
               <CardContent>
@@ -512,7 +757,7 @@ export default function MetricasPage() {
                         labelFormatter={(l) => `Dia ${diaCurto(String(l))}`}
                       />
                       <Legend />
-                      <Bar yAxisId="q" dataKey="leads" name="Leads" fill="hsl(var(--primary))" fillOpacity={0.55} radius={[3, 3, 0, 0]} />
+                      <Bar yAxisId="q" dataKey="leads_pagos" name="Leads de anúncio" fill="hsl(var(--primary))" fillOpacity={0.55} radius={[3, 3, 0, 0]} />
                       <Bar yAxisId="q" dataKey="fechamentos" name="Fechamentos" fill="hsl(var(--primary))" radius={[3, 3, 0, 0]} />
                       <Line yAxisId="r" type="monotone" dataKey="investido" name="Investido" stroke="#f59e0b" strokeWidth={2} dot={false} />
                     </ComposedChart>
@@ -522,13 +767,18 @@ export default function MetricasPage() {
             </Card>
 
             <div className="grid gap-4 lg:grid-cols-2">
+              <FunilPago f={dados.funil_pago} dias={dados.janela.dias} />
+              <Rotinas itens={dados.rotinas || []} />
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Link2 className="h-4 w-4" />Saúde da integração com a Meta
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    O que ainda falta para o anúncio otimizar por cliente fechado, e não por volume de lead.
+                    Configuração da conta, não medição do período — não segue os filtros acima.
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-2.5">
@@ -563,7 +813,7 @@ export default function MetricasPage() {
               </Card>
 
               <Card>
-                <CardHeader className="pb-3"><CardTitle className="text-sm">Funil por status</CardTitle></CardHeader>
+                <CardHeader className="pb-3"><CardTitle className="text-sm">Funil por status (todos os leads do período)</CardTitle></CardHeader>
                 <CardContent className="space-y-2">
                   {Object.entries(dados.funil_por_status || {})
                     .sort((a, b) => b[1] - a[1])
@@ -577,15 +827,11 @@ export default function MetricasPage() {
               </Card>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              {dados.funil_pago && <FunilPago f={dados.funil_pago} />}
-              <Rotinas itens={dados.rotinas || []} />
-            </div>
-
             <div className="grid gap-4 lg:grid-cols-3">
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2"><Send className="h-4 w-4" />Conversões enviadas à Meta</CardTitle>
+                  <p className="text-xs text-muted-foreground">Fila inteira, desde o início — não segue os filtros.</p>
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
                   {[
@@ -614,38 +860,21 @@ export default function MetricasPage() {
                 </CardContent>
               </Card>
 
-              <Ranking titulo="Leads por origem (30 dias)" itens={dados.leads.por_fonte.slice(0, 8)} />
-              <Ranking titulo="Leads por funil (30 dias)" itens={dados.leads.por_board.slice(0, 8)} />
+              <Ranking titulo="Leads por origem" itens={dados.leads.por_fonte.slice(0, 8)} />
+              <Ranking titulo="Leads por funil" itens={dados.leads.por_board.slice(0, 8)} />
             </div>
 
             {inv?.disponivel && inv.contas.length > 0 && (
               <Card>
                 <CardHeader className="pb-3"><CardTitle className="text-sm">Contas de anúncio</CardTitle></CardHeader>
                 <CardContent>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-left text-xs text-muted-foreground border-b">
-                          <th className="pb-2 font-medium">Conta</th>
-                          <th className="pb-2 font-medium text-right">Hoje</th>
-                          <th className="pb-2 font-medium text-right">7 dias</th>
-                          <th className="pb-2 font-medium text-right">30 dias</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {inv.contas.map((c) => (
-                          <tr key={c.id} className="border-b last:border-0">
-                            <td className="py-2">
-                              {c.conta}
-                              {c.erro && <span className="text-xs text-destructive ml-2">{c.erro}</span>}
-                            </td>
-                            <td className="py-2 text-right tabular-nums">{brl(c.hoje)}</td>
-                            <td className="py-2 text-right tabular-nums">{brl(c.ultimos_7d)}</td>
-                            <td className="py-2 text-right tabular-nums">{brl(c.ultimos_30d)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="space-y-2">
+                    {inv.contas.map((c) => (
+                      <div key={c.conta} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="truncate">{c.conta}</span>
+                        <span className="tabular-nums shrink-0">{brl(c.valor)}</span>
+                      </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
@@ -653,6 +882,7 @@ export default function MetricasPage() {
 
             <p className="text-xs text-muted-foreground text-center">
               Gerado em {new Date(dados.gerado_em).toLocaleString('pt-BR')}
+              {filtrado && ' · com filtros aplicados'}
             </p>
           </>
         )}

@@ -2,6 +2,7 @@
 
 `/metricas` (menu **Financeiro → Métricas**). Página:
 `src/pages/MetricasPage.tsx`. Backend: `railway-server/src/functions/metricas-painel.ts`.
+Recortes: `railway-server/src/lib/recortesDoPainel.ts` (puro, com teste).
 
 Uma chamada devolve tudo. Fica no Railway, não no navegador, porque o token da
 Meta não pode chegar ao front e `meta_capi_events` tem RLS sem policy.
@@ -149,3 +150,43 @@ Os dois casos pedem conserto diferente, e por isso o card os distingue:
 O card fica separado da tabela de propósito: numa lista de 24 conjuntos ordenada
 por gasto, quem gastou R$ 373 e trouxe zero lead não se distingue de quem gastou
 R$ 373 e trouxe 130.
+
+## Filtros: período, funil e acolhedor (10/09/2026)
+
+Os três chegam no corpo da requisição (`{de, ate, funil, acolhedor}`) e são
+resolvidos **no servidor**, alcançando os DOIS lados — gasto da Meta e lead do
+CRM.
+
+Isso não é detalhe de implementação: um filtro que alcançasse só metade produziria
+um custo por lead com numerador de um recorte e denominador de outro. Foi para
+isso que o gasto deixou de ser lido agregado por conta e passou a vir por
+`level=adset` + `time_increment=1` — dia e conjunto são a menor unidade que os
+três recortes conseguem cortar.
+
+### De onde sai cada recorte
+
+| Recorte | Fonte | Por quê |
+|---|---|---|
+| Período | `de`/`ate`, dia civil de São Paulo | teto de 180 dias; futuro é cortado para hoje |
+| Funil | nome da **campanha** (Meta) e nome do **board** (CRM) | "BPC-LOAS" e "BPC - Autismo" são o mesmo funil escrito de dois jeitos |
+| Acolhedor | nome do **conjunto** (`leads.adset_name`) | `leads.assigned_to` é nulo nos leads do Externo |
+
+O acolhedor é o caso delicado. Não existe coluna: o vínculo entre um lead pago e
+quem o atende é o nome do conjunto de anúncio, escrito à mão por quem monta a
+campanha. Medido em 10/09/2026, cobre **3.290 dos 3.291** leads pagos de 30 dias.
+
+`acolhedorDoConjunto` compara **token inteiro**, nunca pedaço: `includes('KAROL')`
+casaria dentro de "KAROLINA", e no dia em que existir uma, o número dela entraria
+calado no recorte da Karolyne. Há teste para exatamente esse caso.
+
+**KAROL = KAROLYNE.** Há uma só no quadro (Maria Karolyne de Aguiar Nunes), e os
+conjuntos usam as duas grafias. Separá-las partiria o número dela em duas linhas
+que ninguém saberia somar.
+
+### O que NÃO segue os filtros, e diz isso na tela
+
+- **Saúde da integração** — é configuração da conta, não medição de período.
+- **Conversões enviadas à Meta** — é a fila inteira, desde o início.
+- **Rotinas automáticas** — são do sistema.
+- **"Entraram no funil"** — `entrou_no_crm_em` é coluna, então honra o funil, mas
+  não o acolhedor (que é derivado de texto). A legenda avisa.
