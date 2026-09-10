@@ -354,6 +354,22 @@ export const handler: RequestHandler = async (req, res) => {
     // A junção é pelo NOME do conjunto (`leads.adset_name`), único campo comum:
     // a Meta sabe o gasto e quantos formulários preencheu; só o CRM sabe quantos
     // viraram contrato. Nenhum dos dois responde "quanto custa um cliente".
+    // Janela de 7 dias: só existe para os apelidos do bundle antigo (ver o bloco
+    // COMPATIBILIDADE). Precisa ser calculada aqui, junto com os totais da
+    // janela, para que "Gasto 7d" seja gasto de 7 dias de verdade.
+    const corte7 = corteDeDias(7);
+    const janelaEhPadrao = de <= corte7 && ate === hoje;
+    const gasto7PorConjunto: Record<string, number> = {};
+    const leads7PorConjunto: Record<string, number> = {};
+    if (janelaEhPadrao) {
+      for (const g of linhasDeGasto.filter((x) => x.dia >= corte7)) {
+        gasto7PorConjunto[g.conjunto] = (gasto7PorConjunto[g.conjunto] || 0) + g.gasto;
+      }
+      for (const l of leadsPagos) {
+        const n = String(l.adset_name || '').trim();
+        if (n && diaDoInstante(l.created_at) >= corte7) leads7PorConjunto[n] = (leads7PorConjunto[n] || 0) + 1;
+      }
+    }
     const metaPorConjunto: Record<string, { gasto: number; leads_meta: number; campanha: string | null; conta: string }> = {};
     for (const g of linhasDeGasto) {
       const e = metaPorConjunto[g.conjunto] || { gasto: 0, leads_meta: 0, campanha: g.campanha, conta: g.conta };
@@ -384,6 +400,8 @@ export const handler: RequestHandler = async (req, res) => {
         const crm = crmPorConjunto[nome] || { leads: 0, fechados: 0 };
         const cfg = conjuntosConhecidos.find((c) => c.nome === nome) || null;
         const g = m ? Number(m.gasto.toFixed(2)) : null;
+        const g7 = janelaEhPadrao ? Number((gasto7PorConjunto[nome] || 0).toFixed(2)) : null;
+        const l7 = janelaEhPadrao ? (leads7PorConjunto[nome] || 0) : null;
         return {
           nome,
           nome_invalido: nomeInvalido(nome),
@@ -405,12 +423,16 @@ export const handler: RequestHandler = async (req, res) => {
           custo_por_fechamento: g && g > 0 && crm.fechados > 0 ? Number((g / crm.fechados).toFixed(2)) : null,
           taxa_fechamento: crm.leads > 0 ? Number(((crm.fechados / crm.leads) * 100).toFixed(2)) : null,
           // Apelidos do bundle antigo — ver o bloco COMPATIBILIDADE mais abaixo.
-          gasto_7d: g,
-          leads_meta_7d: m?.leads_meta ?? null,
-          leads_crm_7d: crm.leads,
+          // Estes são 7 dias DE VERDADE: a coluna da tela antiga diz "Gasto 7d",
+          // e devolver o total de 30 dias com esse nome seria pôr número de um
+          // recorte sob o rótulo de outro — exatamente o que os apelidos
+          // existem para evitar. Fora da janela padrão vão nulos.
+          gasto_7d: g7,
+          leads_meta_7d: null,
+          leads_crm_7d: l7,
           leads_crm_30d: crm.leads,
           fechados_30d: crm.fechados,
-          custo_por_lead_7d: g && g > 0 && crm.leads > 0 ? Number((g / crm.leads).toFixed(2)) : null,
+          custo_por_lead_7d: g7 && g7 > 0 && l7 ? Number((g7 / l7).toFixed(2)) : null,
           taxa_fechamento_30d: crm.leads > 0 ? Number(((crm.fechados / crm.leads) * 100).toFixed(2)) : null,
         };
       })
@@ -501,8 +523,6 @@ export const handler: RequestHandler = async (req, res) => {
     // A janela padrão (sem corpo na requisição) é a que o bundle velho pede, e é
     // exatamente para ela que estes campos são corretos. Fora dela vão nulos, em
     // vez de números de outro recorte com nome antigo.
-    const corte7 = corteDeDias(7);
-    const janelaEhPadrao = de <= corte7 && ate === hoje;
     const em7 = <T,>(linhas: T[], dia: (l: T) => string) =>
       janelaEhPadrao ? linhas.filter((l) => dia(l) >= corte7).length : null;
     const leads7 = em7(leads, (l: any) => diaDoInstante(l.created_at));
