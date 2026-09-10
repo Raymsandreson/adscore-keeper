@@ -565,6 +565,16 @@ Numa conversa pessoal (a esposa do dono da conta) a sugestão saía **"Entendi, 
 
 **Regra**: a IA aponta valor absurdo no texto, mas **nunca filtra ou esconde linha** do resultado. A tabela mostra o que está no banco; o conserto é na origem.
 
+### Gráfico no resultado — desde 09/09/2026
+
+**Quem decide se existe gráfico é a IA**, não a tela: o `run_sql` ganhou um campo opcional `chart` (`{type: bar|line|pie, x, y, label}`) e o prompt diz quando pedir — contagem ou soma agrupada com até ~25 grupos (por status, responsável, núcleo, mês, funil). Relação de registros e resultado de uma linha **não** viram gráfico; na dúvida o prompt manda não mandar o campo, porque tabela sem gráfico é melhor que gráfico que confunde.
+
+- **O gráfico nunca substitui a tabela.** Tendo gráfico, o bloco abre nele e ganha o par de botões Gráfico / Tabela; a tabela continua completa a um clique. Nenhuma linha sai da tela por parecer estranha (CLAUDE.md, "solução estrutural, nunca band-aid na tela") — o valor absurdo é desenhado igual, pra ser consertado na origem.
+- **O backend valida antes de deixar passar** (`report-query.ts` → `validarChart`): as colunas `x` e `y` têm que existir no resultado real, ser diferentes entre si, e `y` tem que ser numérico em pelo menos uma linha. Não passando, o campo é descartado e fica só a tabela — a IA não desenha em cima de coluna que não existe.
+- **Gráfico gravado só quando o resultado inteiro caber** nas 200 linhas da gravação: reabrindo a conversa, resultado cortado mostra a tabela (que já se anuncia parcial), nunca um gráfico que soma parte do dado com cara de total. No turno em que a pergunta foi feita, o gráfico se anuncia parcial ("desenhando 200 de 900 linhas").
+- **Barra é horizontal** (nome de pessoa e status em português não caberiam no eixo de baixo), barra e pizza ordenam do maior pro menor, **linha mantém a ordem do tempo**. Pizza com mais de 6 fatias **vira barra** em vez de agrupar em "Outros" — juntar categoria esconderia quem é quem. A legenda da pizza traz o valor escrito ao lado do nome: a identidade da fatia nunca depende só da cor.
+- **Animação desligada de propósito** (`isAnimationActive={false}`): medido no navegador em 09/09/2026, com recharts 2.15 puro, a animação de entrada não termina nesta base — a pizza ficava **vazia** (só a legenda) e a linha **sem pontos**. Desligada, os setores e pontos aparecem na hora. `tsc`, `build` e os testes passam verdes com a pizza vazia (jsdom não desenha), então só religar depois de conferir na tela.
+
 ### O mapa do banco é lido do banco — desde 09/09/2026
 
 O analista não recebe uma lista de colunas escrita à mão: `railway-server/src/lib/schemaCatalog.ts` lê o schema do próprio banco a cada boot (e a cada hora), monta o catálogo e o `report-query` cola isso no prompt. A **curadoria** continua no arquivo — o que cada tabela significa, o vocabulário real dos status (`lead_status='closed'`, `resultado` em minúsculo, `current_status='Concluída'`) e os joins já testados —, porque isso o schema não conta.

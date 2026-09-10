@@ -48,8 +48,10 @@ import {
   FileBarChart, Send, Loader2, Code2, AlertTriangle, Lock, Sparkles, Database,
   Plus, MessagesSquare, MoreVertical, Pencil, Trash2, Check, X,
   Paperclip, Mic, Square, FileText, Image as ImageIcon,
+  BarChart3, Table2 as TableIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import ReportResultChart, { type ChartSpec } from '@/components/reports/ReportResultChart';
 
 interface QueryRun {
   sql: string;
@@ -60,6 +62,12 @@ interface QueryRun {
   truncated: boolean;
   /** Quantas linhas ficaram gravadas (só vem ao reabrir uma conversa antiga). */
   stored_rows?: number;
+  /**
+   * Gráfico que a IA pediu pra este resultado, já validado no backend contra as
+   * colunas reais. Ausente = essa consulta não vira gráfico (relação de
+   * registros, resultado de uma linha só), e a tabela é a resposta.
+   */
+  chart?: ChartSpec | null;
   error?: string | null;
 }
 
@@ -183,6 +191,13 @@ function ResultTable({ query }: { query: QueryRun }) {
 
 function QueryBlock({ query }: { query: QueryRun }) {
   const partial = query.rows.length < query.count;
+  // Tem gráfico? Ele abre por padrão — foi a IA que julgou que essa consulta
+  // lê melhor desenhada. A tabela fica a um clique, sempre completa: o gráfico
+  // é leitura em cima do dado, nunca substituto dele.
+  const temGrafico = !!query.chart && !query.error && query.rows.length > 0;
+  const [vendo, setVendo] = useState<'grafico' | 'tabela'>('grafico');
+  const modo = temGrafico ? vendo : 'tabela';
+
   return (
     <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -200,12 +215,33 @@ function QueryBlock({ query }: { query: QueryRun }) {
           </Badge>
         )}
         {query.purpose && <span className="text-xs text-muted-foreground">{query.purpose}</span>}
+
+        {temGrafico && (
+          <div className="ml-auto flex rounded-md border bg-background p-0.5">
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => setVendo('grafico')}
+              className={cn('h-6 gap-1 px-2 text-xs', modo === 'grafico' && 'bg-muted font-medium')}
+            >
+              <BarChart3 className="h-3.5 w-3.5" /> Gráfico
+            </Button>
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => setVendo('tabela')}
+              className={cn('h-6 gap-1 px-2 text-xs', modo === 'tabela' && 'bg-muted font-medium')}
+            >
+              <TableIcon className="h-3.5 w-3.5" /> Tabela
+            </Button>
+          </div>
+        )}
       </div>
 
       {query.error ? (
         <div className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-500">
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" /> A consulta falhou: {query.error}
         </div>
+      ) : modo === 'grafico' && query.chart ? (
+        <ReportResultChart chart={query.chart} rows={query.rows} count={query.count} />
       ) : (
         <ResultTable query={query} />
       )}

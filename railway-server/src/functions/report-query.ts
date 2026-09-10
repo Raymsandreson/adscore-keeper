@@ -160,6 +160,15 @@ FORMATO DA RESPOSTA
 - NUNCA escreva SQL na resposta. Nada de SELECT, JOIN, WHERE, nome de tabela ou de coluna crua, e nada de "rodei esta consulta: ...". Quem lê é a diretoria, não quer ver código, e a consulta já fica registrada sozinha no botão "Ver a consulta usada" embaixo da tabela. Fale do dado em português: "olhei os 229 BPC concluídos", não "rodei um COUNT(*) em inss_admin_processes".
 - Se quiser um recorte que você ainda não mediu, não escreva a consulta dele: ou rode (se ainda tiver rodada disponível), ou diga em uma linha, em português, qual pergunta valeria a próxima consulta.
 
+QUANDO PEDIR GRÁFICO
+O run_sql aceita um campo opcional "chart". Preenchido, a tela desenha o gráfico ao lado da tabela — a tabela NUNCA some, o gráfico é leitura em cima dela.
+- Peça gráfico quando a consulta for CONTAGEM ou SOMA agrupada e couber em até ~25 grupos: por status, por responsável, por núcleo, por mês, por funil, por tipo de benefício.
+- NÃO peça gráfico para relação/listagem de registros (uma linha por processo, por cliente, por atividade). Gráfico de 229 nomes não se lê — ali a tabela é a resposta.
+- NÃO peça gráfico para resultado de uma linha só, nem quando o número já cabe na frase.
+- type: use "bar" por padrão; "line" só quando o eixo x for data ou mês em ordem; "pie" só para composição de um todo e no máximo 6 fatias.
+- x e y têm que ser o nome EXATO de colunas que a sua SELECT devolve, e o y tem que ser numérico. Se você agrupou, dê apelido claro na SELECT (ex: COUNT(*) AS total) e use esse apelido.
+- Se estiver na dúvida se vale gráfico, não mande o campo. Tabela sem gráfico é melhor que gráfico que confunde.
+
 CAMPO QUE VOCÊ NÃO ENCONTRA
 O catálogo abaixo é o mapa das tabelas — as colunas nele são lidas do banco na hora, não escritas à mão.
 - "Não está no catálogo" e "não existe no sistema" são coisas DIFERENTES. Você pode dizer a primeira; a segunda, só se a consulta tiver recusado a coluna.
@@ -190,6 +199,17 @@ const runSqlTool = {
       properties: {
         sql: { type: 'string', description: 'A consulta SQL (SELECT/WITH) completa, pronta para rodar.' },
         purpose: { type: 'string', description: 'Em uma linha, em português: o que esta consulta responde. Vira o rótulo da tabela na tela (ex: "Processos da Gisele por status").' },
+        chart: {
+          type: 'object',
+          description: 'OPCIONAL. Preencha só quando o resultado for de CONTAGEM/SOMA agrupada e o gráfico ler melhor que a tabela (até ~25 grupos). Relação/listagem de registros NÃO vira gráfico — deixe fora. A tabela continua aparecendo do lado do gráfico de qualquer jeito.',
+          properties: {
+            type: { type: 'string', enum: ['bar', 'line', 'pie'], description: 'bar = comparar categorias (o padrão). line = série ao longo do tempo, só quando o eixo x for data/mês. pie = composição de um todo, no máximo 6 fatias.' },
+            x: { type: 'string', description: 'Nome EXATO da coluna do resultado que vira o rótulo de cada barra/fatia/ponto (ex: "status", "mes").' },
+            y: { type: 'string', description: 'Nome EXATO da coluna NUMÉRICA do resultado que vira a altura/tamanho (ex: "total", "quantidade").' },
+            label: { type: 'string', description: 'Título curto do gráfico em português (ex: "BPC concluídos por acolhedor").' },
+          },
+          required: ['type', 'x', 'y'],
+        },
       },
       required: ['sql', 'purpose'],
     },
@@ -298,6 +318,14 @@ const STORED_ROWS_PER_QUERY = 200;
 const PREVIEW_ROWS = 20;
 const PREVIEW_CHARS = 6000;
 
+/** Gráfico que a IA pediu pra este resultado. Ausente = só tabela. */
+interface ChartSpec {
+  type: 'bar' | 'line' | 'pie';
+  x: string;
+  y: string;
+  label?: string;
+}
+
 interface QueryRun {
   sql: string;
   purpose: string;
@@ -305,7 +333,39 @@ interface QueryRun {
   rows: any[];
   count: number;
   truncated: boolean;
+  chart?: ChartSpec | null;
   error?: string;
+}
+
+/**
+ * Valida o `chart` que a IA mandou contra o resultado REAL da consulta.
+ *
+ * O modelo às vezes cita coluna que não existe no SELECT ou aponta o y pra uma
+ * coluna de texto — aí o gráfico sairia vazio ou mentindo. Não passando na
+ * validação, devolve null e a tela mostra só a tabela. Isso não esconde dado
+ * nenhum: a tabela vem completa dos dois jeitos, o gráfico é leitura em cima.
+ */
+function validarChart(raw: any, run: { columns: string[]; rows: any[] }): ChartSpec | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const type = String(raw.type || '').toLowerCase();
+  if (type !== 'bar' && type !== 'line' && type !== 'pie') return null;
+
+  const x = String(raw.x || '');
+  const y = String(raw.y || '');
+  if (!run.columns.includes(x) || !run.columns.includes(y)) return null;
+  if (x === y) return null;
+  if (!run.rows.length) return null;
+
+  // y tem que ser numérico de verdade em pelo menos uma linha, senão o gráfico
+  // desenha zero pra tudo e parece que não há dado.
+  const temNumero = run.rows.some((r) => {
+    const v = r?.[y];
+    return v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+  });
+  if (!temNumero) return null;
+
+  const label = raw.label ? String(raw.label).slice(0, 120) : undefined;
+  return { type: type as ChartSpec['type'], x, y, label };
 }
 
 /** Roda a SQL no executor read-only e já devolve as linhas mascaradas. */
@@ -682,12 +742,14 @@ export const handler = async (req: Request, res: Response) => {
       }
 
       const exec = await execSql(sql);
+      const colunas = exec.rows.length ? Object.keys(exec.rows[0]) : [];
       const run: QueryRun = {
         sql, purpose,
-        columns: exec.rows.length ? Object.keys(exec.rows[0]) : [],
+        columns: colunas,
         rows: exec.rows,
         count: exec.count,
         truncated: exec.count >= 1000,
+        chart: validarChart(args.chart, { columns: colunas, rows: exec.rows }),
         error: exec.error,
       };
       runs.push(run);
@@ -725,16 +787,25 @@ export const handler = async (req: Request, res: Response) => {
         : 'Não consegui montar uma resposta pra isso. Pode reformular o pedido?';
     }
 
-    const storedQueries = runs.map((r) => ({
-      sql: r.sql,
-      purpose: r.purpose,
-      columns: r.columns,
-      rows: r.rows.slice(0, STORED_ROWS_PER_QUERY),
-      count: r.count,
-      truncated: r.truncated,
-      stored_rows: Math.min(r.rows.length, STORED_ROWS_PER_QUERY),
-      error: r.error || null,
-    }));
+    const storedQueries = runs.map((r) => {
+      const gravadas = Math.min(r.rows.length, STORED_ROWS_PER_QUERY);
+      // O gráfico só sobrevive ao F5 se TODAS as linhas couberam na gravação.
+      // Desenhar em cima de resultado cortado dá um gráfico que soma parte do
+      // dado e parece o total — número errado com cara de certo. Faltou linha,
+      // reabrir a conversa mostra a tabela (que já se anuncia parcial) e ponto.
+      const completo = gravadas >= r.count && !r.truncated;
+      return {
+        sql: r.sql,
+        purpose: r.purpose,
+        columns: r.columns,
+        rows: r.rows.slice(0, STORED_ROWS_PER_QUERY),
+        count: r.count,
+        truncated: r.truncated,
+        stored_rows: gravadas,
+        chart: completo ? r.chart || null : null,
+        error: r.error || null,
+      };
+    });
 
     const { data: aiMsg } = await supabase
       .from('report_messages')
