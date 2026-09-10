@@ -354,7 +354,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset' | 'reenviar';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -548,6 +548,66 @@ export const handler: RequestHandler = async (req, res) => {
         stats_evento: await g(`${CAPI_DATASET_ID}/stats?aggregation=event&start_time=1756684800`),
         stats_total: await g(`${CAPI_DATASET_ID}/stats?aggregation=event_total_counts`),
         fontes: await g(`${CAPI_DATASET_ID}/da_checks`),
+      });
+    }
+
+    // Reenvia conversao ja aceita, para o conjunto de dados ATUAL.
+    //
+    // Existe porque trocar de dataset e cenario real: em 09/09/2026 descobrimos
+    // que o dataset em uso era o pixel do checkout de um curso, e as conversoes
+    // do CRM tinham ido parar la. O dataset novo nasce vazio, e sem reenvio o
+    // historico se perde.
+    //
+    // Seguro por dois motivos: a Meta deduplica por `event_id` DENTRO de cada
+    // dataset, entao a mesma conversao em outro dataset nao duplica nada; e a
+    // janela de 7 dias e respeitada, porque evento mais velho a Meta recusa.
+    if (modo === 'reenviar') {
+      const body = (req.body || {}) as { confirmar?: boolean; dias?: number; somente_com_lead_id?: boolean };
+      if (body.confirmar !== true) return res.status(400).json({ error: 'exige confirmar: true' });
+      const dias = Math.min(Math.max(Number(body.dias) || 7, 1), 7);
+      const corte = new Date(Date.now() - dias * 86_400_000).toISOString();
+
+      const { data: candidatos, error: errSel } = await supabase
+        .from('meta_capi_events')
+        .select('id, event_id, event_time, user_data_hash')
+        .eq('status', 'sent')
+        .gte('event_time', corte);
+      if (errSel) return res.status(500).json({ error: errSel.message });
+
+      const alvo = (candidatos || []).filter((e: any) =>
+        body.somente_com_lead_id ? Boolean(e?.user_data_hash?.lead_id) : true,
+      );
+      if (!alvo.length) {
+        return res.status(200).json({ ok: true, dentro_da_janela: 0, reenfileirados: 0, dias });
+      }
+
+      const ids = alvo.map((e: any) => e.id);
+      let reenfileirados = 0;
+      for (let i = 0; i < ids.length; i += 200) {
+        const { error: errUp } = await supabase
+          .from('meta_capi_events')
+          .update({
+            status: 'pending',
+            enviado_em: null,
+            tentativas: 0,
+            http_status: null,
+            events_received: null,
+            fbtrace_id: null,
+            resposta: null,
+            proxima_tentativa_em: null,
+          })
+          .in('id', ids.slice(i, i + 200));
+        if (errUp) return res.status(500).json({ error: errUp.message, reenfileirados });
+        reenfileirados += ids.slice(i, i + 200).length;
+      }
+      return res.status(200).json({
+        ok: true,
+        dataset_destino: CAPI_DATASET_ID,
+        dias,
+        dentro_da_janela: (candidatos || []).length,
+        com_lead_id: (candidatos || []).filter((e: any) => e?.user_data_hash?.lead_id).length,
+        reenfileirados,
+        aviso: 'o despachante drena a fila no proximo ciclo',
       });
     }
 
