@@ -357,7 +357,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset' | 'reenviar' | 'trocar_otimizacao';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset' | 'reenviar' | 'trocar_otimizacao' | 'conjunto';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -671,6 +671,22 @@ export const handler: RequestHandler = async (req, res) => {
         explicacao_meta: resposta?.error?.error_user_msg ?? null,
         rollback: `{"modo":"trocar_otimizacao","adset_id":"${adsetId}","objetivo":"${(antes as any)?.optimization_goal}","confirmar":true}`,
       });
+    }
+
+    // Le UM conjunto por inteiro, ativo ou nao. `conjuntos` filtra por ACTIVE,
+    // entao um conjunto que sai do ar simplesmente some da lista — e sumir nao
+    // diz se foi pausado, reprovado ou se a campanha inteira parou.
+    if (modo === 'conjunto') {
+      const adsetId = String((req.body as any)?.adset_id || '');
+      if (!adsetId) return res.status(400).json({ error: 'informe adset_id' });
+      const r = await fetch(
+        `https://graph.facebook.com/${GRAPH_VERSION}/${adsetId}` +
+          `?fields=id,name,status,effective_status,optimization_goal,destination_type,promoted_object,` +
+          `created_time,updated_time,issues_info,recommendations,campaign{id,name,status,effective_status,objective}` +
+          `&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+      );
+      const j: any = await r.json();
+      return res.status(200).json(j?.error ? { erro: j.error.message, codigo: j.error.code } : j);
     }
 
     if (modo === 'conjuntos') {
