@@ -154,7 +154,7 @@ async function saudeDaIntegracao(): Promise<Record<string, unknown>> {
     const contas = await g('me/adaccounts?fields=id,name&limit=50');
     if (contas?.error) throw new Error(contas.error.message);
     const conjuntos: Array<{
-      nome: string; conta: string; campanha: string | null; otimizacao: string;
+      nome: string; conta: string; campanha: string | null; ativo: boolean; otimizacao: string;
       usa_dataset: boolean; gasto_7d: number | null; leads_meta_7d: number | null;
     }> = [];
     const janela7 = encodeURIComponent(JSON.stringify({ since: corteDeDias(7), until: hojeISO() }));
@@ -186,12 +186,18 @@ async function saudeDaIntegracao(): Promise<Record<string, unknown>> {
         porConjunto[nome] = atual;
       }
       for (const a of ads?.data ?? []) {
-        if (a?.effective_status !== 'ACTIVE') continue;
         const medido = porConjunto[String(a.name)] || null;
+        const ativo = a?.effective_status === 'ACTIVE';
+        // Pausado ENTRA se gastou na janela. O `insights` ja trouxe o numero
+        // dele (a chamada e por conta, nao por conjunto), e descartar aqui
+        // mostrava "—" no gasto de um conjunto que rodou 145 leads em 7 dias:
+        // a coluna da tela deixava de somar o extrato da conta.
+        if (!ativo && !medido) continue;
         conjuntos.push({
           nome: a.name,
           conta: c.name,
           campanha: a?.campaign?.name || null,
+          ativo,
           otimizacao: a.optimization_goal,
           usa_dataset: String(a?.promoted_object?.pixel_id || '') === String(CAPI_DATASET_ID),
           gasto_7d: medido ? Number(medido.gasto.toFixed(2)) : null,
@@ -202,9 +208,11 @@ async function saudeDaIntegracao(): Promise<Record<string, unknown>> {
     const dados = {
       disponivel: true,
       dataset_id: CAPI_DATASET_ID,
-      conjuntos_ativos: conjuntos.length,
-      conjuntos_otimizando_conversao: conjuntos.filter((x) => x.otimizacao === 'QUALITY_LEAD').length,
-      conjuntos_usando_dataset: conjuntos.filter((x) => x.usa_dataset).length,
+      // Só ATIVO: o array agora carrega pausado-com-gasto para a tabela de
+      // desempenho, e contá-lo aqui inflaria o checklist da integração.
+      conjuntos_ativos: conjuntos.filter((x) => x.ativo).length,
+      conjuntos_otimizando_conversao: conjuntos.filter((x) => x.ativo && x.otimizacao === 'QUALITY_LEAD').length,
+      conjuntos_usando_dataset: conjuntos.filter((x) => x.ativo && x.usa_dataset).length,
       detalhe: conjuntos,
     };
     cacheIntegracao = { em: Date.now(), dados };
@@ -323,7 +331,7 @@ export const handler: RequestHandler = async (_req, res) => {
     // Conjunto pausado nao some da tabela: ele gastou e trouxe lead na janela, e
     // esconde-lo faria a soma da tela nao bater com a soma da conta.
     const conjuntosMeta = ((integracao as any)?.detalhe || []) as Array<{
-      nome: string; conta: string; campanha: string | null; otimizacao: string;
+      nome: string; conta: string; campanha: string | null; ativo: boolean; otimizacao: string;
       usa_dataset: boolean; gasto_7d: number | null; leads_meta_7d: number | null;
     }>;
     const crmPorConjunto: Record<string, { leads_7d: number; leads_30d: number; fechados_30d: number }> = {};
@@ -359,7 +367,7 @@ export const handler: RequestHandler = async (_req, res) => {
           nome_invalido: nomeInvalido(nome),
           conta: meta?.conta ?? null,
           campanha: meta?.campanha ?? null,
-          ativo: Boolean(meta),
+          ativo: meta?.ativo ?? false,
           otimizacao: meta?.otimizacao ?? null,
           // O piloto de Leads com Conversao: o unico conjunto que a Meta compra
           // por quem fecha, e nao por volume de formulario.
