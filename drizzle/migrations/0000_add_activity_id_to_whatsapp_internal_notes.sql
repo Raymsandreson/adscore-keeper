@@ -1,0 +1,2 @@
+ALTER TABLE public.whatsapp_internal_notes ADD COLUMN IF NOT EXISTS activity_id UUID;
+CREATE INDEX IF NOT EXISTS idx_whatsapp_internal_notes_activity_id ON public.whatsapp_internal_notes (activity_id) WHERE activity_id IS NOT NULL;
