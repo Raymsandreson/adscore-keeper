@@ -171,6 +171,9 @@ async function inventario() {
  * preenchidos em 23.426). Ou alguem baixa CSV a mao, ou tem lead parado la que
  * nunca virou atendimento. Isto mede qual das duas.
  */
+/** Nome do CRM que a Meta exibe na configuracao de leads com conversao. */
+const LEAD_EVENT_SOURCE = process.env.META_CAPI_LEAD_SOURCE || 'WhatsJud';
+
 /**
  * Token de cada pagina, a partir do token do sistema.
  *
@@ -725,13 +728,26 @@ export const handler: RequestHandler = async (req, res) => {
       return res.status(200).json({ drenados: 0, mensagem: 'fila vazia' });
     }
 
+    // MARCA DE EVENTO DE CRM.
+    //
+    // A Meta exige `custom_data.event_source = "crm"` e
+    // `custom_data.lead_event_source = "<nome do CRM>"` para reconhecer o evento
+    // como vindo de um CRM. Sem eles ela ACEITA o evento — `http 200`,
+    // `events_received` contando — e simplesmente nao o considera para "leads
+    // com conversao". Foi a explicacao do porque a opcao ficava indisponivel no
+    // Gerenciador mesmo com 39 conversoes aceitas e 24 com `lead_id`.
+    //
+    // Injetado aqui no ENVIO, e nao no enfileiramento, de proposito: o que ja
+    // esta na fila passa a sair correto sem precisar reescrever linha nenhuma,
+    // e reenvio pega a marca automaticamente.
+    const marcaCrm = { event_source: 'crm', lead_event_source: LEAD_EVENT_SOURCE };
     const eventos = (fila as any[]).map((f) => ({
       event_name: f.event_name,
       event_id: f.event_id,
       event_time: eventTimeSeguro(f.event_time),
       action_source: f.action_source || 'system_generated',
       user_data: f.user_data_hash || {},
-      ...(f.custom_data && Object.keys(f.custom_data).length ? { custom_data: f.custom_data } : {}),
+      custom_data: { ...marcaCrm, ...(f.custom_data || {}) },
     }));
 
     if (dry_run) {
