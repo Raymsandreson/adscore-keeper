@@ -328,6 +328,8 @@ app.get('/health', (_req, res) => {
     capi_reconcile: capiReconcileEstado,
     // Status que a equipe escreve na planilha chegando ao CRM.
     sheet_status_sync: sheetStatusEstado,
+    // Lead lido direto da Meta, sem depender da planilha.
+    meta_leads_sync: metaLeadsEstado,
     // Webhook da UazAPI: entra sem credencial de proposito (servico externo).
     // Aqui se mede se da pra exigir o instance_token como prova de origem —
     // `sem_token_por_evento` e a lista que precisa esvaziar antes disso.
@@ -1070,6 +1072,76 @@ if (SHEET_SYNC_LIGADO) {
 } else {
   console.log('[cron:sheet-lead-sync] DESLIGADO (defina SHEET_LEAD_SYNC=on para ligar)');
 }
+
+// ============================================================
+// CRON: lead do formulario da Meta -> funil, sem a planilha no meio
+//
+// A planilha do Google e ponto unico de falha silenciosa. Medido em 10/09/2026
+// no board BPC: **3.492 linhas na planilha, 2.290 lidas** — 875 perdidas em duas
+// abas que nao tem linha de cabecalho (a primeira linha ja e dado) e 220 com a
+// celula de nome vazia. Nenhuma dessas falhas reclama.
+//
+// A API da Meta nao tem esse problema: le dado estruturado, com o id do lead e a
+// atribuicao completa. Ja trouxe 2.147 leads ao BPC, mais do que a planilha
+// inteira alcanca. Com este cron, o que a planilha perde deixa de importar.
+//
+// NAO substitui o cron da planilha: os dois criam no mesmo board e deduplicam
+// pelo mesmo telefone (`lib/leadAdsSheet`), entao quem chegar primeiro cria e o
+// outro reconhece. Planilha continua util para o que a equipe escreve nela
+// (a coluna de status), que a API nao tem.
+//
+// 30 min e nao 10: cada rodada varre os formularios de 3 paginas na Graph API, e
+// a Meta limita chamada por segundo. A janela de 7 dias mantem a leitura curta.
+// ============================================================
+const META_LEADS_INTERVAL_MS = 30 * 60 * 1000;
+const META_LEADS_DIAS = 7;
+const metaLeadsEstado = {
+  execucoes: 0,
+  ultima_em: null as string | null,
+  ultimo_resultado: null as string | null,
+  criados_acumulado: 0,
+};
+
+async function runMetaLeadsSync() {
+  metaLeadsEstado.execucoes += 1;
+  metaLeadsEstado.ultima_em = new Date().toISOString();
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/meta-leads-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: JSON.stringify({ since_days: META_LEADS_DIAS, dry_run: false }),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    if (json?.error) {
+      console.error(`[cron:meta-leads] ${json.error}`);
+      metaLeadsEstado.ultimo_resultado = `erro: ${String(json.error).slice(0, 120)}`;
+      return;
+    }
+    const criados = Number(json?.criados || 0);
+    const alertas = Number(json?.formularios_com_alerta || 0);
+    metaLeadsEstado.criados_acumulado += criados;
+    metaLeadsEstado.ultimo_resultado = `criados=${criados} formularios=${json?.formularios_roteados ?? 0} alertas=${alertas}`;
+    // Formulario que le linha e aproveita ZERO e mapeamento quebrado, nao
+    // ausencia de lead. Ja aconteceu (os dois do Israel, em portugues) e custou
+    // 817 leads. Aqui isso grita.
+    if (alertas > 0) {
+      console.error(
+        `[cron:meta-leads] ALERTA: ${alertas} formulario(s) leram linhas e aproveitaram zero — mapeamento de campo quebrado`,
+      );
+    }
+    if (criados > 0) console.log(`[cron:meta-leads] ${metaLeadsEstado.ultimo_resultado}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[cron:meta-leads] failed:', msg);
+    metaLeadsEstado.ultimo_resultado = `falha: ${msg.slice(0, 120)}`;
+  }
+}
+
+// 540s: depois de sheet-lead-sync (360s), capi-reconcile (420s) e
+// sheet-status (480s), pra nao disputar I/O nem cota no boot.
+setTimeout(runMetaLeadsSync, 540_000);
+setInterval(runMetaLeadsSync, META_LEADS_INTERVAL_MS);
+console.log(`[cron:meta-leads] ligado — janela de ${META_LEADS_DIAS} dias, a cada 30 min`);
 
 // ============================================================
 // CRON: status da planilha -> CRM
