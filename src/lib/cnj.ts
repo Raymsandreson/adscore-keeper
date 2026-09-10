@@ -279,3 +279,32 @@ export function candidatosCnj(bruto: string | null | undefined): CandidatoCnj[] 
   }
   return candidatos;
 }
+
+/**
+ * O texto digitado numa caixa de busca é um número de processo? Devolve como
+ * ele deve ser escrito.
+ *
+ * A busca já resolve o CNJ colado sem máscara pela RPC `busca_unificada`, que
+ * compara `cnj_digitos`. O que ela não resolve é dígito a menos ou a mais na
+ * cópia: em 09/09/2026 a busca por "0008466920255080009" (19 dígitos, um zero
+ * à esquerda perdido no caminho) devolveu nada, e o processo
+ * 0000846-69.2025.5.08.0009 estava lá. Comparação por dígito exige que os
+ * dígitos estejam certos.
+ *
+ * O reparo não chuta: 19 ou 21 dígitos só viram um número quando existe UM
+ * único candidato que fecha o dígito verificador (módulo 97) e tem segmento de
+ * Judiciário válido. Dois candidatos = ambíguo = devolve null, e a busca segue
+ * com o texto cru em vez de mascarar por cima do que a pessoa quis dizer.
+ *
+ * Só entra em cena de 19 a 21 dígitos, faixa onde CPF (11), telefone (11 a 13)
+ * e NB do INSS (10) não chegam.
+ */
+export function cnjDigitado(texto: string | null | undefined): CandidatoCnj | null {
+  const cru = String(texto ?? '').trim();
+  // Letra em qualquer lugar: é nome, e-mail ou "CASO-369", não número de processo.
+  if (!cru || /[^\d\s.\-/]/.test(cru)) return null;
+  const digits = onlyDigits(cru);
+  if (digits.length < 19 || digits.length > 21) return null;
+  const candidatos = candidatosCnj(digits);
+  return candidatos.length === 1 ? candidatos[0] : null;
+}
