@@ -12,6 +12,13 @@ import {
 } from './lib/functionAuth';
 import { observeUazapiOriginAsync, uazapiOriginStats } from './lib/webhookOrigin';
 import { catalogoDeSchema, diagnosticoDoCatalogo } from './lib/schemaCatalog';
+// Estado das rotinas: mora em lib/ porque a aba de Metricas tambem le.
+import {
+  sheetSyncEstado,
+  capiReconcileEstado,
+  sheetStatusEstado,
+  metaLeadsEstado,
+} from './lib/estadoDosCrons';
 // Aliases explícitos: no Railway `SUPABASE_URL` sem prefixo é o Cloud (ver
 // CLOUD_FUNCTIONS_URL abaixo). Estes dois são do Externo.
 import {
@@ -1016,14 +1023,6 @@ const SHEET_SYNC_LIGADO = (process.env.SHEET_LEAD_SYNC || '').toLowerCase() === 
 // indistinguiveis de fora: com a janela ja importada, uma rodada correta cria
 // zero leads e nao deixa rastro nenhum no banco. Foi assim que 4 jobs do
 // pg_cron do Externo rodaram pra nada por meses sem ninguem notar.
-const sheetSyncEstado = {
-  ligado: SHEET_SYNC_LIGADO,
-  execucoes: 0,
-  ultima_em: null as string | null,
-  ultimo_resultado: null as string | null,
-  criados_acumulado: 0,
-};
-
 async function runSheetLeadSync() {
   // Antes do await: prova que a rodada disparou mesmo que ela trave depois.
   sheetSyncEstado.execucoes += 1;
@@ -1095,13 +1094,6 @@ if (SHEET_SYNC_LIGADO) {
 // ============================================================
 const META_LEADS_INTERVAL_MS = 30 * 60 * 1000;
 const META_LEADS_DIAS = 7;
-const metaLeadsEstado = {
-  execucoes: 0,
-  ultima_em: null as string | null,
-  ultimo_resultado: null as string | null,
-  criados_acumulado: 0,
-};
-
 async function runMetaLeadsSync() {
   metaLeadsEstado.execucoes += 1;
   metaLeadsEstado.ultima_em = new Date().toISOString();
@@ -1163,13 +1155,6 @@ console.log(`[cron:meta-leads] ligado — janela de ${META_LEADS_DIAS} dias, a c
 // ============================================================
 const SHEET_STATUS_INTERVAL_MS = 60 * 60 * 1000;
 const SHEET_STATUS_DIAS = 90;
-const sheetStatusEstado = {
-  execucoes: 0,
-  ultima_em: null as string | null,
-  ultimo_resultado: null as string | null,
-  status_escritos_acumulado: 0,
-};
-
 async function runSheetStatusSync() {
   sheetStatusEstado.execucoes += 1;
   sheetStatusEstado.ultima_em = new Date().toISOString();
@@ -1225,13 +1210,6 @@ console.log(`[cron:sheet-status] ligado — janela de ${SHEET_STATUS_DIAS} dias,
 // em 15 min não duplica nem reenvia — quem já foi volta como `ja_existia`.
 // ============================================================
 const CAPI_RECONCILE_INTERVAL_MS = 15 * 60 * 1000;
-const capiReconcileEstado = {
-  execucoes: 0,
-  ultima_em: null as string | null,
-  ultimo_resultado: null as string | null,
-  enfileirados_acumulado: 0,
-};
-
 async function runCapiReconcile() {
   capiReconcileEstado.execucoes += 1;
   capiReconcileEstado.ultima_em = new Date().toISOString();

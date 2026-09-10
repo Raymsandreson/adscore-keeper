@@ -11,6 +11,7 @@ import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
 import { CAPI_TOKEN, GRAPH_VERSION, CAPI_DATASET_ID } from '../lib/metaCapi';
 import { hojeISO, diasAtras, corteDeDias, diaDoInstante, diaDaColuna } from '../lib/diasSaoPaulo';
+import { rotinasParaOPainel } from '../lib/estadoDosCrons';
 
 // PostgREST corta em 1000. Não é teoria: o dedup da planilha leu 1000 de 7.255
 // e teria recriado lead por 10 minutos até alguém notar. Toda leitura de volume
@@ -152,18 +153,49 @@ async function saudeDaIntegracao(): Promise<Record<string, unknown>> {
   try {
     const contas = await g('me/adaccounts?fields=id,name&limit=50');
     if (contas?.error) throw new Error(contas.error.message);
-    const conjuntos: Array<{ nome: string; conta: string; otimizacao: string; usa_dataset: boolean }> = [];
+    const conjuntos: Array<{
+      nome: string; conta: string; campanha: string | null; otimizacao: string;
+      usa_dataset: boolean; gasto_7d: number | null; leads_meta_7d: number | null;
+    }> = [];
+    const janela7 = encodeURIComponent(JSON.stringify({ since: corteDeDias(7), until: hojeISO() }));
     for (const c of contas?.data ?? []) {
       const ads = await g(
-        `${c.id}/adsets?fields=name,effective_status,optimization_goal,promoted_object&limit=200`,
+        `${c.id}/adsets?fields=name,effective_status,optimization_goal,promoted_object,campaign{name}&limit=200`,
       );
+      // `level=adset` traz TODOS os conjuntos da conta numa chamada. Pedir
+      // conjunto a conjunto estouraria a cota (a Meta ja devolveu "1 call per
+      // 30 seconds" neste endpoint) e deixaria a aba sem numero nenhum.
+      const ins = await g(
+        `${c.id}/insights?level=adset&fields=adset_id,adset_name,spend,actions` +
+          `&time_range=${janela7}&limit=500`,
+      );
+      const porConjunto: Record<string, { gasto: number; leads: number }> = {};
+      for (const linha of ins?.data ?? []) {
+        const nome = String(linha?.adset_name || '');
+        if (!nome) continue;
+        // A Meta reporta lead em mais de um `action_type` conforme o destino do
+        // formulario. Somar so `lead` perde o do formulario nativo em algumas
+        // contas; somar todos os parecidos contaria o mesmo lead duas vezes.
+        // `lead` e o agregado oficial — e o que o Gerenciador mostra na coluna.
+        const leads = (linha?.actions ?? [])
+          .filter((a: any) => a?.action_type === 'lead')
+          .reduce((t: number, a: any) => t + Number(a.value || 0), 0);
+        const atual = porConjunto[nome] || { gasto: 0, leads: 0 };
+        atual.gasto += Number(linha?.spend || 0);
+        atual.leads += leads;
+        porConjunto[nome] = atual;
+      }
       for (const a of ads?.data ?? []) {
         if (a?.effective_status !== 'ACTIVE') continue;
+        const medido = porConjunto[String(a.name)] || null;
         conjuntos.push({
           nome: a.name,
           conta: c.name,
+          campanha: a?.campaign?.name || null,
           otimizacao: a.optimization_goal,
           usa_dataset: String(a?.promoted_object?.pixel_id || '') === String(CAPI_DATASET_ID),
+          gasto_7d: medido ? Number(medido.gasto.toFixed(2)) : null,
+          leads_meta_7d: medido ? medido.leads : null,
         });
       }
     }
@@ -193,7 +225,7 @@ export const handler: RequestHandler = async (_req, res) => {
       leTudo<any>((de, ate) =>
         supabase
           .from('leads')
-          .select('created_at, source, board_id, facebook_lead_id')
+          .select('created_at, source, board_id, facebook_lead_id, adset_name, lead_status')
           .is('deleted_at', null)
           // -03:00 e nao Z: `corte30` ja e dia de Sao Paulo. Com `Z` a busca
           // comecava 3h antes e `leads.length` (o card "em 30") contava a mais.
@@ -204,7 +236,7 @@ export const handler: RequestHandler = async (_req, res) => {
       leTudo<any>((de, ate) =>
         supabase
           .from('leads')
-          .select('became_client_date, source, board_id, facebook_lead_id')
+          .select('became_client_date, source, board_id, facebook_lead_id, adset_name')
           .is('deleted_at', null)
           .eq('lead_status', 'closed')
           .gte('became_client_date', corte30)
@@ -280,6 +312,96 @@ export const handler: RequestHandler = async (_req, res) => {
     // 30 dias divide gasto de 30 por lead de 7 e mente para baixo.
     const cobertura_completa_30d = Boolean(primeiroDiaPago && primeiroDiaPago <= corte30);
 
+    // DESEMPENHO POR CONJUNTO — onde o dinheiro entra e de onde o contrato sai.
+    //
+    // Os conjuntos sao nomeados por acolhedor (ISRAEL, MATEUS, KAROL, EDILAN),
+    // entao esta e tambem a leitura por pessoa. Cruzar os dois lados importa:
+    // a Meta sabe o gasto e quantos formularios preencheu; so o CRM sabe quantos
+    // viraram contrato. Nenhum dos dois responde "quanto custa um cliente".
+    //
+    // A juncao e pelo NOME do conjunto (`leads.adset_name`), unico campo comum.
+    // Conjunto pausado nao some da tabela: ele gastou e trouxe lead na janela, e
+    // esconde-lo faria a soma da tela nao bater com a soma da conta.
+    const conjuntosMeta = ((integracao as any)?.detalhe || []) as Array<{
+      nome: string; conta: string; campanha: string | null; otimizacao: string;
+      usa_dataset: boolean; gasto_7d: number | null; leads_meta_7d: number | null;
+    }>;
+    const crmPorConjunto: Record<string, { leads_7d: number; leads_30d: number; fechados_30d: number }> = {};
+    const zeraConjunto = (n: string) => {
+      if (!crmPorConjunto[n]) crmPorConjunto[n] = { leads_7d: 0, leads_30d: 0, fechados_30d: 0 };
+      return crmPorConjunto[n];
+    };
+    for (const l of leadsPagos) {
+      const n = String(l.adset_name || '').trim();
+      if (!n) continue;
+      const e = zeraConjunto(n);
+      e.leads_30d += 1;
+      if (diaDoInstante(l.created_at) >= corte7) e.leads_7d += 1;
+    }
+    for (const f of fechados.filter(ehPago)) {
+      const n = String(f.adset_name || '').trim();
+      if (!n) continue;
+      zeraConjunto(n).fechados_30d += 1;
+    }
+    // Erro da Graph API gravado onde deveria estar o nome do conjunto. Aparece
+    // marcado, nao escondido: sao leads reais, com gasto real por tras, e
+    // apaga-los da tela apagaria tambem o pedido de conserto.
+    const nomeInvalido = (n: string) =>
+      n.length > 80 || /permission|http|error/i.test(n);
+    const nomesUnidos = new Set([...conjuntosMeta.map((c) => c.nome), ...Object.keys(crmPorConjunto)]);
+    const desempenho_por_conjunto = [...nomesUnidos]
+      .map((nome) => {
+        const meta = conjuntosMeta.find((c) => c.nome === nome) || null;
+        const crm = crmPorConjunto[nome] || { leads_7d: 0, leads_30d: 0, fechados_30d: 0 };
+        const gasto = meta?.gasto_7d ?? null;
+        return {
+          nome,
+          nome_invalido: nomeInvalido(nome),
+          conta: meta?.conta ?? null,
+          campanha: meta?.campanha ?? null,
+          ativo: Boolean(meta),
+          otimizacao: meta?.otimizacao ?? null,
+          // O piloto de Leads com Conversao: o unico conjunto que a Meta compra
+          // por quem fecha, e nao por volume de formulario.
+          piloto_conversao: meta?.otimizacao === 'QUALITY_LEAD',
+          usa_dataset: meta?.usa_dataset ?? null,
+          gasto_7d: gasto,
+          leads_meta_7d: meta?.leads_meta_7d ?? null,
+          leads_crm_7d: crm.leads_7d,
+          leads_crm_30d: crm.leads_30d,
+          fechados_30d: crm.fechados_30d,
+          // Janelas iguais dos dois lados: gasto de 7 dias sobre lead de 7 dias.
+          custo_por_lead_7d:
+            gasto && gasto > 0 && crm.leads_7d > 0 ? Number((gasto / crm.leads_7d).toFixed(2)) : null,
+          // Deliberadamente vazio quando nao ha fechamento: "R$ 0,00 por
+          // contrato" e mentira, e "infinito" nao ajuda ninguem a decidir.
+          taxa_fechamento_30d:
+            crm.leads_30d > 0 ? Number(((crm.fechados_30d / crm.leads_30d) * 100).toFixed(2)) : null,
+        };
+      })
+      .sort((a, b) => (b.gasto_7d ?? -1) - (a.gasto_7d ?? -1) || b.leads_crm_30d - a.leads_crm_30d);
+
+    // FUNIL DO LEAD DE ANUNCIO. `lead_status` e a coluna que a equipe move (e
+    // que a planilha escreve de volta); `status` guarda a etapa do kanban e,
+    // medido em 10/09/2026, 100% dos 3.290 leads pagos estavam em "Recepcao" —
+    // a etapa nao e usada para lead de anuncio, entao contar por ela mostraria
+    // uma barra so e nenhuma informacao.
+    const contaStatus = (v: string) => leadsPagos.filter((l) => (l.lead_status || '') === v).length;
+    const funil_pago = {
+      total: leadsPagos.length,
+      sem_resposta: contaStatus('no_response'),
+      em_atendimento: contaStatus('in_progress'),
+      fechados: contaStatus('closed'),
+      inviaveis: contaStatus('inviavel'),
+      recusados: contaStatus('refused') + contaStatus('cancelled'),
+      taxa_contato:
+        leadsPagos.length > 0
+          ? Number((((leadsPagos.length - contaStatus('no_response')) / leadsPagos.length) * 100).toFixed(2))
+          : null,
+      taxa_fechamento:
+        leadsPagos.length > 0 ? Number(((contaStatus('closed') / leadsPagos.length) * 100).toFixed(2)) : null,
+    };
+
     const serieDias = Array.from({ length: 30 }, (_, i) => diasAtras(29 - i));
 
     return res.status(200).json({
@@ -340,6 +462,10 @@ export const handler: RequestHandler = async (_req, res) => {
         return acc;
       }, {}),
       integracao,
+      desempenho_por_conjunto,
+      funil_pago,
+      // Rotinas: contador zera a cada deploy, entao quem responde e `ultima_em`.
+      rotinas: rotinasParaOPainel(),
       // Custo só existe se houve gasto: dividir por zero e mostrar "R$ 0,00 por
       // lead" mentiria tanto quanto esconder o número.
       //

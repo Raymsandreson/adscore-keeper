@@ -16,6 +16,9 @@ Meta não pode chegar ao front e `meta_capi_events` tem RLS sem policy.
 | Custo por lead pago (7d) | gasto 7d ÷ leads pagos 7d |
 | Fila de conversões | `meta_capi_events` por status |
 | Gráfico de 30 dias | barras de leads/fechamentos + linha de investimento |
+| Desempenho por conjunto | Meta (`insights?level=adset`, 7d) cruzado com `leads.adset_name` |
+| Funil dos leads de anúncio | `leads.lead_status` só dos pagos, 30 dias |
+| Rotinas automáticas | `lib/estadoDosCrons.ts`, o mesmo estado que o `/health` mostra |
 
 Lead **pago** = tem `facebook_lead_id` ou `source ilike '%planilha meta ads%'`.
 
@@ -67,3 +70,54 @@ baixo.
 
 A borda do fetch também é `-03:00`, não `Z` — com `Z` a busca começava três
 horas antes e o card "em 30" contava a mais.
+
+## Desempenho por conjunto (10/09/2026)
+
+A tabela que responde *de quem vem o contrato*. Os conjuntos são nomeados por
+acolhedor (`CONJUNTO 3 - ISRAEL`, `CONJUNTO 6 - MATEUS`, `CONJUNTO - KAROLYNE`),
+então cada linha é também uma pessoa.
+
+A junção é pelo **nome** do conjunto — `leads.adset_name` é o único campo comum
+entre os dois lados. Cada lado sabe metade: a Meta tem gasto e quantos
+formulários foram preenchidos; só o CRM sabe quantos viraram contrato.
+
+Medido em 10/09/2026, com 30 dias de leads pagos:
+
+| Conjunto | Leads | Fechados |
+|---|---:|---:|
+| CONJUNTO 3 - ISRAEL — Cópia | 740 | 18 |
+| CONJUNTO 6 - MATEUS — Cópia | 733 | 1 |
+| CONJUNTO 4 KAROL — Cópia | 698 | 0 |
+| CONJUNTO 5 EDILAN [2] | 538 | 1 |
+
+Volume quase idêntico, desfecho não. É esse contraste que a otimização por
+conversão existe para explorar — e é a linha de base contra a qual o piloto
+`CONJUNTO - KAROLYNE` (QUALITY_LEAD desde 10/09) vai ser comparado.
+
+**Conjunto pausado continua na tabela** enquanto tiver gasto ou lead na janela.
+Escondê-lo faria a soma da tela não bater com a soma da conta de anúncios.
+
+**Nome inválido:** 8 leads têm a mensagem de erro da Graph API (`You don't have
+enough permission…`) gravada em `adset_name`. A tela marca a linha como "nome
+inválido" em vez de escondê-la: os leads são reais e o gasto por trás também, e
+apagá-los da tela apagaria junto o pedido de conserto.
+
+## Funil dos leads de anúncio
+
+`lead_status`, não `status`. Medido em 10/09/2026: **100% dos 3.290 leads pagos
+estavam na etapa "Recepção"** do kanban — a etapa não é usada para lead de
+anúncio, então contar por ela mostraria uma barra só e nenhuma informação. Quem
+se move é o `lead_status`, que é também a coluna que a planilha escreve de volta.
+
+O degrau que mais come lead é o primeiro: 2.879 de 3.290 nunca responderam.
+
+## Rotinas automáticas
+
+O estado dos quatro crons saiu de `index.ts` para
+`railway-server/src/lib/estadoDosCrons.ts`, porque agora `/health` e a aba de
+Métricas leem o mesmo objeto. "Esse número está velho?" e "a rotina parou?" são a
+mesma pergunta vista de dois lados.
+
+Os contadores **zeram a cada deploy** — são de processo, não de banco. Por isso a
+tela mostra a última execução, e não o total: `execucoes: 0` logo depois de uma
+publicação significa "ainda não rodou nesta versão", não "está parado".
