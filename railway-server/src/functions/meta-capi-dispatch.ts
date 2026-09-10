@@ -357,7 +357,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset' | 'reenviar';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset' | 'reenviar' | 'trocar_otimizacao';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -613,6 +613,63 @@ export const handler: RequestHandler = async (req, res) => {
         com_lead_id: (candidatos || []).filter((e: any) => e?.user_data_hash?.lead_id).length,
         reenfileirados,
         aviso: 'o despachante drena a fila no proximo ciclo',
+      });
+    }
+
+    // Troca a otimizacao de UM conjunto de anuncios.
+    //
+    // Existe porque a interface do Gerenciador manteve "leads com conversao"
+    // indisponivel mesmo com o conjunto de dados recebendo evento de CRM com
+    // `lead_id`. A API aceita a alteracao — conferido com `validate_only` nas
+    // duas contas — entao o bloqueio e da interface, nao da plataforma.
+    //
+    // `objetivo` aceita QUALITY_LEAD e LEAD_GENERATION: a volta e pelo mesmo
+    // caminho, em segundos. Trocar otimizacao ZERA O APRENDIZADO do conjunto,
+    // entao isto se faz num conjunto por vez e se observa por dias.
+    if (modo === 'trocar_otimizacao') {
+      const body = (req.body || {}) as { adset_id?: string; objetivo?: string; confirmar?: boolean };
+      const adsetId = String(body.adset_id || '');
+      const objetivo = String(body.objetivo || '');
+      if (!adsetId) return res.status(400).json({ error: 'informe adset_id' });
+      if (!['QUALITY_LEAD', 'LEAD_GENERATION'].includes(objetivo)) {
+        return res.status(400).json({ error: 'objetivo deve ser QUALITY_LEAD ou LEAD_GENERATION' });
+      }
+      if (body.confirmar !== true) return res.status(400).json({ error: 'exige confirmar: true' });
+
+      const get = async (path: string) => {
+        const r = await fetch(
+          `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
+            `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+        );
+        const j: any = await r.json();
+        return j?.error ? { erro: j.error.message, codigo: j.error.code } : j;
+      };
+
+      // Retrato ANTES: e a chave de rollback, e prova o que existia.
+      const antes = await get(
+        `${adsetId}?fields=id,name,optimization_goal,effective_status,promoted_object,campaign{name}`,
+      );
+      if ((antes as any)?.erro) return res.status(200).json({ ok: false, etapa: 'leitura', ...(antes as any) });
+
+      const r = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${adsetId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ optimization_goal: objetivo, access_token: CAPI_TOKEN }),
+      });
+      const resposta: any = await r.json();
+
+      const depois = await get(`${adsetId}?fields=id,name,optimization_goal,effective_status`);
+      return res.status(200).json({
+        ok: !resposta?.error,
+        conjunto: (antes as any)?.name,
+        campanha: (antes as any)?.campaign?.name ?? null,
+        antes: (antes as any)?.optimization_goal,
+        pedido: objetivo,
+        depois: (depois as any)?.optimization_goal,
+        aplicou: (depois as any)?.optimization_goal === objetivo,
+        erro: resposta?.error?.message ?? null,
+        explicacao_meta: resposta?.error?.error_user_msg ?? null,
+        rollback: `{"modo":"trocar_otimizacao","adset_id":"${adsetId}","objetivo":"${(antes as any)?.optimization_goal}","confirmar":true}`,
       });
     }
 
