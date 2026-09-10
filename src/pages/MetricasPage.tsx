@@ -103,6 +103,9 @@ interface Painel {
   custo: {
     leads_pagos: number; fechamentos_pagos: number;
     por_lead_pago: number | null; por_fechamento_pago: number | null;
+    gasto_sem_lead_no_crm: number; gasto_com_lead_no_crm: number;
+    por_lead_pago_so_do_que_gerou: number | null;
+    campanhas_sem_lead: Array<{ campanha: string; gasto: number; conjuntos: number; leads_meta: number }>;
     cobertura_pagos_desde: string | null; cobertura_completa: boolean; aviso: string | null;
   };
 }
@@ -328,25 +331,30 @@ function BarraDeFiltros({
  * que gastou R$ 373 e trouxe 130. É o número que alguém precisa ver hoje, não
  * rolar até encontrar.
  */
-function GastoSemLead({ itens }: { itens: Painel['desempenho_por_conjunto'] }) {
-  const mudos = (itens || []).filter((c) => (c.gasto ?? 0) > 0 && c.leads_crm === 0);
-  if (!mudos.length) return null;
-  const total = mudos.reduce((t, c) => t + (c.gasto ?? 0), 0);
+function GastoSemLead({ custo }: { custo: Painel['custo'] }) {
+  const campanhas = custo?.campanhas_sem_lead || [];
+  if (!campanhas.length) return null;
+  const formulariosPerdidos = campanhas.reduce((t, c) => t + (c.leads_meta || 0), 0);
   return (
     <Card className="border-amber-500/40">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2 text-amber-700 dark:text-amber-500">
-          <AlertTriangle className="h-4 w-4" />Gasto sem lead no funil
+          <AlertTriangle className="h-4 w-4" />Investimento que não alimenta o CRM
         </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Agrupado por campanha — conjunto a conjunto seriam dezenas de linhas e nenhuma decisão.
+        </p>
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold tabular-nums text-amber-700 dark:text-amber-500">{brl(total)}</div>
+        <div className="text-2xl font-bold tabular-nums text-amber-700 dark:text-amber-500">
+          {brl(custo.gasto_sem_lead_no_crm)}
+        </div>
         <div className="mt-3 space-y-1.5">
-          {mudos.map((c) => (
-            <div key={c.nome} className="flex items-baseline justify-between gap-3 text-sm">
-              <span className="truncate" title={c.nome}>
-                {c.nome_invalido ? 'conjunto sem nome válido' : c.nome}
-                {!c.ativo && <span className="text-xs text-muted-foreground ml-2">pausado</span>}
+          {campanhas.map((c) => (
+            <div key={c.campanha} className="flex items-baseline justify-between gap-3 text-sm">
+              <span className="truncate" title={c.campanha}>
+                {c.campanha}
+                <span className="text-xs text-muted-foreground ml-2">{num(c.conjuntos)} conjunto(s)</span>
               </span>
               <span className="shrink-0 tabular-nums">
                 {brl(c.gasto)}
@@ -358,8 +366,13 @@ function GastoSemLead({ itens }: { itens: Painel['desempenho_por_conjunto'] }) {
           ))}
         </div>
         <p className="text-[11px] text-muted-foreground mt-3 border-t pt-2">
-          Conjunto com formulário na Meta e zero no CRM é lead comprado que não chegou ao funil — vale
-          conferir o roteamento. Zero dos dois lados é anúncio rodando sem gerar formulário.
+          Campanha que vende outro produto (curso, guia, seguro) não deveria mesmo aparecer no funil — o
+          que ela distorce é o custo por lead da visão "todos os funis", porque o gasto dela entra no
+          numerador e os leads dela não entram no denominador. Filtrar por funil resolve.
+          {formulariosPerdidos > 0 && (
+            <> Já os {num(formulariosPerdidos)} formulários registrados na Meta e ausentes do CRM são
+            outra coisa: ou é roteamento faltando, ou é lead de produto que não usa o CRM.</>
+          )}
         </p>
       </CardContent>
     </Card>
@@ -722,9 +735,17 @@ export default function MetricasPage() {
                 valor={brl(custo?.por_lead_pago)}
                 sub={`${num(custo?.leads_pagos)} leads de anúncio no período`}
                 rodape={
-                  custo?.por_fechamento_pago
-                    ? `${brl(custo.por_fechamento_pago)} por contrato fechado`
-                    : 'sem fechamento pago no período para calcular o custo por contrato'
+                  [
+                    custo?.por_fechamento_pago
+                      ? `${brl(custo.por_fechamento_pago)} por contrato fechado`
+                      : 'sem fechamento pago no período para o custo por contrato',
+                    // Os dois números, nunca só o mais bonito: o de cima divide
+                    // TODO o investimento, inclusive o de campanha que vende
+                    // outro produto e não alimenta o CRM.
+                    (custo?.gasto_sem_lead_no_crm ?? 0) > 0
+                      ? `inclui ${brl(custo!.gasto_sem_lead_no_crm)} de campanha que não alimenta o CRM — sem elas, ${brl(custo!.por_lead_pago_so_do_que_gerou)} por lead`
+                      : null,
+                  ].filter(Boolean).join(' · ')
                 }
                 icone={<TrendingUp className="h-3.5 w-3.5" />}
                 aviso={custo?.aviso}
@@ -733,7 +754,7 @@ export default function MetricasPage() {
 
             <PorAcolhedor itens={dados.por_acolhedor || []} ativo={acolhedor} onEscolher={setAcolhedor} />
 
-            <GastoSemLead itens={dados.desempenho_por_conjunto || []} />
+            <GastoSemLead custo={dados.custo} />
 
             <DesempenhoPorConjunto itens={dados.desempenho_por_conjunto || []} />
 

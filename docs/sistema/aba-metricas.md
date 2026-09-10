@@ -190,3 +190,52 @@ que ninguém saberia somar.
 - **Rotinas automáticas** — são do sistema.
 - **"Entraram no funil"** — `entrou_no_crm_em` é coluna, então honra o funil, mas
   não o acolhedor (que é derivado de texto). A legenda avisa.
+
+## O custo por lead da visão "todos" é misturado (10/09/2026)
+
+A conferência dos filtros mostrou que os quatro acolhedores somam 3.250 dos 3.259
+leads e os dois funis somam 3.259 de 3.259 — os recortes fecham do lado do CRM.
+Do lado do dinheiro, **não**:
+
+| | Gasto 30d |
+|---|---:|
+| Total nas contas | R$ 27.022,77 |
+| BPC-LOAS + Auxílio Acidente | R$ 22.994,73 |
+| Fora dos dois funis | R$ 4.028,04 |
+
+As campanhas de fora não são erro de classificação — são outro negócio:
+`[CBO][VENDAS][MÃES-ATÍPICAS]`, `[VENDAS][GUIA E KIT]`,
+`[VENDAS][CURSO-MÃES-ATÍPICAS]`, `[SEGURO DE VIDA][JOÃO MANOEL]`,
+`[CAMPANHA REPRESENTANTE COMERCIAL]`, `BURNOUT GERENTES BANCÁRIOS`.
+
+**O efeito é um custo por lead misturado**: o numerador carrega gasto de venda de
+curso e o denominador só conta lead jurídico que chegou ao CRM.
+
+| | |
+|---|---:|
+| Custo por lead, gasto total ÷ leads pagos | R$ 8,29 |
+| Custo por lead, só do que gera lead no CRM | R$ 7,07 |
+
+Medido por outro corte, o mesmo dinheiro: **R$ 4.300,28 em 34 conjuntos que não
+trouxeram lead nenhum ao CRM** — 16% do investimento do mês.
+
+### Por que os dois números ficam na tela
+
+A regra da casa proíbe filtrar, zerar ou esconder valor improvável na renderização
+(CLAUDE.md, princípios de processo, item 8). Trocar R$ 8,29 por R$ 7,07 seria
+trocar um número misturado por outro número parcial, e ainda apagaria o processo
+que precisa de conserto.
+
+Então o card de custo mostra o de cima e nomeia a diferença no rodapé, e o card
+**"Investimento que não alimenta o CRM"** lista as campanhas agrupadas — conjunto
+a conjunto seriam 34 linhas e nenhuma decisão.
+
+**Filtrar por funil resolve de vez**: com o recorte aplicado, BPC-LOAS dá R$ 4,98
+por lead e Auxílio Acidente R$ 17,56, cada um dividindo só o próprio gasto.
+
+### O que ainda merece resposta do gestor de tráfego
+
+Dois casos de formulário registrado na Meta que nunca chegou ao CRM:
+`[CAMPANHA REPRESENTANTE COMERCIAL]` com **59** e `[CBO][VENDAS][MÃES-ATÍPICAS]`
+com **26**. Ou é roteamento faltando, ou é lead de produto que não usa o CRM — e
+a diferença entre as duas respostas vale dinheiro.

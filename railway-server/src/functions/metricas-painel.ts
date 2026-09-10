@@ -443,6 +443,34 @@ export const handler: RequestHandler = async (req, res) => {
       recusados: contaStatus('refused') + contaStatus('cancelled'),
     };
 
+    // GASTO QUE NÃO ALIMENTA O CRM. Medido em 10/09/2026: R$ 4.300 em 30 dias,
+    // 16% do investimento, em 34 conjuntos de campanhas que vendem outra coisa
+    // ([CBO][VENDAS][MÃES-ATÍPICAS], [VENDAS][GUIA E KIT], seguro de vida) ou
+    // que simplesmente não entregam formulário.
+    //
+    // Isto DISTORCE o custo por lead da visão "todos": o numerador carrega gasto
+    // de curso e o denominador só conta lead jurídico. R$ 8,29 contra R$ 7,07.
+    //
+    // A regra da casa proíbe esconder ou filtrar o número na tela — filtrar
+    // trocaria um número errado por outro e ainda apagaria o processo que
+    // precisa de conserto. Então os DOIS aparecem, com a diferença nomeada, e a
+    // lista de campanhas vai junto para virar conversa com o gestor de tráfego.
+    const semLeadNoCrm = desempenho_por_conjunto.filter((c) => (c.gasto ?? 0) > 0 && c.leads_crm === 0);
+    const gastoSemLead = Number(semLeadNoCrm.reduce((t, c) => t + (c.gasto ?? 0), 0).toFixed(2));
+    const gastoComLead = Number((investidoJanela - gastoSemLead).toFixed(2));
+    const campanhas_sem_lead = Object.values(
+      semLeadNoCrm.reduce((acc: Record<string, any>, c) => {
+        const k = c.campanha || '(sem campanha)';
+        acc[k] = acc[k] || { campanha: k, gasto: 0, conjuntos: 0, leads_meta: 0 };
+        acc[k].gasto += c.gasto ?? 0;
+        acc[k].conjuntos += 1;
+        acc[k].leads_meta += c.leads_meta ?? 0;
+        return acc;
+      }, {}),
+    )
+      .map((c: any) => ({ ...c, gasto: Number(c.gasto.toFixed(2)) }))
+      .sort((a: any, b: any) => b.gasto - a.gasto);
+
     const cpl = investidoJanela > 0 && leadsPagos.length ? Number((investidoJanela / leadsPagos.length).toFixed(2)) : null;
     const cpf_ = investidoJanela > 0 && fechadosPagos.length
       ? Number((investidoJanela / fechadosPagos.length).toFixed(2))
@@ -531,6 +559,12 @@ export const handler: RequestHandler = async (req, res) => {
       rotinas: rotinasParaOPainel(),
       custo: {
         leads_pagos: leadsPagos.length,
+        // Os dois lados do mesmo investimento, nomeados. Ver o comentário acima.
+        gasto_sem_lead_no_crm: gastoSemLead,
+        gasto_com_lead_no_crm: gastoComLead,
+        por_lead_pago_so_do_que_gerou:
+          gastoComLead > 0 && leadsPagos.length ? Number((gastoComLead / leadsPagos.length).toFixed(2)) : null,
+        campanhas_sem_lead,
         fechamentos_pagos: fechadosPagos.length,
         por_lead_pago: cpl,
         por_fechamento_pago: cpf_,
