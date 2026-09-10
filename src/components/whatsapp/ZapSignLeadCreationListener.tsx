@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { registrarFechamentoDeLead } from '@/services/metaCapiQueue';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -49,7 +49,7 @@ export function ZapSignLeadCreationListener() {
 
   // Load boards on demand
   const loadBoards = useCallback(async () => {
-    const { data } = await supabase
+    const { data } = await externalSupabase
       .from('kanban_boards')
       .select('id, name, stages')
       .order('display_order');
@@ -62,7 +62,7 @@ export function ZapSignLeadCreationListener() {
   useEffect(() => {
     if (!user?.id) return;
 
-    const channel = supabase
+    const channel = externalSupabase
       .channel('zapsign-signed-listener')
       .on(
         'postgres_changes',
@@ -98,7 +98,7 @@ export function ZapSignLeadCreationListener() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      externalSupabase.removeChannel(channel);
     };
   }, [user?.id, dismissedDocs, loadBoards]);
 
@@ -108,7 +108,7 @@ export function ZapSignLeadCreationListener() {
     setCreating(true);
     try {
       // Re-fetch doc to avoid acting on stale realtime payload (other tab/another click already created)
-      const { data: freshDoc } = await supabase
+      const { data: freshDoc } = await externalSupabase
         .from('zapsign_documents')
         .select('id, lead_id, contact_id, status')
         .eq('id', pendingDoc.id)
@@ -135,7 +135,7 @@ export function ZapSignLeadCreationListener() {
       let contactId = freshDoc?.contact_id || pendingDoc.contact_id;
       if (!contactId && phone) {
         const last8 = phone.slice(-8);
-        const { data: existing } = await supabase
+        const { data: existing } = await externalSupabase
           .from('contacts')
           .select('id')
           .like('phone', `%${last8}`)
@@ -145,7 +145,7 @@ export function ZapSignLeadCreationListener() {
         if (existing) {
           contactId = existing.id;
         } else {
-          const { data: newContact, error: contactErr } = await supabase
+          const { data: newContact, error: contactErr } = await externalSupabase
             .from('contacts')
             .insert({
               full_name: contactName,
@@ -160,17 +160,19 @@ export function ZapSignLeadCreationListener() {
         }
       }
 
-      // 2. Create lead as closed
+      // 2. Cria o lead ja fechado, no EXTERNO.
       //
-      // capi:sem-conversao — procuração assinada É fechamento de verdade e
-      // deveria virar `Purchase`, mas aqui o cliente é `@/integrations/supabase/client`,
-      // que aponta para o Cloud (`VITE_SUPABASE_URL` = gliigkupoebmlbwyvijp),
-      // enquanto `meta-capi-enqueue` procura o lead no Externo. Enfileirar daqui
-      // devolveria "lead não encontrado" para todo mundo. Antes de ligar a
-      // conversão, resolver em qual banco este lead nasce — a linha seguinte
-      // grava `contact_leads` no Externo, então os dois bancos se misturam neste
-      // mesmo bloco. Pendência aberta em 04/09/2026.
-      const { data: newLead, error: leadErr } = await supabase
+      // Ate 10/09/2026 este bloco criava o lead no Cloud e gravava
+      // `contact_leads` no Externo — dois bancos na mesma tela. Como
+      // `meta-capi-enqueue` procura o lead no Externo, a conversao dessa
+      // assinatura nunca teve como sair: devolveria "lead nao encontrado".
+      // Decidido em 10/09: o lead nasce no Externo, que e onde `leads`,
+      // `contacts`, `zapsign_documents` e `kanban_boards` estao vivos.
+      //
+      // `became_client_date` nao e enfeite: e por ele que o reconciliador acha
+      // o fechamento (janela de 7 dias) e e o `event_time` que vai para a Meta.
+      // Sem ele o lead fecha e a conversao nao sai.
+      const { data: newLead, error: leadErr } = await externalSupabase
         .from('leads')
         .insert({
           lead_name: contactName,
@@ -178,6 +180,7 @@ export function ZapSignLeadCreationListener() {
           board_id: selectedBoardId,
           status: lastStage?.id || null,
           lead_status: 'closed',
+          became_client_date: new Date().toISOString().slice(0, 10),
           acolhedor: user.id,
           created_by: user.id,
           action_source: 'manual',
@@ -186,6 +189,11 @@ export function ZapSignLeadCreationListener() {
         .single();
 
       if (leadErr) throw leadErr;
+
+      // Procuracao assinada E fechamento. Agora que o lead nasce no Externo, o
+      // enfileiramento encontra o registro e a conversao sai como qualquer
+      // outra — o reconciliador tambem a pegaria, isto so antecipa.
+      if (newLead?.id) registrarFechamentoDeLead(newLead.id, 'zapsign');
 
       // 3. Link contact to lead (idempotent via unique constraint)
       if (contactId && newLead) {
@@ -196,14 +204,14 @@ export function ZapSignLeadCreationListener() {
             { onConflict: 'contact_id,lead_id', ignoreDuplicates: true }
           );
 
-        await supabase
+        await externalSupabase
           .from('contacts')
           .update({ lead_id: newLead.id })
           .eq('id', contactId);
       }
 
       // 4. Mark zapsign doc as processed (critical: blocks reopen)
-      await supabase
+      await externalSupabase
         .from('zapsign_documents')
         .update({ lead_id: newLead.id, contact_id: contactId })
         .eq('id', pendingDoc.id)
