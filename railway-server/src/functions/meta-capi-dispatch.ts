@@ -532,6 +532,8 @@ export const handler: RequestHandler = async (req, res) => {
     // despeja milhares de `Purchase` aqui, os nossos viram ruido — e a campanha
     // otimizaria por venda de curso achando que otimiza por cliente fechado.
     if (modo === 'dono_do_dataset') {
+      // `dataset_id` opcional: serve para auditar OUTRO conjunto antes de adotar.
+      const alvoDs = String((req.body as any)?.dataset_id || CAPI_DATASET_ID);
       const g = async (path: string) => {
         const r = await fetch(
           `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
@@ -542,12 +544,12 @@ export const handler: RequestHandler = async (req, res) => {
       };
       return res.status(200).json({
         modo: 'dono_do_dataset',
-        dataset: await g(`${CAPI_DATASET_ID}?fields=id,name,last_fired_time,creation_time,owner_business{name}`),
+        dataset: await g(`${alvoDs}?fields=id,name,last_fired_time,creation_time,owner_business{name}`),
         // Varias formas de pedir o volume: a Meta muda o nome dessas bordas com
         // frequencia, entao pergunta-se de tres jeitos e mostra-se o que responder.
-        stats_evento: await g(`${CAPI_DATASET_ID}/stats?aggregation=event&start_time=1756684800`),
-        stats_total: await g(`${CAPI_DATASET_ID}/stats?aggregation=event_total_counts`),
-        fontes: await g(`${CAPI_DATASET_ID}/da_checks`),
+        stats_evento: await g(`${alvoDs}/stats?aggregation=event&start_time=1754006400`),
+        stats_total: await g(`${alvoDs}/stats?aggregation=event_total_counts`),
+        fontes: await g(`${alvoDs}/da_checks`),
       });
     }
 
