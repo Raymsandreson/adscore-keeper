@@ -122,10 +122,13 @@ import { handler as updateProfileAvatar } from './functions/update-profile-avata
 import { handler as agentProactiveFirstMessage } from './functions/agent-proactive-first-message';
 import { handler as testimonialToInstagramPost } from './functions/testimonial-to-instagram-post';
 import { handler as publishInstagramTestimonial } from './functions/publish-instagram-testimonial';
+import { handler as externalSession } from './functions/external-session';
 
 
 
 const functionHandlers: Record<string, express.RequestHandler> = {
+  // Sessão de verdade no Externo para quem está logado no Cloud (10/09/2026).
+  'external-session': externalSession,
   'whatsapp-webhook': whatsappWebhook,
   'send-team-push': sendTeamPush,
   'call-queue-processor': callQueueProcessor,

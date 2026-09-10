@@ -520,10 +520,9 @@ export function ContactsListPage() {
           .select('cnj', { count: 'exact', head: true });
         if (!cancelado) setFilaCitacoes(count || 0);
         // 'casado' e 'lead_sem_caso' não são pendência sob "o grupo é o caso".
-        const { count: pend, error: errPend } = await (db as any)
-          .from('vw_caso_grupo_conciliacao')
-          .select('chave_txt', { count: 'exact', head: true })
-          .not('classe', 'in', '(casado,lead_sem_caso)');
+        // Por RPC: a contagem HEAD+count=exact na view falhava no PostgREST e o
+        // botão aparecia sem número (10/09/2026).
+        const { data: pend, error: errPend } = await (db as any).rpc('contar_caso_grupo_pendentes');
         if (errPend) console.error('[ContactsListPage] contagem caso↔grupo falhou', errPend);
         // -1 = não consegui contar: o botão aparece mesmo assim, sem número. A
         // entrada da fila não pode sumir porque uma contagem falhou.
