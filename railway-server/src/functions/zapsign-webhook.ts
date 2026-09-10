@@ -339,20 +339,32 @@ export const handler = async (req: Request, res: Response) => {
           if (shouldCreateLead) {
             try {
               const isOrphan = !resolvedBoardId;
+              // `closed_at` e `details` NAO EXISTEM na tabela `leads`. O
+              // PostgREST recusa o insert inteiro quando um campo desconhecido
+              // aparece, entao este caminho nunca criou um lead: medido em
+              // 09/09/2026, ZERO linhas com `source = 'zapsign_manual'`, desde
+              // sempre. A assinatura de procuracao sem lead correspondente
+              // simplesmente se perdia.
+              //
+              // `became_client_date` e a coluna real de fechamento (é ela que a
+              // esteira da Meta le como `event_time`), e o contexto do ZapSign
+              // vai para `notes`, que e onde o atendente le.
               const leadInsert: any = {
                 lead_name: signerName,
                 lead_phone: candidatePhone,
                 board_id: resolvedBoardId,
                 status: resolvedStatus,
                 lead_status: 'closed',
-                closed_at: new Date().toISOString(),
+                became_client_date: new Date().toISOString().slice(0, 10),
                 source: 'zapsign_manual',
-                details: {
-                  zapsign_doc_token: docToken,
-                  zapsign_template_token: templateToken || null,
-                  orphan: isOrphan,
-                  matched_via: resolvedBoardId ? 'template' : null,
-                },
+                notes: [
+                  'Lead criado pela assinatura da procuração (ZapSign)',
+                  `Documento: ${docToken}`,
+                  templateToken && `Modelo: ${templateToken}`,
+                  isOrphan ? 'Sem funil correspondente ao modelo — órfão' : 'Funil resolvido pelo modelo',
+                ]
+                  .filter(Boolean)
+                  .join('\n'),
               };
               const { data: newLead, error: lErr } = await supabase
                 .from('leads')
