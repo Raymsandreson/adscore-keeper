@@ -9037,6 +9037,7 @@ export type Database = {
       }
       whatsapp_internal_notes: {
         Row: {
+          activity_id: string | null
           content: string
           created_at: string
           id: string
@@ -9048,6 +9049,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          activity_id?: string | null
           content: string
           created_at?: string
           id?: string
@@ -9059,6 +9061,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          activity_id?: string | null
           content?: string
           created_at?: string
           id?: string
