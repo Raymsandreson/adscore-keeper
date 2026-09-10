@@ -54,27 +54,41 @@ Deno.serve(async (req) => {
     const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
     const papel = papelDoToken(token);
     let autorizado = false;
+    // `motivo` existe para o gate poder ser TESTADO de fora sem uma sessão real.
+    // A pergunta perigosa não é "o usuário passa?" e sim "o verificador está de
+    // pé?": se faltar SUPABASE_URL ou SUPABASE_ANON_KEY nesta função, o
+    // `getUser` estoura, cai no catch e o gate nega TODO MUNDO — inclusive o
+    // front. Sem este campo, os dois casos devolvem o mesmo 401 e a diferença
+    // fica invisível. Nenhum valor aqui revela credencial.
+    let motivo = 'sem_token';
 
     if (papel === 'service_role') {
       // Chave privada: quem a tem já alcança o banco por fora.
       autorizado = true;
-    } else if (token && papel && papel !== 'anon') {
+      motivo = 'service_role';
+    } else if (papel === 'anon') {
+      motivo = 'chave_anon_e_publica';
+    } else if (token && papel) {
       // `getUser` confirma que o token é de alguém logado de verdade.
-      try {
-        const verificador = createClient(
-          Deno.env.get('SUPABASE_URL') ?? '',
-          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        );
-        const { data } = await verificador.auth.getUser(token);
-        autorizado = !!data?.user;
-      } catch (_e) {
-        autorizado = false;
+      const url = Deno.env.get('SUPABASE_URL') ?? '';
+      const anon = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+      if (!url || !anon) {
+        motivo = 'verificador_indisponivel_faltam_env';
+      } else {
+        try {
+          const verificador = createClient(url, anon);
+          const { data } = await verificador.auth.getUser(token);
+          autorizado = !!data?.user;
+          motivo = autorizado ? 'usuario_autenticado' : 'token_nao_corresponde_a_usuario';
+        } catch (_e) {
+          motivo = 'verificador_falhou';
+        }
       }
     }
 
     if (!autorizado) {
-      console.warn('[auto-enrich-proxy] apply_fields recusado: credencial insuficiente');
-      return new Response(JSON.stringify({ error: 'apply_fields exige usuário autenticado' }), {
+      console.warn(`[auto-enrich-proxy] apply_fields recusado: ${motivo}`);
+      return new Response(JSON.stringify({ error: 'apply_fields exige usuário autenticado', motivo }), {
         status: 401,
         headers: { ...cors, 'Content-Type': 'application/json' },
       });

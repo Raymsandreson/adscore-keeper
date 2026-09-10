@@ -93,20 +93,35 @@ Deno.serve(async (req)=>{
         }
       })();
       let autorizado = false;
+      // `motivo` existe para este portao poder ser TESTADO sem uma sessao real.
+      // A pergunta perigosa nao e "o usuario passa?" e sim "o verificador esta
+      // de pe?": se CLOUD_ANON_KEY faltar aqui, o getUser falha, o catch nega e
+      // o portao recusa TODO MUNDO — inclusive o front legitimo. Sem este campo
+      // os dois casos devolvem o mesmo 401 e a diferenca fica invisivel.
+      // Nenhum valor abaixo revela credencial.
+      let motivo = 'sem_token';
       if (papelDoToken === 'service_role') {
         autorizado = true;
-      } else if (token && papelDoToken !== 'anon') {
-        try {
-          const verificador = createClient(CLOUD_URL, CLOUD_ANON);
-          const { data } = await verificador.auth.getUser(token);
-          autorizado = !!data?.user;
-        } catch (_e) {
-          autorizado = false;
+        motivo = 'service_role';
+      } else if (papelDoToken === 'anon') {
+        motivo = 'chave_anon_e_publica';
+      } else if (token) {
+        if (!CLOUD_URL || !CLOUD_ANON) {
+          motivo = 'verificador_indisponivel_falta_cloud_anon_key';
+        } else {
+          try {
+            const verificador = createClient(CLOUD_URL, CLOUD_ANON);
+            const { data } = await verificador.auth.getUser(token);
+            autorizado = !!data?.user;
+            motivo = autorizado ? 'usuario_autenticado' : 'token_nao_corresponde_a_usuario';
+          } catch (_e) {
+            motivo = 'verificador_falhou';
+          }
         }
       }
       if (!autorizado) {
-        console.warn('[auto-enrich] apply_fields recusado: credencial insuficiente');
-        return new Response(JSON.stringify({ error: 'apply_fields exige credencial autorizada' }), {
+        console.warn(`[auto-enrich] apply_fields recusado: ${motivo}`);
+        return new Response(JSON.stringify({ error: 'apply_fields exige credencial autorizada', motivo }), {
           status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
@@ -308,8 +323,12 @@ REGRAS:
     if (lead_id) {
       const leadUpdate: Record<string, any> = {};
       if (cleaned.email) leadUpdate.lead_email = cleaned.email;
+      // `street` e `cep` estavam no prompt e na resposta `enriched`, mas fora deste
+      // mapa: a tela mostrava os dois como aplicados e o lead continuava sem eles.
+      // As colunas existem em `leads` (text) — o que faltava era o de-para.
       const leadFields: Record<string, string> = {
         city: 'city', state: 'state', neighborhood: 'neighborhood', notes: 'notes',
+        street: 'street', cep: 'cep',
       };
       if (isAccidentBoard) {
         Object.assign(leadFields, {
