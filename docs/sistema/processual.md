@@ -598,3 +598,33 @@ emitir JWT do projeto externo (assinado com o JWT secret dele) para quem está
 logado no Cloud, o front usar `setSession` com ele, e o sign-in anônimo ser
 desligado no Auth do externo. Mexe em env var, auth e em todo `ensureExternalSession`
 — Modo Leopardo, com rollback (religar o sign-in anônimo) antes de começar.
+
+## Sessão de verdade no Externo (10/09/2026)
+
+**Antes.** O front logava no Cloud e entrava no Externo com `signInAnonymously()`.
+Qualquer pessoa com a chave anon (vai no bundle) fazia o mesmo e virava
+`authenticated`: 6.277 anônimos, ~168/dia, contra 55 reais. `auth.uid()` no
+Externo não era ninguém; daí `auth_uuid_mapping` e o carimbo manual de autoria.
+
+**Agora.** `ensureExternalSession` (front) pede ao Railway
+`/functions/external-session` com o JWT do Cloud. O Railway confere o JWT em
+`/auth/v1/user`, acha o usuário espelho no Externo (`auth_uuid_mapping` →
+e-mail via `ext_user_id_por_email` → cria), emite sessão com
+`generateLink(magiclink)` + `verifyOtp(token_hash)` num cliente descartável
+(no cliente compartilhado o `verifyOtp` trocaria o Authorization de todas as
+chamadas seguintes) e devolve access/refresh token. O front aplica com
+`setSession`; o refresh mantém sozinho. Sessão anônima gravada é trocada;
+sem login no Cloud ou com o Railway fora, cai no anônimo (retenta em 60 s).
+Logout no Cloud desloga do Externo. `auth.uid()` passa a ser o ext_uuid da
+pessoa: as policies `is_admin(auth.uid())` (6.339 `user_roles`) voltam a valer.
+
+**Decisão pura testada** (`obterSessaoExterna`, 5 casos): real → não mexe;
+anônima + Cloud → troca; Railway fora → mantém a anônima; pública sem sessão →
+anônima nova; Externo recusou setSession → não conta.
+
+**Falta (à mão, no painel do Auth do Externo).** Depois de ver a rota em uso
+(`auth.users`: `last_sign_in_at` dos mapeados andando, criação de anônimos
+parando): Authentication → Sign In / Providers → "Allow anonymous sign-ins" =
+off. Rollback: religar. Páginas públicas que tocam o Externo (`/booking`,
+`/atv/:code`) passam a precisar de outro caminho quando isso for desligado —
+conferir antes.

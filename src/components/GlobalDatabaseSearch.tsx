@@ -27,6 +27,7 @@ import { useLeads, Lead } from '@/hooks/useLeads';
 import { Contact as ContactType } from '@/hooks/useContacts';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { detectDuplicates, DuplicateGroup, KeyFn, normalizeName, normalizePhone, digitsExact } from '@/lib/duplicateDetection';
+import { cnjDigitado } from '@/lib/cnj';
 import { DuplicateMergeDialog, MergeType } from '@/components/search/DuplicateMergeDialog';
 import { Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -385,7 +386,14 @@ export function GlobalDatabaseSearch() {
     }
   }, []);
 
-  const handleQueryChange = (value: string) => {
+  const handleQueryChange = (raw: string) => {
+    // Número de processo entra mascarado no próprio campo. Serve para dois:
+    // a pessoa vê qual número foi de fato buscado — inclusive quando o que ela
+    // colou tinha um dígito a menos e o verificador disse qual era o certo — e
+    // a `busca_unificada`, que casa por dígito exato, passa a receber o número
+    // consertado em vez do que veio errado da cópia.
+    const cnj = cnjDigitado(raw);
+    const value = cnj ? cnj.formatted : raw;
     setQuery(value);
     if (debounceTimer) clearTimeout(debounceTimer);
     const timer = setTimeout(() => searchDatabase(value), 300);
