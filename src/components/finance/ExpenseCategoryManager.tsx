@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,6 +25,7 @@ import {
   FolderPlus,
   Link2,
   Landmark,
+  Search,
   X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -45,6 +46,10 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   package: Package,
   'car-taxi-front': Car,
 };
+
+// Busca tolerante a acento e caixa: "transp", "TRANSPORTE" e "transporte" acham a mesma coisa.
+const normalizeBusca = (valor: string) =>
+  valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 const availableIcons = ['tag', 'utensils', 'car', 'bed', 'fuel', 'plane', 'briefcase', 'package'];
 const availableColors = [
@@ -88,6 +93,7 @@ export function ExpenseCategoryManager({ connections = [] }: ExpenseCategoryMana
   const [categoryToDelete, setCategoryToDelete] = useState<ExpenseCategory | null>(null);
   const [expenseCountToDelete, setExpenseCountToDelete] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [apiCategorySearch, setApiCategorySearch] = useState('');
   const [formData, setFormData] = useState<CategoryFormData>({
     name: '',
     icon: 'tag',
@@ -109,6 +115,24 @@ export function ExpenseCategoryManager({ connections = [] }: ExpenseCategoryMana
       .filter(m => currentCategoryId ? m.category_id !== currentCategoryId : true)
       .map(m => m.api_category_name);
   };
+
+  // O que a lista realmente mostra: tira as já vinculadas a OUTRA categoria
+  // (as desta aqui continuam visíveis, marcadas) e aplica a busca por texto.
+  const visibleApiCategories = useMemo(() => {
+    const currentCategoryId = editingCategory?.id;
+    const vinculadasEmOutra = new Set(
+      mappings
+        .filter(m => (currentCategoryId ? m.category_id !== currentCategoryId : true))
+        .map(m => m.api_category_name)
+    );
+    const termo = normalizeBusca(apiCategorySearch);
+    return availableApiCategories.filter(apiCat => {
+      if (vinculadasEmOutra.has(apiCat) && !formData.selectedApiCategories.includes(apiCat)) {
+        return false;
+      }
+      return termo ? normalizeBusca(apiCat).includes(termo) : true;
+    });
+  }, [mappings, editingCategory, apiCategorySearch, formData.selectedApiCategories]);
 
   // Função para sugerir categorias da API baseado no nome da categoria
   const suggestApiCategories = (categoryName: string): string[] => {
@@ -181,6 +205,7 @@ export function ExpenseCategoryManager({ connections = [] }: ExpenseCategoryMana
       selectedAccountIds: [],
     });
     setEditingCategory(null);
+    setApiCategorySearch('');
   };
 
   // Atualiza sugestões quando o nome muda
@@ -212,6 +237,7 @@ export function ExpenseCategoryManager({ connections = [] }: ExpenseCategoryMana
       selectedApiCategories: currentMappings.map(m => m.api_category_name),
       selectedAccountIds: currentAccountLinks.map(l => l.pluggy_account_id),
     });
+    setApiCategorySearch('');
     setIsOpen(true);
   };
 
@@ -587,10 +613,12 @@ export function ExpenseCategoryManager({ connections = [] }: ExpenseCategoryMana
                 <div className="border-t pt-4">
                   <div className="flex items-center gap-2 mb-3">
                     <Link2 className="h-4 w-4 text-primary" />
-                    <Label className="text-sm font-medium">Categorias da API (correlação automática)</Label>
+                    <Label className="text-sm font-medium">Categorias do histórico Pluggy (correlação automática)</Label>
                   </div>
                   <p className="text-xs text-muted-foreground mb-3">
-                    Selecione as categorias do Pluggy que devem ser automaticamente vinculadas a esta categoria
+                    Correlaciona lançamentos que já vieram categorizados pela Pluggy (histórico até março/2026).
+                    O Open Finance da Celcoin não devolve categoria, então lançamento novo continua sendo
+                    categorizado aqui dentro — por regra de conta/cartão ou na conferência.
                   </p>
                   
                   {formData.selectedApiCategories.length > 0 && (
@@ -609,17 +637,39 @@ export function ExpenseCategoryManager({ connections = [] }: ExpenseCategoryMana
                     </div>
                   )}
 
+                  <div className="relative mb-2">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <Input
+                      value={apiCategorySearch}
+                      onChange={(e) => setApiCategorySearch(e.target.value)}
+                      placeholder="Buscar categoria..."
+                      className="h-8 pl-8 pr-8 text-sm"
+                    />
+                    {apiCategorySearch && (
+                      <button
+                        type="button"
+                        onClick={() => setApiCategorySearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        aria-label="Limpar busca"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+
                   <ScrollArea className="h-40 border rounded-md p-2">
                     <div className="space-y-1">
-                      {availableApiCategories.map((apiCat) => {
+                      {visibleApiCategories.length === 0 && (
+                        <p className="text-xs text-muted-foreground px-2 py-3">
+                          {apiCategorySearch
+                            ? `Nenhuma categoria encontrada para "${apiCategorySearch}".`
+                            : 'Todas as categorias já estão vinculadas a outras categorias.'}
+                        </p>
+                      )}
+                      {visibleApiCategories.map((apiCat) => {
                         const isChecked = formData.selectedApiCategories.includes(apiCat);
                         const alreadyMapped = getAlreadyMappedApiCategories().includes(apiCat);
-                        
-                        // Hide already mapped categories (unless currently selected in this form)
-                        if (alreadyMapped && !isChecked) {
-                          return null;
-                        }
-                        
+
                         return (
                           <label 
                             key={apiCat} 
