@@ -74,6 +74,7 @@ interface Painel {
   };
   fechamentos: {
     na_janela: number; pagos_na_janela: number; hoje: number | null;
+    concentracao: { dia: string; qtd: number; fracao: number; aviso: string } | null;
     por_fonte: Array<{ nome: string; qtd: number }>; por_board: Array<{ nome: string; qtd: number }>;
   };
   serie: Array<{ dia: string; leads: number; leads_pagos: number; fechamentos: number; investido: number }>;
@@ -381,8 +382,11 @@ function GastoSemLead({ custo }: { custo: Painel['custo'] }) {
 }
 
 /** A mesma tabela de conjuntos, somada por pessoa. É a leitura que a operação faz. */
-function PorAcolhedor({ itens, ativo, onEscolher }: {
+function PorAcolhedor({ itens, ativo, onEscolher, aviso }: {
   itens: Painel['por_acolhedor']; ativo: string | null; onEscolher: (v: string | null) => void;
+  // A coluna de contratos desta tabela é a mais afetada pela data carimbada na
+  // importação — é aqui que alguém conclui "fulano parou de fechar".
+  aviso?: string | null;
 }) {
   if (!itens?.length) return null;
   return (
@@ -433,6 +437,12 @@ function PorAcolhedor({ itens, ativo, onEscolher }: {
           "Custo/contrato" fica vazio para quem ainda não fechou na janela: dividir por zero e escrever
           R$ 0,00 mentiria, e "infinito" não ajuda a decidir nada.
         </p>
+        {aviso && (
+          <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
+            <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+            <span>{aviso}</span>
+          </p>
+        )}
       </CardContent>
     </Card>
   );
@@ -730,6 +740,7 @@ export default function MetricasPage() {
                 valor={num(dados.fechamentos.na_janela)}
                 sub={`${num(dados.fechamentos.pagos_na_janela)} vieram de anúncio`}
                 icone={<Handshake className="h-3.5 w-3.5" />}
+                aviso={dados.fechamentos.concentracao?.aviso}
               />
               <Kpi
                 titulo="Custo por lead pago"
@@ -775,7 +786,12 @@ export default function MetricasPage() {
                 {/* O alerta abre a aba padrão de propósito: é dinheiro saindo, e
                     dentro de uma aba secundária ninguém o encontraria. */}
                 <GastoSemLead custo={dados.custo} />
-                <PorAcolhedor itens={dados.por_acolhedor || []} ativo={acolhedor} onEscolher={setAcolhedor} />
+                <PorAcolhedor
+                  itens={dados.por_acolhedor || []}
+                  ativo={acolhedor}
+                  onEscolher={setAcolhedor}
+                  aviso={dados.fechamentos.concentracao?.aviso}
+                />
                 <DesempenhoPorConjunto itens={dados.desempenho_por_conjunto || []} />
                 {inv?.disponivel && inv.contas.length > 0 && (
                   <Card>

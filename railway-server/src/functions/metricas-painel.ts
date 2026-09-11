@@ -501,6 +501,41 @@ export const handler: RequestHandler = async (req, res) => {
       .map((c: any) => ({ ...c, gasto: Number(c.gasto.toFixed(2)) }))
       .sort((a: any, b: any) => b.gasto - a.gasto);
 
+    // DATA DE FECHAMENTO CARIMBADA NA IMPORTAÇÃO.
+    //
+    // Medido em 11/09/2026: 24 dos 28 fechamentos pagos que existem têm
+    // `became_client_date` = 09/09, o dia em que o `sheet_status_sync` leu a
+    // coluna de status da planilha pela primeira vez — e os 24 foram atualizados
+    // nesse mesmo dia. A data guardada é a da IMPORTAÇÃO, não a do fechamento.
+    //
+    // Isso é uma armadilha de leitura, não um número feio: quem filtrar "últimos
+    // 7 dias" na semana que vem vai ver o Israel com ZERO contratos e concluir
+    // que ele parou de fechar. E o gráfico mostra um pico de fechamento num dia
+    // em que ninguém fechou nada.
+    //
+    // A tela não esconde nem corrige o valor — ela DETECTA a concentração e diz
+    // o que ela significa. O conserto de verdade é a planilha passar a carregar
+    // a data do fechamento; enquanto não carrega, o aviso é o que impede a
+    // leitura errada.
+    const fechPagosPorDia: Record<string, number> = {};
+    for (const f of fechadosPagos) {
+      const d = diaDaColuna(f.became_client_date);
+      if (d) fechPagosPorDia[d] = (fechPagosPorDia[d] || 0) + 1;
+    }
+    const diaCampeao = Object.entries(fechPagosPorDia).sort((a, b) => b[1] - a[1])[0] || null;
+    const concentracao =
+      diaCampeao && fechadosPagos.length >= 5 && diaCampeao[1] / fechadosPagos.length >= 0.6
+        ? {
+            dia: diaCampeao[0],
+            qtd: diaCampeao[1],
+            fracao: Number(((diaCampeao[1] / fechadosPagos.length) * 100).toFixed(1)),
+            aviso:
+              `${diaCampeao[1]} dos ${fechadosPagos.length} fechamentos pagos do período estão todos em ` +
+              `${diaCampeao[0]} — é a data em que a planilha foi lida, não a do fechamento. ` +
+              `Período que não inclua esse dia vai mostrar quase nenhum contrato.`,
+          }
+        : null;
+
     const cpl = investidoJanela > 0 && leadsPagos.length ? Number((investidoJanela / leadsPagos.length).toFixed(2)) : null;
     const cpf_ = investidoJanela > 0 && fechadosPagos.length
       ? Number((investidoJanela / fechadosPagos.length).toFixed(2))
@@ -598,6 +633,8 @@ export const handler: RequestHandler = async (req, res) => {
       },
       fechamentos: {
         ...compat.fechamentos_antigo,
+        // Detector, não filtro: ver o bloco acima.
+        concentracao,
         na_janela: fechados.length,
         pagos_na_janela: fechadosPagos.length,
         hoje: janelaInclutHoje ? (fechPorDia[hoje] || 0) : null,

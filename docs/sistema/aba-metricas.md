@@ -278,3 +278,40 @@ número que está vendo.
 
 O alerta de gasto sem lead abre a aba padrão de propósito — é dinheiro saindo, e
 dentro de uma aba secundária ninguém o encontraria.
+
+## A data de fechamento é a da importação (11/09/2026)
+
+Descoberto ao testar o filtro combinado: BPC + Israel + 7 dias devolvia **22
+contratos**, o mesmo número da janela de 30 dias. Não era bug do filtro.
+
+```
+select became_client_date, count(*) from leads
+where lead_status='closed' and adset_name ilike '%ISRAEL%' ...
+-> 2026-09-09 | 22
+```
+
+**24 dos 28 fechamentos pagos que existem estão em 09/09** — o dia em que o
+`sheet_status_sync` leu a coluna de status da planilha pela primeira vez. E os 24
+foram atualizados nesse mesmo dia: `became_client_date` guarda a data da
+importação, não a do fechamento.
+
+Os fechamentos orgânicos não têm esse problema — espalham-se naturalmente
+(31, 25, 20, 18, 14 por dia). É só o lote importado da planilha.
+
+### Por que isso é armadilha, e não número feio
+
+Quem filtrar "últimos 7 dias" na semana que vem vai ver o Israel com **zero**
+contratos e concluir que ele parou de fechar. E o gráfico mostra um pico de
+fechamento num dia em que ninguém fechou nada.
+
+A tela **detecta** e nomeia: quando um único dia concentra ≥60% dos fechamentos
+pagos do período (e são ao menos 5), o card de Fechamentos e a tabela Por
+acolhedor exibem o aviso com o dia e a contagem. O valor não é filtrado, zerado
+nem corrigido — ver CLAUDE.md, princípios de processo, item 8.
+
+### O conserto de verdade
+
+A planilha precisa carregar a **data do fechamento**, e o `bpc-sheet-sync` gravar
+essa data em vez de `now()`. Enquanto não carregar, o aviso é o que impede a
+leitura errada — e a comparação entre acolhedores só é honesta em janela que
+inclua 09/09.
