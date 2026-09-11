@@ -220,19 +220,25 @@ const ProfilePage = () => {
       phone: phone.trim() || null,
     } as any);
 
-    // Mirror default_instance_id to External (source of truth)
+    // Espelha instância padrão E telefone no Externo. O telefone faltava aqui:
+    // `updateProfile` grava só no Cloud, então quem trocasse o próprio número
+    // deixava o Externo com o número antigo — e a edge notify-activity-created
+    // lê o telefone SÓ do Externo (incidente 11/09/2026).
     try {
       if (user?.id) {
         const extUserId = await remapToExternal(user.id);
         if (extUserId) {
           await db
             .from('profiles')
-            .update({ default_instance_id: defaultInstanceId === 'none' ? null : defaultInstanceId })
+            .update({
+              default_instance_id: defaultInstanceId === 'none' ? null : defaultInstanceId,
+              phone: phone.trim() || null,
+            } as any)
             .eq('user_id', extUserId);
         }
       }
     } catch (e) {
-      console.error('Erro ao salvar instância padrão no Externo', e);
+      console.error('Erro ao espelhar perfil no Externo', e);
     }
 
     if (error) {

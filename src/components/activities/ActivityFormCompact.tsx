@@ -68,6 +68,29 @@ function copyField(text: string | null | undefined) {
   });
 }
 
+/**
+ * Mescla o perfil do Cloud com o do Externo campo a campo, porque cada campo
+ * tem dono diferente:
+ *   - `phone`: o CLOUD manda. Todo caminho de escrita de telefone grava lá
+ *     (ProfilePage → updateProfile, MemberDetailSheet → supabase); o Externo é
+ *     espelho e pode estar velho. Preferir o Externo mandou a mensagem do João
+ *     para um número desativado enquanto a ficha do membro mostrava o número
+ *     novo (incidente 11/09/2026).
+ *   - `default_instance_id`: o EXTERNO manda (é lá que o ProfilePage grava); o
+ *     Cloud preenche quando falta, porque parte da equipe teve o default
+ *     gravado lá pelo inbox/painel da equipe (incidente 04/08/2026).
+ * Em todos os casos o `||` deixa o outro banco cobrir o campo nulo.
+ */
+export function mesclarPerfilDeEnvio(cloud: any, ext: any): {
+  full_name: string | null; phone: string | null; default_instance_id: string | null;
+} {
+  return {
+    full_name: ext?.full_name || cloud?.full_name || null,
+    phone: cloud?.phone || ext?.phone || null,
+    default_instance_id: ext?.default_instance_id || cloud?.default_instance_id || null,
+  };
+}
+
 function CampaignLinkerButton({ value, onChange, user }: { value: string; onChange: (v: string) => void; user: any }) {
   const { data: campaigns = [], isLoading } = useCampaigns();
   const createCampaign = useCreateCampaign();
@@ -505,13 +528,14 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
     const assessorIds = [...new Set([formAssignedTo, ...(formCoAssignees || []).map(c => c.user_id)].filter(Boolean))] as string[];
     if (assessorIds.length === 0) { toast.error('Sem assessor responsável'); return; }
 
-    // Perfis de todos em uma query só (evita N+1), nos dois bancos. O EXTERNO é a
-    // fonte da verdade (é lá que o ProfilePage salva phone/default_instance_id);
-    // o Cloud entra só pra preencher o que faltar, porque parte da equipe teve o
-    // default gravado lá pelo inbox/painel da equipe. Antes lia só o Cloud, onde
-    // o campo fica NULL pra quem configurou pelo próprio perfil — o gate
-    // `hasWhatsApp` abaixo pulava o assessor em SILÊNCIO (varredura do incidente
-    // de roteamento de instância, 04/08/2026).
+    // Perfis de todos em uma query só (evita N+1), nos dois bancos, porque cada
+    // campo tem um dono diferente:
+    //   - `default_instance_id`: o EXTERNO manda (é lá que o ProfilePage grava);
+    //     o Cloud preenche o que faltar, porque parte da equipe teve o default
+    //     gravado lá pelo inbox/painel da equipe. Ler só o Cloud fazia o gate
+    //     `hasWhatsApp` pular o assessor em SILÊNCIO (incidente de roteamento de
+    //     instância, 04/08/2026).
+    //   - `phone`: o CLOUD manda (ver `mesclarPerfilDeEnvio`).
     await ensureRemapCache();
     const extIdByAssessor = new Map(assessorIds.map(id => [id, remapToExternalSync(id) || id]));
     const [cloudRes, extRes] = await Promise.all([
@@ -529,11 +553,7 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
     const profileByUser = new Map(assessorIds.map((id) => {
       const ext: any = extByUser.get(extIdByAssessor.get(id) as string);
       const cloud: any = cloudByUser.get(id);
-      return [id, {
-        full_name: ext?.full_name || cloud?.full_name || null,
-        phone: ext?.phone || cloud?.phone || null,
-        default_instance_id: ext?.default_instance_id || cloud?.default_instance_id || null,
-      }];
+      return [id, mesclarPerfilDeEnvio(cloud, ext)];
     }));
 
     const waSent: string[] = [];

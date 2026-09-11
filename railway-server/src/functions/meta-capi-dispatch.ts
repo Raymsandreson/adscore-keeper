@@ -357,7 +357,7 @@ async function probe(datasetAlvo?: string) {
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset' | 'reenviar' | 'trocar_otimizacao' | 'conjunto';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset' | 'reenviar' | 'trocar_otimizacao' | 'conjunto' | 'historico_conjunto';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -673,6 +673,121 @@ export const handler: RequestHandler = async (req, res) => {
       });
     }
 
+
+    // Quem trocou a otimizacao do conjunto, e quando.
+    //
+    // Existe porque `updated_time` so diz que algo mudou — nao diz o que, nem
+    // por ordem de quem. No piloto de Leads com Conversao isso ja fez falta
+    // duas vezes: em 10/09 o conjunto voltou sozinho para LEAD_GENERATION dois
+    // minutos depois de ligado, e em 11/09 amanheceu em QUALITY_LEAD sem que
+    // nenhum comando nosso tivesse rodado. Sem o autor, cada leitura vira
+    // palpite. O log de atividades e a unica fonte que carrega `actor_name`.
+    //
+    // Le os dois logs de proposito: o do conjunto e curto e direto, mas alguns
+    // eventos so aparecem no log da conta. Junta e ordena do mais recente.
+    if (modo === 'historico_conjunto') {
+      const corpo = (req.body || {}) as { adset_id?: string; dias?: number };
+      const adsetId = String(corpo.adset_id || '');
+      if (!adsetId) return res.status(400).json({ error: 'informe adset_id' });
+      const dias = Math.min(Math.max(Number(corpo.dias) || 7, 1), 90);
+
+      const g = async (path: string) => {
+        const r = await fetch(
+          `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
+            `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+        );
+        return (await r.json()) as any;
+      };
+
+      const conj = await g(`${adsetId}?fields=id,name,account_id,optimization_goal,updated_time`);
+      if (conj?.error) {
+        return res.status(200).json({ modo: 'historico_conjunto', erro: conj.error.message, codigo: conj.error.code });
+      }
+
+      const CAMPOS =
+        'event_type,event_time,translated_event_type,actor_id,actor_name,object_id,object_name,extra_data';
+      const desde = new Date(Date.now() - dias * 86400_000).toISOString().slice(0, 10);
+      const [noConjunto, naConta] = await Promise.all([
+        g(`${adsetId}/activities?fields=${CAMPOS}&since=${desde}&limit=200`),
+        g(`act_${conj.account_id}/activities?fields=${CAMPOS}&since=${desde}&limit=500`),
+      ]);
+
+      // A Meta devolve a hora no fuso da conta de anuncios, que nao e o nosso.
+      // Quem le compara com o horario do escritorio, entao converte para BRT.
+      const emBrasilia = (t: string) => {
+        const iso = String(t || '').replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return t;
+        return d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      };
+
+      // `extra_data` vem como string JSON, e o par muda de nome conforme o
+      // evento (`old_value`/`new_value`, as vezes `oldValue`). Sem normalizar,
+      // o "de -> para" some justamente no evento que interessa.
+      const deParaDe = (extra: unknown) => {
+        let o: any = extra;
+        if (typeof extra === 'string') {
+          try {
+            o = JSON.parse(extra);
+          } catch {
+            return { de: null, para: null, cru: extra };
+          }
+        }
+        if (!o || typeof o !== 'object') return { de: null, para: null, cru: extra ?? null };
+        const de = o.old_value ?? o.oldValue ?? o.old ?? null;
+        const para = o.new_value ?? o.newValue ?? o.new ?? null;
+        return { de, para, cru: de === null && para === null ? o : null };
+      };
+
+      const vistos = new Set<string>();
+      const eventos: Array<Record<string, unknown>> = [];
+      for (const [origem, lista] of [
+        ['conjunto', noConjunto?.data ?? []],
+        ['conta', naConta?.data ?? []],
+      ] as Array<[string, any[]]>) {
+        for (const e of lista) {
+          if (origem === 'conta' && String(e?.object_id || '') !== adsetId) continue;
+          const chave = `${e?.event_time}|${e?.event_type}|${e?.object_id}`;
+          if (vistos.has(chave)) continue;
+          vistos.add(chave);
+          const { de, para, cru } = deParaDe(e?.extra_data);
+          eventos.push({
+            quando: emBrasilia(e?.event_time),
+            quando_cru: e?.event_time ?? null,
+            quem: e?.actor_name ?? e?.actor_id ?? null,
+            evento: e?.event_type ?? null,
+            descricao: e?.translated_event_type ?? null,
+            de,
+            para,
+            origem,
+            ...(cru ? { extra: cru } : {}),
+          });
+        }
+      }
+      eventos.sort((a, b) => String(b.quando_cru).localeCompare(String(a.quando_cru)));
+
+      return res.status(200).json({
+        modo: 'historico_conjunto',
+        conjunto: {
+          id: conj?.id ?? null,
+          nome: conj?.name ?? null,
+          conta: conj?.account_id ? `act_${conj.account_id}` : null,
+          otimizacao_atual: conj?.optimization_goal ?? null,
+          atualizado: emBrasilia(conj?.updated_time),
+        },
+        desde,
+        dias,
+        total: eventos.length,
+        // Erro por log separado: acesso negado no log da conta nao pode passar
+        // por "nao houve evento" — sao coisas opostas.
+        erros: {
+          log_do_conjunto: noConjunto?.error?.message ?? null,
+          log_da_conta: naConta?.error?.message ?? null,
+        },
+        eventos,
+      });
+    }
+
     // Le UM conjunto por inteiro, ativo ou nao. `conjuntos` filtra por ACTIVE,
     // entao um conjunto que sai do ar simplesmente some da lista — e sumir nao
     // diz se foi pausado, reprovado ou se a campanha inteira parou.
@@ -682,6 +797,8 @@ export const handler: RequestHandler = async (req, res) => {
       const r = await fetch(
         `https://graph.facebook.com/${GRAPH_VERSION}/${adsetId}` +
           `?fields=id,name,status,effective_status,optimization_goal,destination_type,promoted_object,` +
+          `daily_budget,lifetime_budget,budget_remaining,` +
+          `targeting{publisher_platforms,facebook_positions,instagram_positions,device_platforms},` +
           `created_time,updated_time,issues_info,recommendations,campaign{id,name,status,effective_status,objective}` +
           `&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
       );
@@ -702,7 +819,8 @@ export const handler: RequestHandler = async (req, res) => {
       const saida: Array<Record<string, unknown>> = [];
       for (const c of contas?.data ?? []) {
         const ads = await g(
-          `${c.id}/adsets?fields=id,name,effective_status,optimization_goal,destination_type,promoted_object,campaign{id,name,objective}&limit=200`,
+          `${c.id}/adsets?fields=id,name,effective_status,optimization_goal,destination_type,promoted_object,` +
+            `daily_budget,lifetime_budget,campaign{id,name,objective}&limit=200`,
         );
         for (const a2 of ads?.data ?? []) {
           if (a2?.effective_status !== 'ACTIVE') continue;
@@ -714,6 +832,11 @@ export const handler: RequestHandler = async (req, res) => {
             conjunto: a2.name,
             conjunto_id: a2.id,
             otimizacao_atual: a2.optimization_goal,
+            // A Meta manda centavos como string. Sem dividir, R$ 70,00 vira
+            // "7000" no relatorio e ninguem confere se o piloto e o controle
+            // estao gastando o mesmo.
+            orcamento_diario: a2.daily_budget != null ? Number(a2.daily_budget) / 100 : null,
+            orcamento_total: a2.lifetime_budget != null ? Number(a2.lifetime_budget) / 100 : null,
             destino: a2.destination_type,
             promoted_object: a2.promoted_object ?? null,
           });
