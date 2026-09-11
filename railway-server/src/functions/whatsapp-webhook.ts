@@ -19,6 +19,7 @@ import { loadCurrentLabelNames, filterByLabelName, checkLabelName } from '../lib
 import { uploadImageThumb } from '../lib/imageThumb';
 import { notifyNewWhatsAppMessage } from '../lib/whatsapp-push';
 import { triggerProactiveFirstMessage } from '../lib/proactive-first-message';
+import { sincronizarLeituraDoChat } from '../lib/whatsapp-leitura';
 import { capturarIndicacao } from '../lib/referral-capture';
 import { handler as whatsappGroupExit, isGroupParticipantEvent } from './whatsapp-group-exit';
 
@@ -776,8 +777,26 @@ export const handler: RequestHandler = async (req, res) => {
       });
     };
 
+    // ========== CHATS — a conversa aberta no CELULAR apaga o badge do app ==========
+    // Estava na lista de descarte abaixo desde sempre, e era por isso que ler no
+    // aparelho não mexia no app. Só o contador zerado interessa; o resto do
+    // evento (fixar, arquivar, última mensagem) cai fora dentro da função, que
+    // é onde a regra de leitura mora — a mesma que a reconciliação retroativa
+    // usa (`whatsapp-sync-leitura`).
+    if (eventType === 'chats' && !isCallEvent) {
+      try {
+        const leitura = await sincronizarLeituraDoChat(supabase, body, webhookInstanceName);
+        return res.json({ success: true, type: 'chats', ...leitura });
+      } catch (e: any) {
+        // Leitura é conforto, mensagem é o negócio: falha aqui não pode virar
+        // retry da UazAPI em cima da porta por onde entra a firma inteira.
+        console.error('[leitura-sync] falhou (não-fatal):', e?.message);
+        return res.json({ success: true, type: 'chats', aplicado: false, motivo: 'erro', erro: e?.message });
+      }
+    }
+
     // Skip noise events (labels é tratado separadamente abaixo)
-    const skippableEvents = ['messages_update', 'presence', 'chats_update', 'chats_delete', 'contacts_update', 'message_ack', 'chats'];
+    const skippableEvents = ['messages_update', 'presence', 'chats_update', 'chats_delete', 'contacts_update', 'message_ack'];
     if (skippableEvents.includes(eventType) && !isCallEvent) {
       return res.json({ success: true, skipped: true, reason: `EventType ${eventType} filtered` });
     }

@@ -46,6 +46,7 @@ import { handler as whatsappCloudWebhook } from './functions/whatsapp-cloud-webh
 import { handler as whatsappGroupExit } from './functions/whatsapp-group-exit';
 import { handler as whatsappDownloadMedia } from './functions/whatsapp-download-media';
 import { handler as whatsappBackfillMedia } from './functions/whatsapp-backfill-media';
+import { handler as whatsappSyncLeitura } from './functions/whatsapp-sync-leitura';
 import { handler as extractConversationData } from './functions/extract-conversation-data';
 import { handler as manageWhatsappGroupParticipants } from './functions/manage-whatsapp-group-participants';
 import { handler as getGroupParticipants } from './functions/get-group-participants';
@@ -152,6 +153,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-group-exit': whatsappGroupExit,
   'whatsapp-download-media': whatsappDownloadMedia,
   'whatsapp-backfill-media': whatsappBackfillMedia,
+  'whatsapp-sync-leitura': whatsappSyncLeitura, // leitura feita no celular apaga o badge do app (retroativo + config do evento)
   'extract-conversation-data': extractConversationData,
   'manage-whatsapp-group-participants': manageWhatsappGroupParticipants,
   'get-group-participants': getGroupParticipants,
