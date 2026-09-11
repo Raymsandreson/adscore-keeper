@@ -313,3 +313,29 @@ contato" não entregue texto no lugar do número. É a mesma regra que o
 pergunta `qual_o_nome_da_criança_?`, e procurar "nome" por pedaço cadastraria o
 dependente no lugar do titular. Trocar o cliente por outra pessoa é pior do que
 não achar o campo.
+
+## Telefone é exigência de criar, não de identificar (11/09/2026)
+
+As 114 linhas que o leitor recusava por mês não eram lead perdido. O
+`meta-leads-sync` lê as mesmas da Meta, onde o telefone pré-preenchido está
+completo, e cria o lead. O que se perdia era o **status que a equipe escreveu**:
+a linha morria no parse, antes da etapa que aplica status — carregando um
+`facebook_lead_id` que identifica o lead com exatidão.
+
+Agora a linha sem telefone usável **sobrevive marcada** (`sem_telefone_usavel`)
+quando tem id da Meta. Sem o id, cai como antes: não há por onde reconhecê-la.
+
+Três travas para que isso não vire outro problema:
+
+1. **Nunca vira lead novo.** Sem telefone não há como falar com a pessoa, e o
+   `phone_key` vazio não casa com nada em `existingKeys` — sem a trava explícita
+   elas seriam criadas como leads mudos, duplicando quem já está no CRM.
+2. **Dedup pelo id.** Com `phone_key` vazio, todas as linhas sem telefone
+   colidiriam numa só e 113 sumiriam de novo, desta vez sem aparecer em contador
+   nenhum.
+3. **DDD não se inventa.** Os 45 casos de 9 dígitos são celular sem código de
+   área; completar por conta própria mandaria mensagem de cliente para o número
+   de outra pessoa (ver a skill `grupo-incerto-nao-manda-avisa`).
+
+O diagnóstico por aba informa `recuperadas_para_status`, e o contador de descarte
+passou a subir só quando a linha morre de verdade.

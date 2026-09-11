@@ -81,6 +81,12 @@ interface ParsedRow {
   name: string;
   phone: string; // normalizado, só dígitos (com 55 quando aplicável)
   phone_key: string; // últimos 8 dígitos (chave de match)
+  /**
+   * Linha sem telefone usavel, que so continua viva por causa do id da Meta.
+   * NUNCA vira lead novo — sem telefone nao ha como falar com a pessoa. Serve
+   * para levar ao CRM o status que a equipe escreveu.
+   */
+  sem_telefone_usavel: boolean;
   operator: string;
   /** O que a EQUIPE escreveu na coluna `status da lead`. */
   status_equipe: string;
@@ -110,6 +116,8 @@ function rowToObj(headers: string[], r: any[]): Record<string, string> {
 interface AbaLida {
   tab: string;
   headers: string[];
+  /** Linhas sem telefone usavel que seguiram vivas pelo id da Meta, so para status. */
+  recuperadas_para_status?: number;
   /** Por que o telefone foi recusado: celula vazia, ou quantos digitos tinha. */
   motivos_sem_telefone?: Record<string, number>;
   /** Linhas da aba cuja data cai na janela pedida, ANTES de qualquer descarte. */
@@ -173,6 +181,7 @@ async function fetchTab(
   let brutas = 0;
   const preenchidas: Record<string, number> = {};
   const motivosSemTelefone: Record<string, number> = {};
+  let recuperadasParaStatus = 0;
   // Distribuicao dos valores das colunas de status QUE A EQUIPE PREENCHE na
   // planilha. Se houver "fechado" marcado ali que o CRM nao conhece, cada um e
   // uma conversao real que nunca foi para a Meta.
@@ -205,6 +214,7 @@ async function fetchTab(
     brutas += 1;
     const o = rowToObj(headers, r);
     const naJanela = dentroDaJanela(o['created_time']);
+    let semTelefoneUsavel = false;
     if (naJanela) brutasNaJanela += 1;
     // NOME E TELEFONE TROCADOS DE COLUNA.
     //
@@ -249,8 +259,6 @@ async function fetchTab(
     }
     const phone = normalizePhone(rawPhone);
     if (phone.length < 10) {
-      descTelefone += 1;
-      if (naJanela) descartadasNaJanela += 1;
       // POR QUE caiu, e nao so que caiu. O descarte por nome ja se explicava
       // (`preenchidas_nas_descartadas`) e o de telefone nao — entao "114 linhas
       // recusadas" nao dizia se a planilha veio sem o numero ou se a regra dos
@@ -265,7 +273,26 @@ async function fetchTab(
           ? 'sem digito nenhum'
           : `${phone.length} digitos`;
       motivosSemTelefone[motivoFone] = (motivosSemTelefone[motivoFone] || 0) + 1;
-      continue;
+      // TELEFONE E EXIGENCIA DE CRIAR, NAO DE IDENTIFICAR.
+      //
+      // Medido em 11/09/2026: 114 linhas por mes morriam aqui — 45 com 9
+      // digitos (celular sem DDD), 42 com a celula vazia. Nenhuma era lead
+      // perdido: o `meta-leads-sync` le as mesmas da Meta, onde o telefone
+      // pre-preenchido esta completo, e cria o lead. O que se perdia era o
+      // STATUS que a equipe escreveu — a linha morria antes da etapa que aplica
+      // status, carregando um `facebook_lead_id` que identifica o lead com
+      // exatidao.
+      //
+      // Com o id, ela segue viva e marcada. Sem o id, cai como antes: nao ha
+      // por onde reconhece-la.
+      if (!normalizaLeadIdMeta(o['id'])) {
+        // Agora o contador de descarte so sobe quando a linha MORRE mesmo.
+        descTelefone += 1;
+        if (naJanela) descartadasNaJanela += 1;
+        continue;
+      }
+      semTelefoneUsavel = true;
+      recuperadasParaStatus += 1;
     }
     // CADA coluna separada. `lead_status` e campo da exportacao da Meta (vale
     // sempre "created"); com `||` ele curto-circuita e a coluna que a EQUIPE
@@ -282,8 +309,9 @@ async function fetchTab(
       facebook_lead_id: normalizaLeadIdMeta(o['id']),
       created_at: o['created_time'] || '',
       name: name.trim(),
-      phone,
-      phone_key: phoneKey(phone),
+      phone: semTelefoneUsavel ? '' : phone,
+      phone_key: semTelefoneUsavel ? '' : phoneKey(phone),
+      sem_telefone_usavel: semTelefoneUsavel,
       operator: meta.operator,
       campaign_id: o['campaign_id'] || '',
       campaign_name: o['campaign_name'] || '',
@@ -303,6 +331,7 @@ async function fetchTab(
     tab: meta.tab,
     headers,
     motivos_sem_telefone: motivosSemTelefone,
+    recuperadas_para_status: recuperadasParaStatus,
     brutas_na_janela: brutasNaJanela,
     descartadas_na_janela: descartadasNaJanela,
     linha_do_cabecalho: acho.linha + 1,
@@ -430,7 +459,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const cabecalhos = new Set<string>();
   const diagPorAba = new Map<
     string,
-    { cabecalho: string[]; motivosFone?: Record<string, number>; brutasJanela?: number; descartadasJanela?: number; linhaCabecalho?: number; idRecuperado?: boolean; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
+    { cabecalho: string[]; motivosFone?: Record<string, number>; recupStatus?: number; brutasJanela?: number; descartadasJanela?: number; linhaCabecalho?: number; idRecuperado?: boolean; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
   >();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
@@ -443,6 +472,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
         diagPorAba.set(meta.tab, {
           cabecalho: r.value.headers,
           motivosFone: (r.value as any).motivos_sem_telefone,
+          recupStatus: (r.value as any).recuperadas_para_status,
           brutasJanela: (r.value as any).brutas_na_janela,
           descartadasJanela: (r.value as any).descartadas_na_janela,
           linhaCabecalho: (r.value as any).linha_do_cabecalho,
@@ -473,8 +503,12 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const seenKeys = new Set<string>();
   const uniqueRows: ParsedRow[] = [];
   for (const r of recentRows) {
-    if (seenKeys.has(r.phone_key)) continue;
-    seenKeys.add(r.phone_key);
+    // Sem telefone, a chave de dedup e o id da Meta: com `phone_key` vazio
+    // todas as linhas sem telefone colidiriam numa so e 113 sumiriam de novo,
+    // desta vez sem aparecer em contador nenhum.
+    const chaveDedup = r.phone_key || `id:${r.facebook_lead_id}`;
+    if (seenKeys.has(chaveDedup)) continue;
+    seenKeys.add(chaveDedup);
     uniqueRows.push(r);
   }
 
@@ -556,6 +590,10 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const toCreate = opts.somenteStatus
     ? []
     : candidatosCriacao.filter((r) => {
+        // Sem telefone nao vira lead: o `phone_key` vazio nao casa com nada em
+        // `existingKeys`, entao sem esta linha elas seriam criadas — leads mudos,
+        // com quem ninguem consegue falar, e duplicando quem ja esta no CRM.
+        if (r.sem_telefone_usavel) return false;
         if (existingKeys.has(r.phone_key)) return false;
         if (r.facebook_lead_id && idsConhecidos.has(r.facebook_lead_id)) {
           barradosPeloId += 1;
@@ -592,6 +630,8 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       // diferenca entre a Meta e `brutas_na_janela` e problema da planilha; a
       // diferenca entre `brutas_na_janela` e `recentes` e problema daqui.
       motivos_sem_telefone: d?.motivosFone ?? {},
+      // Linhas que so continuam vivas pelo id da Meta, para levar status ao CRM.
+      recuperadas_para_status: d?.recupStatus ?? 0,
       brutas_na_janela: d?.brutasJanela ?? 0,
       descartadas_na_janela: d?.descartadasJanela ?? 0,
       linha_do_cabecalho: d?.linhaCabecalho ?? 1,
