@@ -331,3 +331,35 @@ O texto mandava alguém procurar defeito onde não há. Agora a contagem é sepa
 
 O `lead_id` dentro de `user_data_hash` é a prova: o normalizador só o grava
 quando o lead tem `facebook_lead_id`.
+
+## Lista nominal: aba "Leads e fechamentos" (11/09/2026)
+
+A aba passou a mostrar **lead a lead** e **fechamento a fechamento**, agrupados
+por acolhedor. Duas travas, e a razão de cada uma:
+
+**1. Só sai quando pedido (`detalhar: true`).** O painel se atualiza sozinho a
+cada minuto; puxar nome e telefone de 2.500 leads a cada ciclo, sem ninguém ter
+pedido, é carregar PII de graça. As colunas `lead_name` e `lead_phone` nem entram
+no `select` quando o detalhe não foi pedido.
+
+**2. Só sai para quem está logado.** `AUTH_ENFORCE` está **desligado** em
+produção — `/functions/metricas-painel` responde a qualquer um que saiba a URL.
+Devolver a lista nominal por padrão seria publicar a carteira de clientes numa
+URL aberta. O detalhe chama `authorizeFunctionRequest`, que aceita JWT de usuário
+logado, chave interna ou de API; o front já injeta o JWT da sessão nas chamadas
+ao Railway, então para quem está na aba isso é transparente.
+
+**Telefone sai mascarado** (`•••• 1234`), do servidor, não da tela. Quem precisa
+do número inteiro abre o lead no funil, onde existe registro de quem olhou.
+Painel de métricas não é lugar de copiar carteira.
+
+### O que deliberadamente não está lá
+
+**"Dias até fechar".** `became_client_date` guarda a data da importação da
+planilha, não a do contrato — 24 dos 28 fechamentos pagos caem todos em 09/09.
+Qualquer duração calculada daí seria inventada, e com cara de métrica. A legenda
+do card diz isso em vez de mostrar o número.
+
+O acolhedor sai do nome do conjunto, então **fechamento de lead orgânico não tem
+um** e aparece em "Sem acolhedor identificado", marcado como "não veio de
+anúncio" — em vez de ser escondido ou atribuído a alguém por chute.

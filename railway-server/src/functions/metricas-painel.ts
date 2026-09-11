@@ -18,6 +18,7 @@ import { CAPI_TOKEN, GRAPH_VERSION, CAPI_DATASET_ID } from '../lib/metaCapi';
 import { hojeISO, diasAtras, corteDeDias, diaDoInstante, diaDaColuna } from '../lib/diasSaoPaulo';
 import { rotinasParaOPainel } from '../lib/estadoDosCrons';
 import { ACOLHEDORES, FUNIS, acolhedorDoConjunto, funilDoNome } from '../lib/recortesDoPainel';
+import { authorizeFunctionRequest } from '../lib/functionAuth';
 
 // PostgREST corta em 1000. Não é teoria: o dedup da planilha leu 1000 de 7.255
 // e teria recriado lead por 10 minutos até alguém notar. Toda leitura de volume
@@ -221,13 +222,18 @@ export const handler: RequestHandler = async (req, res) => {
         ? (corpo.acolhedor as string)
         : null;
     const janelaInclutHoje = de <= hoje && ate >= hoje;
+    // Nome e telefone so entram na LEITURA quando o detalhe foi pedido. Trazer
+    // PII do banco "por via das duvidas" e como deixar a carteira em cima da
+    // mesa: o agregado nunca precisou disso.
+    const querDetalhe = Boolean((corpo as any).detalhar);
+    const colunasDoDetalhe = querDetalhe ? ', lead_name, lead_phone' : '';
 
     const [boards, leadsBrutos, fechadosBrutos, gasto, eventos, filaCapi, integracao] = await Promise.all([
       supabase.from('kanban_boards').select('id, name'),
       leTudo<any>((d, a) =>
         supabase
           .from('leads')
-          .select('created_at, source, board_id, facebook_lead_id, adset_name, lead_status')
+          .select(`created_at, source, board_id, facebook_lead_id, adset_name, lead_status${colunasDoDetalhe}`)
           .is('deleted_at', null)
           // -03:00 e nao Z: `de` ja e dia de Sao Paulo. Com `Z` a busca comecava
           // 3h antes e o total da janela contava a mais.
@@ -239,7 +245,7 @@ export const handler: RequestHandler = async (req, res) => {
       leTudo<any>((d, a) =>
         supabase
           .from('leads')
-          .select('became_client_date, source, board_id, facebook_lead_id, adset_name')
+          .select(`became_client_date, source, board_id, facebook_lead_id, adset_name${colunasDoDetalhe}`)
           .is('deleted_at', null)
           .eq('lead_status', 'closed')
           .gte('became_client_date', de)
@@ -594,6 +600,67 @@ export const handler: RequestHandler = async (req, res) => {
       },
     };
 
+    // ============================================================
+    // DETALHE NOMINAL — atras de login, e so quando pedido
+    // ============================================================
+    //
+    // Tudo acima desta linha e AGREGADO: nenhum nome, telefone ou e-mail de
+    // cliente atravessa. Isso nao era estilo, era necessidade — `AUTH_ENFORCE`
+    // esta DESLIGADO em producao, entao `/functions/metricas-painel` responde a
+    // qualquer um que saiba a URL. Devolver a lista nominal por padrao seria
+    // publicar a carteira de clientes do escritorio numa URL aberta.
+    //
+    // Entao o detalhe (1) so sai quando `detalhar` vem no corpo e (2) exige
+    // credencial de verdade: JWT de usuario logado, chave interna ou de API. O
+    // front ja injeta o JWT da sessao nas chamadas ao Railway, entao para quem
+    // esta logado na aba isso e transparente.
+    //
+    // Telefone sai MASCARADO (4 ultimos digitos). Quem precisa do numero
+    // inteiro abre o lead no funil, onde existe registro de quem olhou; painel
+    // de metricas nao e lugar de copiar carteira.
+    let detalhe: Record<string, unknown> | null = null;
+    if (querDetalhe) {
+      const credencial = await authorizeFunctionRequest(req as any);
+      if (!credencial.ok) {
+        detalhe = { disponivel: false, motivo: 'o detalhe nominal exige usuario logado' };
+      } else {
+        const mascara = (v: string | null) => {
+          const d = String(v || '').replace(/\D/g, '');
+          return d.length >= 4 ? `•••• ${d.slice(-4)}` : null;
+        };
+        const TETO_DETALHE = 500;
+        detalhe = {
+          disponivel: true,
+          teto: TETO_DETALHE,
+          leads: leads.slice(0, TETO_DETALHE).map((l: any) => ({
+            nome: l.lead_name || '(sem nome)',
+            telefone: mascara(l.lead_phone),
+            dia: diaDoInstante(l.created_at),
+            acolhedor: acolhedorDoConjunto(l.adset_name),
+            conjunto: l.adset_name || null,
+            funil: nomeBoard[l.board_id] || null,
+            status: l.lead_status || null,
+            pago: ehPago(l),
+          })),
+          leads_total: leads.length,
+          // `dias_ate_fechar` fica FORA de proposito: `became_client_date` guarda
+          // a data da IMPORTACAO da planilha, nao a do fechamento — 24 dos 28
+          // fechamentos pagos caem todos em 09/09. Qualquer duracao calculada
+          // aqui seria inventada, e com cara de metrica.
+          fechamentos: fechados.slice(0, TETO_DETALHE).map((f: any) => ({
+            nome: f.lead_name || '(sem nome)',
+            telefone: mascara(f.lead_phone),
+            dia: diaDaColuna(f.became_client_date),
+            acolhedor: acolhedorDoConjunto(f.adset_name),
+            conjunto: f.adset_name || null,
+            funil: nomeBoard[f.board_id] || null,
+            pago: ehPago(f),
+          })),
+          fechamentos_total: fechados.length,
+        };
+      }
+    }
+
     return res.status(200).json({
       gerado_em: new Date().toISOString(),
       janela: { de, ate, dias: serieDias.length, inclui_hoje: janelaInclutHoje },
@@ -649,6 +716,7 @@ export const handler: RequestHandler = async (req, res) => {
         investido: Number((gastoPorDia[d] || 0).toFixed(2)),
       })),
       desempenho_por_conjunto,
+      detalhe,
       por_acolhedor,
       funil_pago,
       capi: {

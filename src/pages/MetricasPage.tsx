@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft, RefreshCw, TrendingUp, Users, Handshake, Wallet, AlertTriangle, Send, Check, X, Link2,
-  Target, Timer, Filter, CalendarRange, UserRound,
+  Target, Timer, Filter, CalendarRange, UserRound, List, Eye, EyeOff,
 } from 'lucide-react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -98,6 +98,15 @@ interface Painel {
     disponivel: boolean; erro?: string; dataset_id?: string;
     conjuntos_ativos?: number; conjuntos_otimizando_conversao?: number; conjuntos_usando_dataset?: number;
   };
+  detalhe: {
+    disponivel: boolean; motivo?: string; teto?: number;
+    leads?: Array<{ nome: string; telefone: string | null; dia: string; acolhedor: string | null;
+                    conjunto: string | null; funil: string | null; status: string | null; pago: boolean }>;
+    leads_total?: number;
+    fechamentos?: Array<{ nome: string; telefone: string | null; dia: string; acolhedor: string | null;
+                          conjunto: string | null; funil: string | null; pago: boolean }>;
+    fechamentos_total?: number;
+  } | null;
   rotinas: Array<{
     chave: string; rotulo: string; a_cada: string; ligado: boolean; execucoes: number;
     ultima_em: string | null; ultimo_resultado: string | null; acumulado: string;
@@ -573,6 +582,117 @@ function FunilPago({ f, dias }: { f: Painel['funil_pago']; dias: number }) {
   );
 }
 
+const ROTULO_ACOLHEDOR: Record<string, string> = {
+  ISRAEL: 'Israel', MATEUS: 'Mateus', KAROLYNE: 'Karolyne', EDILAN: 'Edilan',
+};
+
+/**
+ * Lista nominal dos leads da janela.
+ *
+ * Só aparece sob pedido e só para quem está logado — o endpoint responde sem
+ * credencial (`AUTH_ENFORCE` desligado), então a lista nominal por padrão seria
+ * a carteira de clientes numa URL aberta. O telefone vem mascarado do servidor;
+ * quem precisa do número inteiro abre o lead no funil, onde fica registro de
+ * quem olhou.
+ */
+function ListaDeLeads({ d }: { d: NonNullable<Painel['detalhe']> }) {
+  const itens = d.leads || [];
+  if (!itens.length) return <p className="text-sm text-muted-foreground">Nenhum lead na janela.</p>;
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2"><List className="h-4 w-4" />Leads que chegaram</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          {num(d.leads_total || 0)} no período
+          {(d.leads_total || 0) > itens.length && ` · mostrando os ${num(itens.length)} mais recentes`}
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[680px]">
+            <thead>
+              <tr className="text-left text-xs text-muted-foreground border-b">
+                <th className="pb-2 font-medium">Dia</th>
+                <th className="pb-2 font-medium">Lead</th>
+                <th className="pb-2 font-medium">Telefone</th>
+                <th className="pb-2 font-medium">Acolhedor</th>
+                <th className="pb-2 font-medium">Funil</th>
+                <th className="pb-2 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {itens.map((l, i) => (
+                <tr key={`${l.dia}-${l.nome}-${i}`} className="border-b last:border-0">
+                  <td className="py-1.5 tabular-nums whitespace-nowrap">{diaCurto(l.dia)}</td>
+                  <td className="py-1.5">
+                    <span className="truncate block max-w-[280px]" title={l.nome}>{l.nome}</span>
+                    {!l.pago && <span className="text-[11px] text-muted-foreground">não veio de anúncio</span>}
+                  </td>
+                  <td className="py-1.5 tabular-nums text-muted-foreground whitespace-nowrap">{l.telefone || '—'}</td>
+                  <td className="py-1.5">{l.acolhedor ? ROTULO_ACOLHEDOR[l.acolhedor] || l.acolhedor : '—'}</td>
+                  <td className="py-1.5 text-muted-foreground">{l.funil || '—'}</td>
+                  <td className="py-1.5">{ROTULO_STATUS[l.status || ''] || l.status || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Fechamentos um a um, agrupados por acolhedor — a leitura que a operação pede. */
+function FechamentosPorAcolhedor({ d }: { d: NonNullable<Painel['detalhe']> }) {
+  const itens = d.fechamentos || [];
+  if (!itens.length) return null;
+  const grupos = new Map<string, typeof itens>();
+  for (const f of itens) {
+    const k = f.acolhedor ? ROTULO_ACOLHEDOR[f.acolhedor] || f.acolhedor : 'Sem acolhedor identificado';
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k)!.push(f);
+  }
+  const ordenados = [...grupos.entries()].sort((a, b) => b[1].length - a[1].length);
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2"><Handshake className="h-4 w-4" />Fechamentos por acolhedor</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          {num(d.fechamentos_total || 0)} no período. Quem não veio de anúncio aparece marcado — o
+          acolhedor sai do nome do conjunto, então lead orgânico não tem um.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {ordenados.map(([nome, lista]) => (
+          <div key={nome}>
+            <div className="flex items-baseline justify-between border-b pb-1 mb-1.5">
+              <span className="text-sm font-medium">{nome}</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{num(lista.length)} contrato(s)</span>
+            </div>
+            <div className="space-y-1">
+              {lista.map((f, i) => (
+                <div key={`${f.nome}-${i}`} className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="truncate" title={f.nome}>
+                    {f.nome}
+                    {!f.pago && <span className="text-[11px] text-muted-foreground ml-2">não veio de anúncio</span>}
+                  </span>
+                  <span className="shrink-0 text-muted-foreground tabular-nums text-xs">
+                    {f.telefone || '—'} · {diaCurto(f.dia)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        <p className="text-[11px] text-muted-foreground border-t pt-2">
+          A data é a que o CRM tem como fechamento. Para os leads vindos da planilha ela é a data da
+          importação, não a do contrato — por isso não há "dias até fechar" aqui: seria número inventado.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 /** As quatro rotinas que mantêm o painel vivo. Não seguem o filtro: são do sistema, não do período. */
 function Rotinas({ itens }: { itens: Painel['rotinas'] }) {
   if (!itens?.length) return null;
@@ -621,12 +741,15 @@ export default function MetricasPage() {
   const [ate, setAte] = useState(() => hojeSP());
   const [funil, setFunil] = useState<string | null>(null);
   const [acolhedor, setAcolhedor] = useState<string | null>(null);
+  // Detalhe nominal e OPT-IN: puxar nome e telefone a cada atualização de um
+  // minuto, sem ninguém ter pedido, é carregar PII de graça.
+  const [detalhar, setDetalhar] = useState(false);
 
   const buscar = useCallback(async () => {
     setCarregando(true);
     try {
       const { data, error } = await cloudFunctions.invoke('metricas-painel', {
-        body: { de, ate, funil, acolhedor },
+        body: { de, ate, funil, acolhedor, detalhar },
       });
       if (error) throw new Error(error.message);
       if ((data as any)?.error) throw new Error((data as any).error);
@@ -637,7 +760,7 @@ export default function MetricasPage() {
     } finally {
       setCarregando(false);
     }
-  }, [de, ate, funil, acolhedor]);
+  }, [de, ate, funil, acolhedor, detalhar]);
 
   useEffect(() => {
     buscar();
@@ -777,6 +900,9 @@ export default function MetricasPage() {
                 <TabsTrigger value="evolucao" className="gap-1.5">
                   <TrendingUp className="h-3.5 w-3.5" />Evolução e funil
                 </TabsTrigger>
+                <TabsTrigger value="listagem" className="gap-1.5">
+                  <List className="h-3.5 w-3.5" />Leads e fechamentos
+                </TabsTrigger>
                 <TabsTrigger value="sistema" className="gap-1.5">
                   <Link2 className="h-3.5 w-3.5" />Integração e sistema
                 </TabsTrigger>
@@ -859,6 +985,45 @@ export default function MetricasPage() {
                   <Ranking titulo="Leads por origem" itens={dados.leads.por_fonte.slice(0, 8)} />
                   <Ranking titulo="Leads por funil" itens={dados.leads.por_board.slice(0, 8)} />
                 </div>
+              </TabsContent>
+
+              <TabsContent value="listagem" className="space-y-4 mt-4">
+                <Card>
+                  <CardContent className="pt-4 pb-4 flex items-center justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Lista nominal dos leads do período</p>
+                      <p className="text-xs text-muted-foreground">
+                        Nome e telefone só são carregados quando você pede, e só para quem está logado. O
+                        telefone vem mascarado; o número inteiro fica no lead, dentro do funil.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={detalhar ? 'outline' : 'default'}
+                      onClick={() => setDetalhar((v) => !v)}
+                      className="gap-2 shrink-0"
+                    >
+                      {detalhar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {detalhar ? 'Ocultar lista' : 'Mostrar lista'}
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {detalhar && dados.detalhe && !dados.detalhe.disponivel && (
+                  <Card className="border-destructive/50">
+                    <CardContent className="pt-6 text-sm text-destructive flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                      <span>{dados.detalhe.motivo || 'não foi possível carregar o detalhe'}</span>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {detalhar && dados.detalhe?.disponivel && (
+                  <>
+                    <FechamentosPorAcolhedor d={dados.detalhe} />
+                    <ListaDeLeads d={dados.detalhe} />
+                  </>
+                )}
               </TabsContent>
 
               <TabsContent value="sistema" className="space-y-4 mt-4">
