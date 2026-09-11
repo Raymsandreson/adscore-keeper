@@ -431,3 +431,68 @@ PostgREST recusa o insert inteiro, e por isso há **0 leads com
   **zero** com `ctwa_clid` preenchido, o mais recente de 28/04/2026. Os leads
   vêm de formulário (Lead Ads), então o caminho é Pixel/CAPI. `meta_capi_config`
   nem existe no Externo e `waba_id` é nulo na única conta.
+
+---
+
+## Quem mexeu no conjunto — auditoria a partir de 11/09/2026
+
+`updated_time` só diz que **algo** mudou. Não diz o quê, nem por ordem de quem —
+e num piloto de otimização isso é a diferença entre "a Meta desfez" e "alguém
+rodou o comando de volta". O log de atividades da Meta é a única fonte que
+carrega o autor:
+
+```
+POST /functions/meta-capi-dispatch  { "modo": "historico_conjunto", "adset_id": "...", "dias": 7 }
+```
+
+Lê o log do conjunto **e** o da conta (alguns eventos só aparecem no da conta),
+junta sem repetir, converte a hora — a Meta devolve no fuso da conta — e traz
+`de → para` por evento. `modo: 'conjunto'` passou a trazer junto o orçamento
+diário e os posicionamentos, que mudam a entrega sem mudar a otimização.
+
+**Dois atores aparecem no log, e eles não se confundem:**
+
+| Autor | Quem é |
+|---|---|
+| `WhatsJud Backend` | nossos comandos via API (o usuário do sistema) |
+| nome de pessoa | alteração feita à mão no Gerenciador de Anúncios |
+
+### O que a auditoria corrigiu sobre o piloto
+
+A leitura de 10/09 foi de que o piloto "voltou sozinho" para `LEAD_GENERATION`
+dois minutos depois de ligado. **Não voltou sozinho.** O log mostra a sequência
+inteira, toda ela com autor `WhatsJud Backend`:
+
+```
+10/09 14:54:43   Leads → Conversion leads          (a troca)
+10/09 14:57:21   Conversion leads → Leads          (o comando de rollback, rodado de novo)
+10/09 14:59:11   Leads → Conversion leads          (a troca, agora de vez)
+```
+
+O comando de reversão e o de troca são quase idênticos — muda uma palavra no
+JSON. Rodar o errado por engano é o modo de falha esperado deste caminho, não um
+comportamento da plataforma.
+
+### Orçamento nivelado em 11/09
+
+Entre 08:17 e 08:26 de 11/09, **Luiz Ricardo** (à mão, no Gerenciador) baixou
+cinco dos seis conjuntos ativos para **R$ 70,00/dia**: 300→70, 300→70, 180→70
+(o do piloto), 150→70 e 180→70. O sexto (`CONJUNTO 4 KAROL — Cópia`) ficou em
+R$ 10,00/dia desde 10/09.
+
+Isso **ajuda** a comparação do piloto — piloto e controle passam a gastar o
+mesmo —, mas o `CONJUNTO - KAROLYNE` levou dois choques em dois dias: troca de
+otimização (que zera o aprendizado) e corte de 61% do orçamento. Os primeiros
+dias de custo por lead dele não medem a otimização; medem o reinício.
+
+### O posicionamento mexeu junto com a otimização
+
+No mesmo segundo da troca (10/09 14:54:43), a Meta registrou um
+`update_ad_set_target_spec` no conjunto: saiu *Lead Gen Multi Submit Ads on
+Instagram* dos posicionamentos. Ninguém pediu — veio junto com `QUALITY_LEAD`.
+
+Conferido em 11/09: **piloto e controle têm hoje a mesma lista** —
+`facebook: feed, story, facebook_reels, profile_feed` e `instagram: stream,
+story, reels, profile_feed`. Então a comparação não está enviesada por
+posicionamento. Fica o registro de que trocar a otimização pode mexer no
+targeting sem aviso: conferir os dois lados depois de cada troca.
