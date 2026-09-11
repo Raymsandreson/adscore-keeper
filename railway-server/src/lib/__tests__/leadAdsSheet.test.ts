@@ -7,7 +7,7 @@
  * 131 linhas gravadas com prefixo antes de alguém olhar o dado no banco.
  */
 import { describe, it, expect } from 'vitest';
-import { normalizaLeadIdMeta, normalizePhone, phoneKey, isJunkName, casaOperador, achaCabecalho } from '../leadAdsSheet';
+import { normalizaLeadIdMeta, normalizePhone, phoneKey, isJunkName, casaOperador, achaCabecalho, celulaDeTelefone } from '../leadAdsSheet';
 
 describe('normalizaLeadIdMeta', () => {
   it('tira o prefixo l: da exportação da Meta', () => {
@@ -134,5 +134,27 @@ describe('achaCabecalho', () => {
     const r = achaCabecalho([['coluna a', 'coluna b'], ['x', 'y']]);
     expect(r.linha).toBe(0);
     expect(r.acertos).toBe(0);
+  });
+});
+
+describe('celulaDeTelefone', () => {
+  it('prefere as colunas conhecidas', () => {
+    expect(celulaDeTelefone({ telefone: '5511999990000', 'qual_o_seu_número_para_contato_?': '5511888880000' }))
+      .toBe('5511999990000');
+  });
+
+  it('acha a coluna escrita de outro jeito — caso real do Auxílio Acidente', () => {
+    // O leitor procurava `..._de_contato_?` e a planilha tem `..._para_contato_?`.
+    expect(celulaDeTelefone({ 'qual_o_seu_número_para_contato_?': '5511999990000' })).toBe('5511999990000');
+    expect(celulaDeTelefone({ 'qual_o_seu_whatsapp_?': '5511999990000' })).toBe('5511999990000');
+  });
+
+  it('recusa coluna de contato que não guarda número', () => {
+    // "melhor horário de contato" casa no pedaço mas não é telefone.
+    expect(celulaDeTelefone({ 'melhor_horário_de_contato_?': 'à tarde' })).toBe('');
+  });
+
+  it('devolve vazio quando não há telefone nenhum', () => {
+    expect(celulaDeTelefone({ full_name: 'Ana', cidade: 'Belém' })).toBe('');
   });
 });

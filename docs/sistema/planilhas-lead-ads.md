@@ -265,3 +265,51 @@ sem nome que guarda outra coisa continua sem nome.
 
 O diagnóstico por aba agora informa `linha_do_cabecalho` e `id_recuperado`, então
 dá para ver que alguém colou dado no topo sem abrir a planilha.
+
+## A conta fechada: planilha × Meta (11/09/2026)
+
+O diagnóstico por aba agora devolve `brutas_na_janela` — linhas cuja data cai no
+período, contadas **antes** de qualquer descarte. Com ela a diferença para a Meta
+se separa em duas causas que pedem conserto em lugares diferentes:
+
+```
+Meta − brutas_na_janela      = a planilha não recebeu   (conserto na Meta/export)
+brutas_na_janela − recentes  = este leitor recusou      (conserto aqui)
+```
+
+BPC, 30 dias:
+
+| | Meta | Planilha tem | Não recebeu | Leitor recusou | Entra |
+|---|---:|---:|---:|---:|---:|
+| Israel | 694 | 690 | 4 | 36 | 654 |
+| Mateus | 793 | 782 | 11 | 27 | 755 |
+| Karolyne | 619 | 616 | 3 | 28 | 588 |
+| Edilan | 516 | 512 | 4 | 23 | 489 |
+| **Total** | **2.623** | **2.600** | **23** | **114** | **2.486** |
+
+Auxílio Acidente: 592 → 588 → 4 recusadas → 584.
+
+**A planilha está de acordo com a Meta**: recebe 99,1% do que a Meta exporta. O
+resíduo é quase todo do lado de cá.
+
+### As 220 do Edilan eram antigas
+
+A aba EDILAN tem 226 linhas descartadas por nome vazio na vida inteira, mas só
+**8** caem na janela de 30 dias. Não é um problema corrente — é um lote velho.
+
+### O que o leitor recusa é quase tudo "sem telefone"
+
+E parte disso era nome de coluna. A planilha do Auxílio Acidente tem
+`qual_o_seu_número_para_contato_?` e o leitor procurava
+`qual_o_seu_número_de_contato_?`. Uma palavra, e a linha caía como sem telefone.
+
+`celulaDeTelefone` (`lib/leadAdsSheet.ts`, com teste) passa a procurar por
+**pedaço** do nome da coluna — `telefone`, `contato`, `whats`, `phone`,
+`celular` — aceitando só valor com 10+ dígitos, para que "melhor horário de
+contato" não entregue texto no lugar do número. É a mesma regra que o
+`meta-leads-sync` já usava, e por isso ele não sofria do problema.
+
+**O nome não ganhou busca por pedaço**, de propósito: o formulário do BPC
+pergunta `qual_o_nome_da_criança_?`, e procurar "nome" por pedaço cadastraria o
+dependente no lugar do titular. Trocar o cliente por outra pessoa é pior do que
+não achar o campo.

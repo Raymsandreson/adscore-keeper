@@ -16,6 +16,7 @@ import {
   isJunkName,
   OPERATOR_KEYWORDS,
   achaCabecalho,
+  celulaDeTelefone,
 } from '../lib/leadAdsSheet';
 
 const GATEWAY = 'https://connector-gateway.lovable.dev/google_sheets/v4';
@@ -216,8 +217,11 @@ async function fetchTab(
     // desmentirem, a troca e obvia; se nenhuma servir, a linha cai como antes.
     const temLetra = (v: string) => /[a-zà-ú]/i.test(String(v || ''));
     const celulaNome = o['nome_completo'] || o['full_name'] || '';
-    const celulaTelefone =
-      o['telefone'] || o['phone_number'] || o['número_do_whatsapp'] || o['qual_o_seu_número_de_contato_?'] || '';
+    // Busca por pedaco do nome da coluna, e nao lista exata — ver
+    // `celulaDeTelefone`. O nome continua vindo so das colunas exatas: procurar
+    // "nome" por pedaco pegaria `qual_o_nome_da_criança_?` e cadastraria o
+    // dependente no lugar do titular.
+    const celulaTelefone = celulaDeTelefone(o);
     const trocado = !temLetra(celulaNome) && temLetra(celulaTelefone);
     if (trocado) trocaDeColuna += 1;
     const name = trocado ? celulaTelefone : celulaNome;

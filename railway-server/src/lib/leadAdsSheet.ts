@@ -159,3 +159,50 @@ export function achaCabecalho(values: any[][], limite = 5): CabecalhoAchado {
 
   return { linha: melhor.linha, headers, acertos: melhor.acertos, id_recuperado: idRecuperado };
 }
+
+
+// ============================================================
+// EM QUAL COLUNA ESTA O TELEFONE
+// ============================================================
+//
+// Era uma lista de nomes exatos, e ela envelhece: a planilha do Auxilio Acidente
+// tem `qual_o_seu_número_para_contato_?` e o leitor procurava
+// `qual_o_seu_número_de_contato_?` — uma palavra de diferenca, e a linha caia
+// como "sem telefone". Cada formulario novo que alguem cria com a pergunta
+// escrita de outro jeito repete isso, calado.
+//
+// O `meta-leads-sync` ja lia por PEDACO do nome desde o comeco, e por isso nao
+// sofria do mesmo problema. Aqui a regra passa a ser a mesma, com uma diferenca
+// que importa: so o TELEFONE ganha busca por pedaco.
+//
+// O nome NAO ganha. O formulario do BPC pergunta `qual_o_nome_da_criança_?`, e
+// buscar "nome" por pedaco pegaria o nome do dependente para o cadastro do
+// titular — trocar o cliente por outra pessoa e pior do que nao achar o campo.
+
+/** Colunas de telefone conhecidas, tentadas primeiro por serem as mais confiaveis. */
+const COLUNAS_DE_TELEFONE = [
+  'telefone', 'phone_number', 'celular', 'número_do_whatsapp', 'numero_do_whatsapp',
+];
+
+/** Pedacos que denunciam uma coluna de telefone escrita de outro jeito. */
+const PEDACOS_DE_TELEFONE = ['telefone', 'contato', 'whats', 'phone', 'celular'];
+
+/**
+ * Acha o telefone na linha, mesmo quando a coluna tem nome inesperado.
+ *
+ * A busca por pedaco so aceita valor com 10+ digitos: sem isso, uma coluna
+ * "melhor horario de contato" entregaria texto no lugar do numero.
+ */
+export function celulaDeTelefone(o: Record<string, string>): string {
+  for (const c of COLUNAS_DE_TELEFONE) {
+    const v = String(o[c] ?? '').trim();
+    if (v) return v;
+  }
+  for (const [chave, valor] of Object.entries(o)) {
+    const k = String(chave).toLowerCase();
+    if (!PEDACOS_DE_TELEFONE.some((p) => k.includes(p))) continue;
+    const v = String(valor ?? '').trim();
+    if (v.replace(/\D/g, '').length >= 10) return v;
+  }
+  return '';
+}
