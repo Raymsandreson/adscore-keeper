@@ -15,6 +15,7 @@ import {
   phoneKey,
   isJunkName,
   OPERATOR_KEYWORDS,
+  achaCabecalho,
 } from '../lib/leadAdsSheet';
 
 const GATEWAY = 'https://connector-gateway.lovable.dev/google_sheets/v4';
@@ -108,6 +109,12 @@ function rowToObj(headers: string[], r: any[]): Record<string, string> {
 interface AbaLida {
   tab: string;
   headers: string[];
+  /** Em que linha (1-indexada) o cabecalho foi encontrado. 1 = topo, como sempre foi. */
+  linha_do_cabecalho?: number;
+  /** Quantos nomes de coluna da Meta a linha vencedora tinha. */
+  cabecalho_reconhecido?: number;
+  /** `true` quando a 1a coluna estava sem rotulo e foi batizada de `id`. */
+  id_recuperado?: boolean;
   rows: ParsedRow[];
   /** Linhas cruas da aba, antes de qualquer descarte. */
   brutas: number;
@@ -141,7 +148,11 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   const values: any[][] = json.values || [];
   if (values.length < 2)
     return { tab: meta.tab, headers: values[0] ? values[0].map(String) : [], rows: [], brutas: Math.max(0, values.length - 1), descartadas_nome: 0, descartadas_telefone: 0, preenchidas_nas_descartadas: {}, recuperadas_por_troca: 0, status_na_planilha: {}, status_com_id_meta: {} };
-  const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
+  // O cabecalho e PROCURADO, nao assumido na linha 1 — ver `achaCabecalho`.
+  // A aba `MATEUS - 2` tinha um lead na linha 1 e o cabecalho na linha 2, e as
+  // 874 linhas dela eram descartadas por causa disso.
+  const acho = achaCabecalho(values);
+  const headers = acho.headers;
 
   const out: ParsedRow[] = [];
   // Contar o descarte, e nao so o aproveitado: aba que le 40 linhas e aproveita
@@ -156,7 +167,11 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   const statusPlanilha: Record<string, number> = {};
   const statusComIdMeta: Record<string, number> = {};
   let trocaDeColuna = 0;
-  for (let i = 1; i < values.length; i++) {
+  for (let i = 0; i < values.length; i++) {
+    // Pula so o cabecalho. A linha ACIMA dele, quando existe, e um lead de
+    // verdade — era ela que estava sendo usada como nome de coluna, e
+    // descarta-la para "consertar" a aba perderia o registro.
+    if (i === acho.linha) continue;
     const r = values[i];
     if (!r || !r.length) continue;
     brutas += 1;
@@ -238,6 +253,9 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   return {
     tab: meta.tab,
     headers,
+    linha_do_cabecalho: acho.linha + 1,
+    cabecalho_reconhecido: acho.acertos,
+    id_recuperado: acho.id_recuperado,
     rows: out,
     brutas,
     descartadas_nome: descNome,
@@ -360,7 +378,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const cabecalhos = new Set<string>();
   const diagPorAba = new Map<
     string,
-    { cabecalho: string[]; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
+    { cabecalho: string[]; linhaCabecalho?: number; idRecuperado?: boolean; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
   >();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
@@ -372,6 +390,8 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
         r.value.headers.forEach((h) => cabecalhos.add(h));
         diagPorAba.set(meta.tab, {
           cabecalho: r.value.headers,
+          linhaCabecalho: (r.value as any).linha_do_cabecalho,
+          idRecuperado: (r.value as any).id_recuperado,
           brutas: r.value.brutas,
           dn: r.value.descartadas_nome,
           dt: r.value.descartadas_telefone,
@@ -483,6 +503,10 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       // 'full_name'/'telefone', a aba nao tem linha de cabecalho e todo o resto
       // e lido deslocado — a uniao em `colunas_da_planilha` esconde isso.
       cabecalho: d?.cabecalho ?? [],
+      // Em que linha o cabecalho estava. Diferente de 1 significa que alguem
+      // colou dado no topo da aba — util saber sem precisar abrir a planilha.
+      linha_do_cabecalho: d?.linhaCabecalho ?? 1,
+      id_recuperado: d?.idRecuperado ?? false,
       preenchidas_nas_descartadas: d?.preenchidas ?? {},
       recuperadas_por_troca: d?.troca ?? 0,
       status_na_planilha: d?.status ?? {},

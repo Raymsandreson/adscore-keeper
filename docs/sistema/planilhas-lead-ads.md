@@ -228,3 +228,40 @@ novo". Os dois números têm que ser mostrados juntos.
   aparecer em lugar nenhum da resposta.
 - A planilha é a única fonte: se a integração Meta→Sheets cair, o CRM seca e
   nada aqui denuncia — só a comparação com o gasto no Gerenciador de Anúncios.
+
+## O cabeçalho é procurado, não assumido (11/09/2026)
+
+A exportação da Meta para o Sheets não garante que a primeira linha seja o
+cabeçalho. Basta alguém inserir uma linha ou colar um registro no topo.
+
+Medido na planilha do BPC:
+
+| Aba | Defeito | Custo |
+|---|---|---|
+| `MATEUS - 2` | lead na linha 1, cabeçalho na linha 2 | 874 linhas descartadas |
+| `KAROLYNE` | mesmo defeito | 36 linhas |
+| `KAROL - 2` | cabeçalho na linha 1, mas célula A1 vazia | ids da Meta não carregavam, e o status escrito pela equipe não casava com lead nenhum |
+
+Comparado com o que a Meta tem em 30 dias, isso deixava o BPC **893 leads atrás**
+— 793 só do Mateus.
+
+### Por que não foi resolvido pedindo para editar a planilha
+
+Seria transferir para a pessoa um trabalho que o programa faz melhor, e falharia
+calado de novo no dia em que ninguém lembrasse. `achaCabecalho`
+(`lib/leadAdsSheet.ts`, puro e com teste) procura entre as primeiras linhas a que
+mais parece cabeçalho — a que traz mais nomes de coluna conhecidos da Meta. Se
+nenhuma parecer, cai na primeira linha, o comportamento antigo, para que aba com
+nomes inesperados não fique pior do que já era.
+
+**A linha acima do cabeçalho não é descartada.** Ela é um lead de verdade: o da
+`MATEUS - 2` já estava no CRM pela leitura direta da Meta, mas o da `KAROLYNE`
+(de 06/07) não estava em lugar nenhum — apagá-la para "consertar" a aba teria
+perdido o registro.
+
+**A primeira coluna sem rótulo vira `id`** quando as linhas de baixo guardam ids
+da Meta (`l:1086829373844173` ou só os dígitos). É evidência, não chute: coluna
+sem nome que guarda outra coisa continua sem nome.
+
+O diagnóstico por aba agora informa `linha_do_cabecalho` e `id_recuperado`, então
+dá para ver que alguém colou dado no topo sem abrir a planilha.
