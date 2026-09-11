@@ -443,11 +443,22 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
 
       if (error) throw error;
 
-      // Espelha a configuração no Externo (fonte de verdade pro profile).
+      // Espelha a configuração no Externo. É best-effort, mas NÃO pode falhar
+      // calado: quem dispara WhatsApp lendo o Externo (edge
+      // notify-activity-created lê SÓ de lá) continua discando o número antigo.
+      // Incidente 11/09/2026: telefone do João trocado aqui, Externo parado em
+      // 21/07/2026 com o número desativado, e a atividade voltou
+      // "the number ...@s.whatsapp.net is not on WhatsApp".
+      const extUserId = await remapToExternal(member.user_id).catch(() => null);
+      let espelhoConfirmado = false;
+
+      // Caminho 1: update direto, sujeito à RLS do Externo
+      // (`auth.uid() = user_id OR is_admin(auth.uid())`). Sem `.select()` o
+      // Supabase devolve error=null mesmo casando 0 linhas — era isso que
+      // escondia a falha. Agora conta as linhas de volta.
       try {
-        const extUserId = await remapToExternal(member.user_id);
         if (extUserId) {
-          await db
+          const { data: espelhadas, error: extErr } = await db
             .from('profiles')
             .update({
               full_name: fullName.trim(),
@@ -459,25 +470,39 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
               voice_id: voiceId && voiceId !== 'none' ? voiceId : null,
               voice_name: voiceId && voiceId !== 'none' ? (voices.find(v => v.id === voiceId)?.name || null) : null,
             } as any)
-            .eq('user_id', extUserId);
+            .eq('user_id', extUserId)
+            .select('user_id');
+          if (extErr) throw extErr;
+          espelhoConfirmado = (espelhadas?.length ?? 0) > 0;
         }
       } catch (extErr) {
         console.warn('External profile mirror failed (non-blocking):', extErr);
       }
 
-      // Also sync name/email to External DB (source of truth for auth profile)
+      // Caminho 2: service role via edge (passa por cima da RLS). Tem que
+      // receber o user_id DO EXTERNO: a function faz
+      // `.eq('user_id', user_id)`, e mandar o UUID do Cloud casava 0 linhas e
+      // ainda respondia ok:true — espelho nunca escrito, nenhum erro na tela.
       try {
-        await cloudFunctions.invoke('sync-user-to-external', {
+        const { data: syncData } = await cloudFunctions.invoke('sync-user-to-external', {
           body: {
             action: 'update_profile',
-            user_id: member.user_id,
+            user_id: extUserId || member.user_id,
             full_name: fullName.trim(),
             email: email.trim(),
             phone: normalizedPhone || null,
           },
         });
+        if ((syncData as any)?.ok) espelhoConfirmado = true;
       } catch (syncErr) {
         console.warn('External profile sync failed (non-blocking):', syncErr);
+      }
+
+      if (!espelhoConfirmado) {
+        toast.warning('Perfil salvo, mas o espelho no banco Externo não confirmou.', {
+          description: 'Notificações que leem o Externo podem usar o telefone/instância antigos. Salve de novo ou avise o suporte.',
+          duration: 10000,
+        });
       }
 
 
