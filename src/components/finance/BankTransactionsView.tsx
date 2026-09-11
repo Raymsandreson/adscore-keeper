@@ -18,6 +18,7 @@ import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { ExpenseCategoryManager } from '@/components/finance/ExpenseCategoryManager';
 import { CategorySelector } from '@/components/finance/CategorySelector';
+import { SeletorGrupoCaso } from '@/components/finance/SeletorGrupoCaso';
 import { CardAssignmentManager } from '@/components/finance/CardAssignmentManager';
 import {
   ArrowUpRight, ArrowDownRight, Search, Wallet, TrendingUp, TrendingDown,
@@ -110,8 +111,14 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
   const [generatingLink, setGeneratingLink] = useState(false);
   const [editData, setEditData] = useState<{
     categoryId: string | null;
-    linkType: 'lead' | 'contact';
+    /**
+     * 'group' = o CASO (grupo de WhatsApp). Vínculo mais específico que o lead:
+     * lead com dois processos tem dois grupos, e é o grupo que faz o limite
+     * `per_whatsapp_group` somar no caso certo em vez de virar pendência.
+     */
+    linkType: 'lead' | 'contact' | 'group';
     linkId: string | null;
+    groupJid: string | null;
     notes: string;
     manualState: string;
     manualCity: string;
@@ -122,7 +129,7 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
     beneficiaryId: string;
     paymentMethod: string;
     invoiceNumber: string;
-  }>({ categoryId: null, linkType: 'lead', linkId: null, notes: '', manualState: '', manualCity: '', companyId: '', costCenterId: '', nature: '', recurrence: '', beneficiaryId: '', paymentMethod: '', invoiceNumber: '' });
+  }>({ categoryId: null, linkType: 'lead', linkId: null, groupJid: null, notes: '', manualState: '', manualCity: '', companyId: '', costCenterId: '', nature: '', recurrence: '', beneficiaryId: '', paymentMethod: '', invoiceNumber: '' });
 
   // Leads & Contacts for linking
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -343,15 +350,18 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
 
   const startEditing = (transaction: BankTransaction) => {
     const override = getTransactionOverride(transaction.id);
-    let linkType: 'lead' | 'contact' = 'lead';
+    let linkType: 'lead' | 'contact' | 'group' = 'lead';
     let linkId: string | null = null;
-    if (override?.lead_id) { linkType = 'lead'; linkId = override.lead_id; }
+    // Grupo gravado manda: foi a escolha mais específica que alguém fez.
+    if (override?.group_jid) { linkType = 'group'; linkId = override.lead_id || null; }
+    else if (override?.lead_id) { linkType = 'lead'; linkId = override.lead_id; }
     else if (override?.contact_id) { linkType = 'contact'; linkId = override.contact_id; }
 
     setEditingId(transaction.id);
     setEditData({
       categoryId: override?.category_id || null,
       linkType, linkId,
+      groupJid: override?.group_jid || null,
       notes: override?.notes || '',
       manualState: override?.manual_state || transaction.merchant_state || '',
       manualCity: override?.manual_city || transaction.merchant_city || '',
@@ -382,19 +392,23 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
 
   const cancelEditing = () => {
     setEditingId(null);
-    setEditData({ categoryId: null, linkType: 'lead', linkId: null, notes: '', manualState: '', manualCity: '', companyId: '', costCenterId: '', nature: '', recurrence: '', beneficiaryId: '', paymentMethod: '', invoiceNumber: '' });
+    setEditData({ categoryId: null, linkType: 'lead', linkId: null, groupJid: null, notes: '', manualState: '', manualCity: '', companyId: '', costCenterId: '', nature: '', recurrence: '', beneficiaryId: '', paymentMethod: '', invoiceNumber: '' });
   };
 
   const saveTransaction = async (transactionId: string) => {
     if (!editData.categoryId) { toast.error('Selecione uma categoria'); return; }
-    if (!editData.linkId) { toast.error(`Selecione um ${editData.linkType === 'lead' ? 'Lead' : 'Contato'} ou "Nenhum Vinculado"`); return; }
+    if (editData.linkType === 'group') {
+      if (!editData.groupJid) { toast.error('Escolha o grupo de WhatsApp (o caso) ou troque para Lead/Contato'); return; }
+    } else if (!editData.linkId) { toast.error(`Selecione um ${editData.linkType === 'lead' ? 'Lead' : 'Contato'} ou "Nenhum Vinculado"`); return; }
     try {
-      const isNoneSelected = editData.linkId === NONE_SELECTED;
+      const noGrupo = editData.linkType === 'group';
+      const isNoneSelected = !noGrupo && editData.linkId === NONE_SELECTED;
       await setTransactionOverride(
         transactionId,
         editData.categoryId,
-        !isNoneSelected && editData.linkType === 'contact' ? editData.linkId : undefined,
-        !isNoneSelected && editData.linkType === 'lead' ? editData.linkId : undefined,
+        !isNoneSelected && !noGrupo && editData.linkType === 'contact' ? editData.linkId : undefined,
+        // O grupo entrega o lead dele junto — o caso é do cliente.
+        noGrupo ? (editData.linkId || undefined) : (!isNoneSelected && editData.linkType === 'lead' ? editData.linkId! : undefined),
         editData.notes || undefined,
         editData.manualCity || undefined,
         editData.manualState || undefined,
@@ -408,6 +422,9 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
           beneficiary_id: editData.beneficiaryId || undefined,
           payment_method: editData.paymentMethod || undefined,
           invoice_number: editData.invoiceNumber || undefined,
+          // Sempre enviado: o upsert reescreve a linha inteira, e omitir aqui
+          // zerava o grupo escolhido no diálogo de categorizar.
+          group_jid: editData.groupJid,
         }
       );
       setEditingId(null);
@@ -680,64 +697,81 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-medium">Vincular a</label>
-                    <Select value={editData.linkType} onValueChange={(v: 'lead' | 'contact') => setEditData(prev => ({ ...prev, linkType: v, linkId: null }))}>
+                    <Select value={editData.linkType} onValueChange={(v: 'lead' | 'contact' | 'group') => setEditData(prev => ({ ...prev, linkType: v, linkId: null, groupJid: null }))}>
                       <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="lead">Lead</SelectItem>
                         <SelectItem value="contact">Contato</SelectItem>
+                        <SelectItem value="group">Grupo de WhatsApp (caso)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-medium">{editData.linkType === 'lead' ? 'Lead' : 'Contato'}</label>
-                      <div className="flex gap-1">
-                        {editData.linkId && editData.linkId !== NONE_SELECTED && (
-                          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openViewSheet(editData.linkType, editData.linkId!); }} title="Visualizar"><Eye className="h-3 w-3" /></Button>
-                        )}
-                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openCreateSheet(editData.linkType); }} title={`Criar ${editData.linkType === 'lead' ? 'Lead' : 'Contato'}`}><Plus className="h-3 w-3" /></Button>
-                      </div>
+                      <label className="text-xs font-medium">{editData.linkType === 'group' ? 'Grupo (caso)' : editData.linkType === 'lead' ? 'Lead' : 'Contato'}</label>
+                      {/* Ver/criar valem para lead e contato — grupo de WhatsApp
+                          não se cria daqui, ele nasce na conversa. */}
+                      {editData.linkType !== 'group' && (
+                        <div className="flex gap-1">
+                          {editData.linkId && editData.linkId !== NONE_SELECTED && (
+                            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openViewSheet(editData.linkType as 'lead' | 'contact', editData.linkId!); }} title="Visualizar"><Eye className="h-3 w-3" /></Button>
+                          )}
+                          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openCreateSheet(editData.linkType as 'lead' | 'contact'); }} title={`Criar ${editData.linkType === 'lead' ? 'Lead' : 'Contato'}`}><Plus className="h-3 w-3" /></Button>
+                        </div>
+                      )}
                     </div>
-                    <Select value={editData.linkId || ''} onValueChange={(v) => {
-                      setEditData(prev => ({ ...prev, linkId: v }));
-                      // Auto-fill city/state from lead's visit location
-                      if (editData.linkType === 'lead' && v && v !== NONE_SELECTED) {
-                        const selectedLead = leads.find(l => l.id === v);
-                        if (selectedLead) {
-                          const leadState = selectedLead.state || '';
-                          const leadCity = selectedLead.city || '';
-                          if (leadState || leadCity) {
-                            setEditData(prev => ({ ...prev, linkId: v, manualState: leadState, manualCity: leadCity }));
-                            if (leadState) fetchCities(leadState);
+                    {editData.linkType === 'group' ? (
+                      <SeletorGrupoCaso
+                        value={editData.groupJid}
+                        onChange={(g) => setEditData(prev => ({
+                          ...prev,
+                          groupJid: g?.group_jid || null,
+                          // O lead vem junto com o grupo: é o dono do caso.
+                          linkId: g?.lead_id || null,
+                        }))}
+                      />
+                    ) : (
+                      <Select value={editData.linkId || ''} onValueChange={(v) => {
+                        setEditData(prev => ({ ...prev, linkId: v }));
+                        // Auto-fill city/state from lead's visit location
+                        if (editData.linkType === 'lead' && v && v !== NONE_SELECTED) {
+                          const selectedLead = leads.find(l => l.id === v);
+                          if (selectedLead) {
+                            const leadState = selectedLead.state || '';
+                            const leadCity = selectedLead.city || '';
+                            if (leadState || leadCity) {
+                              setEditData(prev => ({ ...prev, linkId: v, manualState: leadState, manualCity: leadCity }));
+                              if (leadState) fetchCities(leadState);
+                            }
                           }
                         }
-                      }
-                    }}>
-                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NONE_SELECTED} className="text-amber-600 dark:text-amber-400 font-medium italic">
-                          <div className="flex items-center gap-2"><X className="h-3 w-3" /> Nenhum Vinculado</div>
-                        </SelectItem>
-                        {editData.linkType === 'lead'
-                          ? leads.map(lead => (
-                            <SelectItem key={lead.id} value={lead.id}>
-                              <div className="flex items-center gap-2">
-                                <span>{lead.lead_name || 'Sem nome'}</span>
-                                {(lead.city || lead.state) && <span className="text-xs text-muted-foreground">({[lead.city, lead.state].filter(Boolean).join('-')})</span>}
-                              </div>
-                            </SelectItem>
-                          ))
-                          : contacts.map(contact => (
-                            <SelectItem key={contact.id} value={contact.id}>
-                              <div className="flex items-center gap-2">
-                                <span>{contact.full_name}</span>
-                                {(contact.city || contact.state) && <span className="text-xs text-muted-foreground">({[contact.city, contact.state].filter(Boolean).join('-')})</span>}
-                              </div>
-                            </SelectItem>
-                          ))
-                        }
-                      </SelectContent>
-                    </Select>
+                      }}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE_SELECTED} className="text-amber-600 dark:text-amber-400 font-medium italic">
+                            <div className="flex items-center gap-2"><X className="h-3 w-3" /> Nenhum Vinculado</div>
+                          </SelectItem>
+                          {editData.linkType === 'lead'
+                            ? leads.map(lead => (
+                              <SelectItem key={lead.id} value={lead.id}>
+                                <div className="flex items-center gap-2">
+                                  <span>{lead.lead_name || 'Sem nome'}</span>
+                                  {(lead.city || lead.state) && <span className="text-xs text-muted-foreground">({[lead.city, lead.state].filter(Boolean).join('-')})</span>}
+                                </div>
+                              </SelectItem>
+                            ))
+                            : contacts.map(contact => (
+                              <SelectItem key={contact.id} value={contact.id}>
+                                <div className="flex items-center gap-2">
+                                  <span>{contact.full_name}</span>
+                                  {(contact.city || contact.state) && <span className="text-xs text-muted-foreground">({[contact.city, contact.state].filter(Boolean).join('-')})</span>}
+                                </div>
+                              </SelectItem>
+                            ))
+                          }
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 </div>
 
