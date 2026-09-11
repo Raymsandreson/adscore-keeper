@@ -44,10 +44,11 @@ import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
   Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2, Info,
   SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin, Pencil, Link2, RefreshCw,
-  Briefcase, Scale, CalendarDays
+  Briefcase, Scale, CalendarDays, MessageSquareQuote
 } from 'lucide-react';
 
 import { cloudFunctions } from '@/lib/functionRouter';
+import { ReferralsInboxTab } from './ReferralsInboxTab';
 
 // O caso vinculado abre por cima da lista, e a tela de processo é das mais
 // pesadas do sistema — só carrega quando alguém clica na etiqueta.
@@ -1521,7 +1522,7 @@ export function ContactsListPage() {
 
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         <div className="px-4 pt-3 shrink-0">
-          <div className="grid w-full max-w-lg grid-cols-3 h-10 items-center rounded-md bg-muted p-1 text-muted-foreground">
+          <div className="grid w-full max-w-2xl grid-cols-2 sm:grid-cols-4 h-auto sm:h-10 items-center rounded-md bg-muted p-1 text-muted-foreground">
             <button
               type="button"
               onClick={() => setActiveTab('contacts')}
@@ -1540,6 +1541,14 @@ export function ContactsListPage() {
             </button>
             <button
               type="button"
+              onClick={() => setActiveTab('referrals')}
+              className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${activeTab === 'referrals' ? 'bg-background text-foreground shadow-sm' : ''}`}
+            >
+              <MessageSquareQuote className="h-4 w-4 mr-1.5" />
+              Indicações
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveTab('lists')}
               className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${activeTab === 'lists' ? 'bg-background text-foreground shadow-sm' : ''}`}
             >
@@ -1548,6 +1557,8 @@ export function ContactsListPage() {
             </button>
           </div>
         </div>
+
+        {activeTab === 'referrals' && <ReferralsInboxTab />}
 
         {activeTab === 'contacts' && (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2 px-4 pb-4">

@@ -127,6 +127,9 @@ import { handler as inssAudioPreview } from './functions/inss-audio-preview';
 import { handler as celcoinOpenFinance } from './functions/celcoin-open-finance';
 import { handler as updateProfileAvatar } from './functions/update-profile-avatar';
 import { handler as agentProactiveFirstMessage } from './functions/agent-proactive-first-message';
+import { handler as referralClassify } from './functions/referral-classify';
+import { handler as referralOutreach } from './functions/referral-outreach';
+import { handler as referralBackfill } from './functions/referral-backfill';
 import { handler as testimonialToInstagramPost } from './functions/testimonial-to-instagram-post';
 import { handler as publishInstagramTestimonial } from './functions/publish-instagram-testimonial';
 import { handler as externalSession } from './functions/external-session';
@@ -161,6 +164,10 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'submit-document-review': submitDocumentReview,
   'sync-agent-labels': syncAgentLabels,
   'agent-proactive-first-message': agentProactiveFirstMessage,
+  // Indicações por cartão de contato compartilhado no WhatsApp.
+  'referral-classify': referralClassify,
+  'referral-outreach': referralOutreach,
+  'referral-backfill': referralBackfill,
   'sync-result-labels': syncResultLabels,
   'sync-stage-labels': syncStageLabels,
   'apply-stage-label': applyStageLabel,
