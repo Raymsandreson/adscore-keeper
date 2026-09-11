@@ -437,19 +437,36 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   // `facebook_lead_id` deixava de fora quem entrou por outro caminho — eram 6
   // fechamentos invisiveis so no BPC.
   const porTelefone = new Map<string, { id: string; lead_status: string }>();
+  // DEDUP TAMBEM PELO ID DA META.
+  //
+  // So o telefone nao basta, e a prova esta no banco: 289 leads existem em
+  // DUPLICATA, cada par com o mesmo `facebook_lead_id` e telefones diferentes —
+  // uma linha veio da planilha, a outra da leitura direta da Meta. Em nenhum dos
+  // 289 pares os telefones batem nem nos 8 digitos finais.
+  //
+  // A causa esta no formulario: ele traz o telefone PRE-PREENCHIDO pelo perfil e
+  // o telefone RESPONDIDO na pergunta, e os dois discordam em ~9% dos casos (300
+  // divergencias em 30 dias). Cada caminho gravou um deles.
+  //
+  // O id do lead na Meta e a identidade exata do registro: se ja esta no board,
+  // a linha da planilha e o MESMO lead, com telefone escrito de outro jeito.
+  const idsConhecidos = new Set<string>();
   let lidosDedup = 0;
   for (let inicio = 0; ; inicio += PAGINA_DEDUP) {
     const { data: pagina, error: existErr } = await ext
       .from('leads')
-      .select('id, lead_phone, lead_status')
+      .select('id, lead_phone, lead_status, facebook_lead_id')
       .eq('board_id', boardId)
-      .not('lead_phone', 'is', null)
+      // Sem o filtro de telefone: lead que entrou pela Meta sem telefone ainda
+      // tem id, e e por ele que a planilha vai reconhece-lo.
       .order('id', { ascending: true })
       .range(inicio, inicio + PAGINA_DEDUP - 1);
     if (existErr) return falha(`dedup query: ${existErr.message}`);
     const linhas = pagina || [];
     lidosDedup += linhas.length;
     for (const l of linhas) {
+      const idMeta = normalizaLeadIdMeta((l as any).facebook_lead_id);
+      if (idMeta) idsConhecidos.add(idMeta);
       const k = phoneKey(String(l.lead_phone || '').replace(/\D/g, ''));
       if (k) {
         existingKeys.add(k);
@@ -478,9 +495,19 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
         ),
       ]
     : uniqueRows;
+  // Quem ja esta no board pelo id da Meta nao entra de novo, mesmo que o
+  // telefone da planilha seja outro — ver o comentario do `idsConhecidos`.
+  let barradosPeloId = 0;
   const toCreate = opts.somenteStatus
     ? []
-    : candidatosCriacao.filter((r) => !existingKeys.has(r.phone_key));
+    : candidatosCriacao.filter((r) => {
+        if (existingKeys.has(r.phone_key)) return false;
+        if (r.facebook_lead_id && idsConhecidos.has(r.facebook_lead_id)) {
+          barradosPeloId += 1;
+          return false;
+        }
+        return true;
+      });
 
   // Contagem por aba. Sem ela, "li 8 abas" e promessa sem prova: uma aba pode
   // voltar vazia (renomeada, range errado, permissao) que o total geral nao
@@ -653,6 +680,10 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
     // 1000 num board maior que isso, a paginacao quebrou de novo.
     dedup_leads_lidos: lidosDedup,
     dedup_telefones_conhecidos: existingKeys.size,
+    dedup_ids_da_meta_conhecidos: idsConhecidos.size,
+    // Quantas linhas so o id salvou de virar duplicata. Se este numero for alto,
+    // e o telefone da planilha divergindo do que a Meta entregou.
+    barrados_pelo_id_da_meta: barradosPeloId,
   };
 
   if (opts.dryRun) {
