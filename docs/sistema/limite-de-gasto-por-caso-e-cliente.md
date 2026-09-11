@@ -33,7 +33,16 @@ Ordem de precedência (`src/lib/limitesPorVinculo.ts`):
 
 **Cliente**
 1. `transaction_category_overrides.contact_id` — escolhido à mão
-2. contato **único** cujo `contacts.lead_id` aponta para o lead da despesa
+2. contato do lead marcado como `contact_leads.is_primary_client`
+3. contato **único** do lead em `contact_leads`
+
+⚠️ A ponte lead↔contato é **`contact_leads`**, não `contacts.lead_id`. Medido em
+11/09/2026: a ponte tem 10.264 vínculos cobrindo 8.545 leads; `contacts.lead_id`
+enxerga 1.270. Usar a coluna em vez da ponte deixa 92% dos vínculos invisíveis —
+foi o erro da primeira versão desta entrega, corrigido no mesmo dia.
+
+O nome do grupo vem de **`whatsapp_groups_index`** (6.690 jids, 99,9% com nome),
+não de `whatsapp_groups_cache` (1.986). Mesma origem de erro, mesma correção.
 
 "Único" é literal. Lead com dois grupos não vira chute: vira pendência.
 
@@ -48,7 +57,7 @@ na aba Caso/Cliente como pendência, com o motivo e o que fazer:
 | `lead-sem-grupo` | criar/vincular o grupo do caso no lead |
 | `lead-com-varios-grupos` | escolher o caso no seletor de grupo da despesa |
 | `lead-sem-contato` | vincular o cliente na despesa |
-| `lead-com-varios-contatos` | escolher o cliente na aba Contato da despesa |
+| `lead-com-varios-contatos` | marcar o cliente principal no lead, ou escolher o contato na despesa |
 
 É a Regra 8 do CLAUDE.md: a heurística que não consegue resolver é detector, não
 filtro. Somar só o que resolve e esconder o resto trocaria um total errado por
@@ -69,11 +78,25 @@ Ou seja: no dia da entrega a aba nasce quase toda em pendência, e isso está
 certo — é o retrato de que a despesa ainda não sabe de que caso é. A conta só
 enche na medida em que os leads ganham grupo e as despesas ganham vínculo.
 
+## Por que o grupo, e não `legal_cases`
+
+`legal_cases` é a entidade Caso de verdade (skill `lead-vs-case-identity`). Não
+foi usada como chave porque cobre menos: 1.824 leads têm caso registrado, contra
+3.998 leads com grupo de WhatsApp, de 4.108 leads fechados (11/09/2026). Nenhuma
+despesa de hoje alcança um `legal_cases` pelo lead.
+
+O grupo é o proxy mais completo do caso fechado hoje — foi por isso que a unidade
+se chama "Por grupo de WhatsApp (caso)" e não "Por caso". Se `legal_cases` for
+povoada de verdade, a chave certa passa a ser ela, e a troca é local: só
+`resolverGrupo` em `src/lib/limitesPorVinculo.ts`.
+
 ## Custo
 
 Nenhuma chamada de LLM, nenhuma invocation nova. O cálculo é local; os mapas
-lead ↔ grupo ↔ contato saem de 4 consultas `.in()` (`useVinculoDespesas`),
-limitadas aos ids que as despesas citam — nunca os 28k leads ou 36k contatos.
+lead ↔ grupo ↔ contato saem de 5 consultas `.in()` (`useVinculoDespesas`): três em
+paralelo (leads, `lead_whatsapp_groups`, `contact_leads`), depois os nomes dos
+contatos e os nomes dos grupos. Todas limitadas aos ids que as despesas citam —
+nunca os 28k leads ou 36k contatos.
 
 ## Arquivos
 

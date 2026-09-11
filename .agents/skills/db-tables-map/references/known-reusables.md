@@ -29,7 +29,9 @@ Quais usuários podem ver qual instância. Permissão de leitura SEMPRE do Cloud
 Campos customizados por escopo (board/funnel). Use antes de `ALTER TABLE leads`.
 
 ### `contact_leads`
-Relação N↔N contato↔lead com `relationship_type`. Não crie nova tabela de vínculo.
+Relação N↔N contato↔lead. Não crie nova tabela de vínculo.
+- Colunas reais (conferidas em 11/09/2026): `contact_id`, `lead_id`, `is_primary_client` (o cliente do lead), `relationship_to_victim`, `relationship_to_primary`, `notes`. **Não existe `relationship_type`** — esta linha dizia que existia e induzia ao erro.
+- É a ponte de verdade: 10.264 vínculos cobrindo 8.545 leads. `contacts.lead_id` enxerga só 1.270 leads — usar a coluna em vez da ponte deixa 92% dos vínculos invisíveis. Já mordeu uma vez (limite de gasto por cliente, 11/09/2026).
 
 ### `form_layout_tabs` + `form_layout_fields`
 Layout configurável de formulários. Use antes de hardcodar ordem/visibilidade em componente.

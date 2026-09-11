@@ -27,8 +27,9 @@ function idsUnicos(valores: (string | null | undefined)[]): string[] {
 
 interface LinhaLead { id: string; whatsapp_group_id: string | null }
 interface LinhaGrupoDoLead { lead_id: string | null; group_jid: string | null; group_name: string | null }
-interface LinhaContato { id: string; full_name: string | null; whatsapp_group_id: string | null; lead_id: string | null }
-interface LinhaGrupoCache { group_jid: string | null; group_name: string | null }
+interface LinhaContato { id: string; full_name: string | null; whatsapp_group_id: string | null }
+interface LinhaPonteContatoLead { lead_id: string | null; contact_id: string | null; is_primary_client: boolean | null }
+interface LinhaGrupoIndex { group_jid: string | null; contact_name: string | null }
 
 async function buscarEmLotes<T>(
   ids: string[],
@@ -73,7 +74,7 @@ export function useVinculoDespesas(overrides: OverrideParaLimite[]) {
 
     setCarregando(true);
     try {
-      const [linhasLead, linhasGrupoDoLead, contatosDoLead, contatosAvulsos] = await Promise.all([
+      const [linhasLead, linhasGrupoDoLead, pontes] = await Promise.all([
         buscarEmLotes<LinhaLead>(leads, lote =>
           db.from('leads').select('id, whatsapp_group_id').in('id', lote)
         ),
@@ -83,20 +84,29 @@ export function useVinculoDespesas(overrides: OverrideParaLimite[]) {
             .select('lead_id, group_jid, group_name')
             .in('lead_id', lote)
         ),
-        buscarEmLotes<LinhaContato>(leads, lote =>
+        // `contact_leads` e a ponte lead<->contato de verdade: 10.264 vinculos
+        // cobrindo 8.545 leads em 11/09/2026, contra 1.270 leads que
+        // `contacts.lead_id` enxerga. Ver skill `db-tables-map`.
+        buscarEmLotes<LinhaPonteContatoLead>(leads, lote =>
           db
-            .from('contacts')
-            .select('id, full_name, whatsapp_group_id, lead_id')
-            .is('deleted_at', null)
+            .from('contact_leads')
+            .select('lead_id, contact_id, is_primary_client')
             .in('lead_id', lote)
         ),
-        buscarEmLotes<LinhaContato>(contatos, lote =>
-          db
-            .from('contacts')
-            .select('id, full_name, whatsapp_group_id, lead_id')
-            .in('id', lote)
-        ),
       ]);
+
+      // Os nomes dos contatos vem numa consulta so: os citados na despesa mais
+      // os que a ponte trouxe.
+      const idsDeContato = idsUnicos([
+        ...contatos,
+        ...pontes.map(p => p.contact_id),
+      ]);
+      const linhasContato = await buscarEmLotes<LinhaContato>(idsDeContato, lote =>
+        db
+          .from('contacts')
+          .select('id, full_name, whatsapp_group_id')
+          .in('id', lote)
+      );
 
       const gruposPorLead = new Map<string, GrupoDoLead[]>();
       const nomeDoGrupo = new Map<string, string>();
@@ -115,18 +125,22 @@ export function useVinculoDespesas(overrides: OverrideParaLimite[]) {
       // por jid mora em `limitesPorVinculo`, aqui só somamos as duas.
       linhasLead.forEach(l => guardarGrupo(l.id, l.whatsapp_group_id, null));
 
-      const contatosPorLead = new Map<string, ContatoDoLead[]>();
       const contatoPorId = new Map<string, { full_name: string | null; whatsapp_group_id: string | null }>();
-      [...contatosDoLead, ...contatosAvulsos].forEach(c => {
+      linhasContato.forEach(c => {
         contatoPorId.set(c.id, { full_name: c.full_name, whatsapp_group_id: c.whatsapp_group_id });
       });
-      contatosDoLead.forEach(c => {
-        if (!c.lead_id) return;
-        const atual = contatosPorLead.get(c.lead_id) || [];
-        if (!atual.some(existente => existente.id === c.id)) {
-          atual.push({ id: c.id, full_name: c.full_name });
-        }
-        contatosPorLead.set(c.lead_id, atual);
+
+      const contatosPorLead = new Map<string, ContatoDoLead[]>();
+      pontes.forEach(ponte => {
+        if (!ponte.lead_id || !ponte.contact_id) return;
+        const atual = contatosPorLead.get(ponte.lead_id) || [];
+        if (atual.some(existente => existente.id === ponte.contact_id)) return;
+        atual.push({
+          id: ponte.contact_id,
+          full_name: contatoPorId.get(ponte.contact_id)?.full_name ?? null,
+          ehPrimario: ponte.is_primary_client === true,
+        });
+        contatosPorLead.set(ponte.lead_id, atual);
       });
 
       // Nome dos grupos que ninguém nomeou ainda (jid escolhido à mão na
@@ -136,14 +150,20 @@ export function useVinculoDespesas(overrides: OverrideParaLimite[]) {
         ...Array.from(contatoPorId.values()).map(c => c.whatsapp_group_id),
       ]).filter(jid => !nomeDoGrupo.has(jid));
       if (semNome.length > 0) {
-        const cache = await buscarEmLotes<LinhaGrupoCache>(semNome, lote =>
+        // `whatsapp_groups_index` e o indice oficial de nome de grupo (6.690
+        // jids em 11/09/2026, contra 1.986 do `whatsapp_groups_cache`). Ver
+        // skill `db-tables-map`. Uma jid aparece uma vez por instancia: o
+        // primeiro nome basta, todos nomeiam o mesmo grupo.
+        const indice = await buscarEmLotes<LinhaGrupoIndex>(semNome, lote =>
           db
-            .from('whatsapp_groups_cache')
-            .select('group_jid, group_name')
+            .from('whatsapp_groups_index')
+            .select('group_jid, contact_name')
             .in('group_jid', lote)
         );
-        cache.forEach(g => {
-          if (g.group_jid && g.group_name) nomeDoGrupo.set(g.group_jid, g.group_name);
+        indice.forEach(g => {
+          if (g.group_jid && g.contact_name && !nomeDoGrupo.has(g.group_jid)) {
+            nomeDoGrupo.set(g.group_jid, g.contact_name);
+          }
         });
       }
 
@@ -197,7 +217,7 @@ export function useGruposDoLead(leadId: string | null | undefined) {
         if (!ativo) return;
 
         const porJid = new Map<string, GrupoDoLead>();
-        ((vinculos.data as LinhaGrupoCache[] | null) || []).forEach(g => {
+        ((vinculos.data as { group_jid: string | null; group_name: string | null }[] | null) || []).forEach(g => {
           if (g.group_jid) porJid.set(g.group_jid, { group_jid: g.group_jid, group_name: g.group_name });
         });
         const jidDoLead = (lead.data as { whatsapp_group_id: string | null } | null)?.whatsapp_group_id;

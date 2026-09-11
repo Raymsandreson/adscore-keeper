@@ -142,7 +142,45 @@ describe('resolverCliente', () => {
     expect(r).toMatchObject({ chave: 'ct-9', rotulo: 'Maria', origem: 'deduzido' });
   });
 
-  it('lead com dois contatos vira pendência em vez de chute', () => {
+  it('o contato marcado como cliente principal desempata o lead com varios', () => {
+    const m = mapa({
+      contatosPorLead: new Map([
+        [
+          'lead-1',
+          [
+            { id: 'ct-1', full_name: 'Filho do cliente' },
+            { id: 'ct-2', full_name: 'Osvaldo', ehPrimario: true },
+          ],
+        ],
+      ]),
+    });
+    const r = resolverCliente(
+      { transaction_id: 't1', category_id: 'c', lead_id: 'lead-1', contact_id: null, group_jid: null },
+      m
+    );
+    expect(r).toMatchObject({ chave: 'ct-2', rotulo: 'Osvaldo', origem: 'deduzido' });
+  });
+
+  it('dois principais no mesmo lead continuam sendo pendência', () => {
+    const m = mapa({
+      contatosPorLead: new Map([
+        [
+          'lead-1',
+          [
+            { id: 'ct-1', full_name: 'A', ehPrimario: true },
+            { id: 'ct-2', full_name: 'B', ehPrimario: true },
+          ],
+        ],
+      ]),
+    });
+    const r = resolverCliente(
+      { transaction_id: 't1', category_id: 'c', lead_id: 'lead-1', contact_id: null, group_jid: null },
+      m
+    );
+    expect(r).toEqual({ chave: null, motivo: 'lead-com-varios-contatos' });
+  });
+
+  it('lead com dois contatos e nenhum principal vira pendência em vez de chute', () => {
     const m = mapa({
       contatosPorLead: new Map([
         [

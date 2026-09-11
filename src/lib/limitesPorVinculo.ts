@@ -58,13 +58,19 @@ export interface GrupoDoLead {
 export interface ContatoDoLead {
   id: string;
   full_name: string | null;
+  /** `contact_leads.is_primary_client` — o cliente do lead, quando marcado. */
+  ehPrimario?: boolean;
 }
 
 /** Mapas lidos de uma vez só (ver `useVinculoDespesas`), nunca dentro do laço. */
 export interface MapaDeVinculos {
   /** lead_id -> grupos (união de `lead_whatsapp_groups` e `leads.whatsapp_group_id`) */
   gruposPorLead: Map<string, GrupoDoLead[]>;
-  /** lead_id -> contatos que apontam para esse lead (`contacts.lead_id`) */
+  /**
+   * lead_id -> contatos do lead, vindos de `contact_leads` (a ponte N↔N real,
+   * com 10.264 vínculos em 11/09/2026). NÃO usar `contacts.lead_id`: ele
+   * enxerga só 1.270 leads dos 8.545 que a ponte cobre.
+   */
   contatosPorLead: Map<string, ContatoDoLead[]>;
   /** contact_id -> contato, para nome e grupo do próprio contato */
   contatoPorId: Map<string, { full_name: string | null; whatsapp_group_id: string | null }>;
@@ -94,7 +100,7 @@ export const TEXTO_DO_MOTIVO: Record<MotivoPendencia, string> = {
     'O lead tem mais de um grupo — escolha o caso no seletor de grupo da despesa.',
   'lead-sem-contato': 'O lead não tem contato — vincule o cliente na despesa.',
   'lead-com-varios-contatos':
-    'O lead tem mais de um contato — escolha o cliente na aba Contato da despesa.',
+    'O lead tem mais de um contato e nenhum marcado como cliente principal — escolha o cliente na aba Contato da despesa, ou marque o principal no lead.',
 };
 
 export interface ChaveResolvida {
@@ -192,10 +198,18 @@ export function resolverCliente(
 
   if (override.lead_id) {
     const contatos = mapa.contatosPorLead.get(override.lead_id) || [];
-    if (contatos.length === 1) {
+
+    // `is_primary_client` desempata o lead com vários contatos (o cliente, e
+    // não o filho/procurador que também está no caso). A flag existe mas quase
+    // ninguém marcou (2 linhas em 10.264 em 11/09/2026), então ela decide
+    // quando existe e some do caminho quando não existe.
+    const primarios = contatos.filter(c => c.ehPrimario);
+    const escolhido = primarios.length === 1 ? primarios[0] : contatos.length === 1 ? contatos[0] : null;
+
+    if (escolhido) {
       return {
-        chave: contatos[0].id,
-        rotulo: contatos[0].full_name || contatos[0].id,
+        chave: escolhido.id,
+        rotulo: escolhido.full_name || escolhido.id,
         origem: 'deduzido',
       };
     }
