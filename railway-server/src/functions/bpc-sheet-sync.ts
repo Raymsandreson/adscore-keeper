@@ -110,6 +110,8 @@ function rowToObj(headers: string[], r: any[]): Record<string, string> {
 interface AbaLida {
   tab: string;
   headers: string[];
+  /** Por que o telefone foi recusado: celula vazia, ou quantos digitos tinha. */
+  motivos_sem_telefone?: Record<string, number>;
   /** Linhas da aba cuja data cai na janela pedida, ANTES de qualquer descarte. */
   brutas_na_janela?: number;
   /** Dessas, quantas este leitor recusou (sem nome ou sem telefone). */
@@ -170,6 +172,7 @@ async function fetchTab(
   let descTelefone = 0;
   let brutas = 0;
   const preenchidas: Record<string, number> = {};
+  const motivosSemTelefone: Record<string, number> = {};
   // Distribuicao dos valores das colunas de status QUE A EQUIPE PREENCHE na
   // planilha. Se houver "fechado" marcado ali que o CRM nao conhece, cada um e
   // uma conversao real que nunca foi para a Meta.
@@ -248,6 +251,20 @@ async function fetchTab(
     if (phone.length < 10) {
       descTelefone += 1;
       if (naJanela) descartadasNaJanela += 1;
+      // POR QUE caiu, e nao so que caiu. O descarte por nome ja se explicava
+      // (`preenchidas_nas_descartadas`) e o de telefone nao — entao "114 linhas
+      // recusadas" nao dizia se a planilha veio sem o numero ou se a regra dos
+      // 10 digitos esta apertada demais. Sao consertos opostos: um e pedir o
+      // dado na origem, o outro e aceitar DDD sem o 55.
+      //
+      // Nenhum numero de cliente sai daqui, so a contagem de digitos.
+      const bruto = String(rawPhone || '').trim();
+      const motivoFone = !bruto
+        ? 'celula vazia'
+        : phone.length === 0
+          ? 'sem digito nenhum'
+          : `${phone.length} digitos`;
+      motivosSemTelefone[motivoFone] = (motivosSemTelefone[motivoFone] || 0) + 1;
       continue;
     }
     // CADA coluna separada. `lead_status` e campo da exportacao da Meta (vale
@@ -285,6 +302,7 @@ async function fetchTab(
   return {
     tab: meta.tab,
     headers,
+    motivos_sem_telefone: motivosSemTelefone,
     brutas_na_janela: brutasNaJanela,
     descartadas_na_janela: descartadasNaJanela,
     linha_do_cabecalho: acho.linha + 1,
@@ -412,7 +430,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const cabecalhos = new Set<string>();
   const diagPorAba = new Map<
     string,
-    { cabecalho: string[]; brutasJanela?: number; descartadasJanela?: number; linhaCabecalho?: number; idRecuperado?: boolean; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
+    { cabecalho: string[]; motivosFone?: Record<string, number>; brutasJanela?: number; descartadasJanela?: number; linhaCabecalho?: number; idRecuperado?: boolean; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
   >();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
@@ -424,6 +442,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
         r.value.headers.forEach((h) => cabecalhos.add(h));
         diagPorAba.set(meta.tab, {
           cabecalho: r.value.headers,
+          motivosFone: (r.value as any).motivos_sem_telefone,
           brutasJanela: (r.value as any).brutas_na_janela,
           descartadasJanela: (r.value as any).descartadas_na_janela,
           linhaCabecalho: (r.value as any).linha_do_cabecalho,
@@ -572,6 +591,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       // TEM no periodo; `recentes` e o que este leitor conseguiu usar. A
       // diferenca entre a Meta e `brutas_na_janela` e problema da planilha; a
       // diferenca entre `brutas_na_janela` e `recentes` e problema daqui.
+      motivos_sem_telefone: d?.motivosFone ?? {},
       brutas_na_janela: d?.brutasJanela ?? 0,
       descartadas_na_janela: d?.descartadasJanela ?? 0,
       linha_do_cabecalho: d?.linhaCabecalho ?? 1,
