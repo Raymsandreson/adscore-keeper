@@ -33,6 +33,7 @@ import { useLeads } from '@/hooks/useLeads';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { useAccountCategoryLinks } from '@/hooks/useAccountCategoryLinks';
 import { useGruposDoLead } from '@/hooks/useVinculoDespesas';
+import { SeletorGrupoCaso } from '@/components/finance/SeletorGrupoCaso';
 import { toast } from 'sonner';
 
 interface Transaction {
@@ -106,7 +107,10 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
   const [leadSearchTerm, setLeadSearchTerm] = useState('');
   const [notes, setNotes] = useState('');
   const [expandedParent, setExpandedParent] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'lead' | 'contact'>('lead');
+  // Aba 'group': escolher o CASO direto, sem ter de achar o lead antes. Quem
+  // olha uma despesa de deslocamento sabe o nome do grupo ("LEAD 2313 - JOELMA
+  // - BPC/LOAS"), não necessariamente qual lead do CRM é aquele.
+  const [activeTab, setActiveTab] = useState<'lead' | 'contact' | 'group'>('lead');
   const [manualCity, setManualCity] = useState('');
   const [manualState, setManualState] = useState('');
   const [showQuickAdd, setShowQuickAdd] = useState(false);
@@ -148,7 +152,10 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
       if (existingOverride.manual_state) {
         fetchCities(existingOverride.manual_state);
       }
-      if (existingOverride.lead_id) {
+      // Grupo gravado manda na aba: foi a escolha mais específica que alguém fez.
+      if (existingOverride.group_jid) {
+        setActiveTab('group');
+      } else if (existingOverride.lead_id) {
         setActiveTab('lead');
       } else if (existingOverride.contact_id) {
         setActiveTab('contact');
@@ -185,8 +192,10 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
   const handleSubmit = async () => {
     if (!selectedCategory) return;
     
-    const linkAcknowledged = (activeTab === 'lead' && !selectedLead) || 
-                             (activeTab === 'contact' && !selectedContact);
+    // Grupo escolhido É vínculo: não pode contar como "olhei e não vinculei".
+    const linkAcknowledged = (activeTab === 'lead' && !selectedLead) ||
+                             (activeTab === 'contact' && !selectedContact) ||
+                             (activeTab === 'group' && !selectedGroupJid);
     
     await setTransactionOverride(
       transaction.id, 
@@ -541,11 +550,11 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
           <div>
             <Label className="flex items-center gap-2 mb-2">
               <Users className="h-4 w-4" />
-              Vincular a Lead ou Contato (opcional)
+              Vincular a Lead, Contato ou Grupo (o caso)
             </Label>
 
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'lead' | 'contact')}>
-              <TabsList className="grid w-full grid-cols-2">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'lead' | 'contact' | 'group')}>
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="lead" className="gap-2">
                   <Building className="h-3.5 w-3.5" />
                   Lead
@@ -553,6 +562,10 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
                 <TabsTrigger value="contact" className="gap-2">
                   <UserCheck className="h-3.5 w-3.5" />
                   Contato
+                </TabsTrigger>
+                <TabsTrigger value="group" className="gap-2">
+                  <Users className="h-3.5 w-3.5" />
+                  Grupo (caso)
                 </TabsTrigger>
               </TabsList>
 
@@ -668,7 +681,7 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
                       className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors text-muted-foreground italic ${
                         !selectedContact ? 'bg-muted font-medium' : 'hover:bg-muted'
                       }`}
-                      onClick={() => setSelectedContact('')}
+                      onClick={() => { setSelectedContact(''); setSelectedGroupJid(''); }}
                     >
                       Nenhum Contato Vinculado
                     </button>
@@ -684,6 +697,9 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
                         onClick={() => {
                           setSelectedContact(contact.id);
                           setSelectedLead('');
+                          // O grupo é do LEAD. Mantê-lo depois de escolher um
+                          // contato gravaria a despesa no caso de outra pessoa.
+                          setSelectedGroupJid('');
                         }}
                       >
                         {getContactDisplay(contact)}
@@ -699,6 +715,46 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
                       {selectedContactData.state && `, ${selectedContactData.state}`}
                     </span>
                   </div>
+                )}
+              </TabsContent>
+
+              {/* O CASO direto. A aba Lead já deixava escolher o grupo, mas por
+                  dentro do lead — e quem olha uma despesa de deslocamento
+                  reconhece o nome do grupo ("LEAD 2313 - JOELMA - BPC/LOAS"),
+                  não necessariamente qual lead do CRM é aquele. */}
+              <TabsContent value="group" className="mt-3 space-y-2">
+                <SeletorGrupoCaso
+                  value={selectedGroupJid || null}
+                  onChange={(g) => {
+                    setSelectedGroupJid(g?.group_jid || '');
+                    // O grupo entrega o lead dele: o caso é do cliente, e gravar
+                    // só o jid sumiria com a despesa de todo relatório por lead.
+                    setSelectedLead(g?.lead_id || '');
+                    setSelectedContact('');
+                  }}
+                  className="h-9 text-sm"
+                />
+                {selectedGroupJid && selectedLeadData && (
+                  <div className="flex items-center gap-2 rounded bg-muted/50 p-2 text-sm text-muted-foreground">
+                    <Building className="h-4 w-4 flex-shrink-0" />
+                    <span className="min-w-0 truncate">
+                      Lead do caso: {getLeadDisplay(selectedLeadData)}
+                      {selectedLeadData.city ? ' · ' + selectedLeadData.city : ''}
+                      {selectedLeadData.state ? ', ' + selectedLeadData.state : ''}
+                    </span>
+                  </div>
+                )}
+                {selectedGroupJid && !selectedLead && (
+                  <p className="text-xs text-amber-600">
+                    Este grupo não tem lead vinculado. A despesa entra no caso, mas fica de fora
+                    de qualquer relatório que some por lead — vincule o grupo ao lead na ficha
+                    para fechar os dois lados.
+                  </p>
+                )}
+                {!selectedGroupJid && (
+                  <p className="text-xs text-muted-foreground">
+                    Busque pelo nome do grupo, do cliente ou pelo número do lead.
+                  </p>
                 )}
               </TabsContent>
             </Tabs>
