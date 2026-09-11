@@ -928,7 +928,13 @@ export default function MetricasPage() {
                           </p>
                         ))}
                         <p className="text-xs text-muted-foreground">
-                          Ignorada não é erro de envio: é lead fechado que a Meta descartaria. É lista de conserto.
+                          {num(dados.capi.ignorados_organicos || 0)} são fechamentos de lead que nunca veio de
+                          anúncio (WhatsApp, indicação, cadastro manual) — a Meta não tem o que casar, e
+                          ignorar está certo.
+                          {(dados.capi.ignorados_de_lead_pago || 0) > 0 && (
+                            <> Já {num(dados.capi.ignorados_de_lead_pago)} são de lead pago sem telefone nem
+                            e-mail: essas a Meta casaria, e são a lista de conserto.</>
+                          )}
                         </p>
                       </div>
                     </CardContent>
