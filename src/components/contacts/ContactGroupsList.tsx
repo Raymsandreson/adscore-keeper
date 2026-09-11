@@ -23,6 +23,27 @@ interface ContactGroupsListProps {
   contactPhone?: string | null;
 }
 
+/**
+ * Formas em que um celular BR aparece gravado em participants_phones do snapshot:
+ * sempre com DDI 55, e com ou sem o 9o digito (a tabela tem os dois formatos,
+ * 12 e 13 digitos). Sem as duas variantes, contato antigo nunca casa.
+ */
+function brPhoneVariants(raw?: string | null): string[] {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (!d) return [];
+  if (d.startsWith('55') && d.length >= 12) d = d.slice(2);
+  if (d.length < 10 || d.length > 11) return [];
+  const ddd = d.slice(0, 2);
+  const rest = d.slice(2);
+  const out = new Set<string>([`55${ddd}${rest}`]);
+  if (rest.length === 9 && rest.startsWith('9')) out.add(`55${ddd}${rest.slice(1)}`);
+  if (rest.length === 8) out.add(`55${ddd}9${rest}`);
+  return Array.from(out);
+}
+
+/** lead_whatsapp_groups grava o JID ora com ora sem "@g.us" — normaliza pra chave. */
+const jidKey = (jid: string) => jid.replace(/@g\.us$/, '');
+
 export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsListProps) {
   const [groups, setGroups] = useState<ContactGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +83,31 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
           }
         }
 
+        // Participacao real: contacts.whatsapp_group_id so cobre grupo que o
+        // sistema criou pra um lead nosso. Grupo criado por terceiro (onde o
+        // contato so participa) mora no snapshot da UazAPI — indice GIN
+        // idx_groups_participants_phones_gin cobre esta busca.
+        const snapshotByJid = new Map<string, string | null>();
+        const phoneVars = brPhoneVariants(contactPhone);
+        if (phoneVars.length > 0) {
+          const found = await Promise.all(
+            phoneVars.map((v) =>
+              externalSupabase
+                .from('whatsapp_groups_uazapi_snapshot')
+                .select('jid, group_name')
+                .contains('participants_phones', [v]),
+            ),
+          );
+          found.forEach(({ data }) => {
+            const rows = (data || []) as Array<{ jid?: string | null; group_name?: string | null }>;
+            rows.forEach((row) => {
+              if (!row?.jid) return;
+              groupJids.add(row.jid);
+              snapshotByJid.set(jidKey(row.jid), row.group_name || null);
+            });
+          });
+        }
+
         if (groupJids.size === 0) {
           setGroups([]);
           setLoading(false);
@@ -77,7 +123,7 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
 
         const byJid = new Map<string, ContactGroup>();
         leadGroups?.forEach((lg: any) => {
-          byJid.set(lg.group_jid, {
+          byJid.set(jidKey(lg.group_jid), {
             group_jid: lg.group_jid,
             group_name: lg.group_name || null,
             group_link: lg.group_link || null,
@@ -89,8 +135,9 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
         });
 
         jidArray.forEach((jid) => {
-          if (!byJid.has(jid)) {
-            byJid.set(jid, {
+          const key = jidKey(jid);
+          if (!byJid.has(key)) {
+            byJid.set(key, {
               group_jid: jid,
               group_name: null,
               group_link: null,
@@ -100,6 +147,12 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
               case_number: null,
             });
           }
+        });
+
+        // Nome do snapshot so preenche lacuna — nome vindo do lead tem prioridade.
+        snapshotByJid.forEach((name, key) => {
+          const g = byJid.get(key);
+          if (g && !g.group_name && name) g.group_name = name;
         });
 
         const needsName = Array.from(byJid.values())
@@ -122,7 +175,7 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
             }
           });
           nameByJid.forEach((name, jid) => {
-            const g = byJid.get(jid);
+            const g = byJid.get(jidKey(jid));
             if (g) g.group_name = name;
           });
         }
@@ -308,7 +361,7 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
                 </div>
               )}
             </div>
-            {group.lead_status && (
+            {group.lead_status ? (
               <Badge
                 variant={group.lead_status === 'closed' ? 'default' : 'secondary'}
                 className="text-[10px] shrink-0"
@@ -319,7 +372,11 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
                   ? 'Perdido'
                   : 'Aberto'}
               </Badge>
-            )}
+            ) : !group.lead_id ? (
+              <Badge variant="outline" className="text-[10px] shrink-0 text-muted-foreground">
+                Sem lead vinculado
+              </Badge>
+            ) : null}
           </div>
         );
       })}
