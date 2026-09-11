@@ -797,6 +797,8 @@ export const handler: RequestHandler = async (req, res) => {
       const r = await fetch(
         `https://graph.facebook.com/${GRAPH_VERSION}/${adsetId}` +
           `?fields=id,name,status,effective_status,optimization_goal,destination_type,promoted_object,` +
+          `daily_budget,lifetime_budget,budget_remaining,` +
+          `targeting{publisher_platforms,facebook_positions,instagram_positions,device_platforms},` +
           `created_time,updated_time,issues_info,recommendations,campaign{id,name,status,effective_status,objective}` +
           `&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
       );
@@ -817,7 +819,8 @@ export const handler: RequestHandler = async (req, res) => {
       const saida: Array<Record<string, unknown>> = [];
       for (const c of contas?.data ?? []) {
         const ads = await g(
-          `${c.id}/adsets?fields=id,name,effective_status,optimization_goal,destination_type,promoted_object,campaign{id,name,objective}&limit=200`,
+          `${c.id}/adsets?fields=id,name,effective_status,optimization_goal,destination_type,promoted_object,` +
+            `daily_budget,lifetime_budget,campaign{id,name,objective}&limit=200`,
         );
         for (const a2 of ads?.data ?? []) {
           if (a2?.effective_status !== 'ACTIVE') continue;
@@ -829,6 +832,11 @@ export const handler: RequestHandler = async (req, res) => {
             conjunto: a2.name,
             conjunto_id: a2.id,
             otimizacao_atual: a2.optimization_goal,
+            // A Meta manda centavos como string. Sem dividir, R$ 70,00 vira
+            // "7000" no relatorio e ninguem confere se o piloto e o controle
+            // estao gastando o mesmo.
+            orcamento_diario: a2.daily_budget != null ? Number(a2.daily_budget) / 100 : null,
+            orcamento_total: a2.lifetime_budget != null ? Number(a2.lifetime_budget) / 100 : null,
             destino: a2.destination_type,
             promoted_object: a2.promoted_object ?? null,
           });
