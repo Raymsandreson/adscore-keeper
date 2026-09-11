@@ -85,9 +85,10 @@ indicação".
 
 ## Como operar
 
-- **Backfill** (uma vez, após a migration):
-  `POST /functions/referral-backfill` com `{"days": 90, "dry_run": true}` para
-  conferir o volume, depois sem `dry_run`. É idempotente — repetir não duplica.
+- **Backfill** (uma vez, após a migration): botão **"Buscar indicações antigas"**
+  na própria aba. Ele conta primeiro e pergunta antes de gravar. É idempotente —
+  repetir não duplica. Pela API: `POST /functions/referral-backfill` com
+  `{"days": 90, "dry_run": true}`, depois sem `dry_run`.
 - **Reclassificar uma indicação**: botão "Ler a conversa" na ficha.
 - **Rollback**: `DROP TABLE public.referrals;` — nada existente é alterado por
   esta funcionalidade.
