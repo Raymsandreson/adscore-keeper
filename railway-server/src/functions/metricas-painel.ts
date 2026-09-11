@@ -658,6 +658,25 @@ export const handler: RequestHandler = async (req, res) => {
         // na maioria dos fechamentos (lead sem contato nenhum).
         com_lead_id: eventos.filter((e: any) => e?.user_data_hash?.lead_id).length,
         aceitos_com_lead_id: eventos.filter((e: any) => e?.status === 'sent' && e?.user_data_hash?.lead_id).length,
+        // IGNORADA PAGA vs IGNORADA ORGANICA — sao coisas opostas.
+        //
+        // Medido em 11/09/2026: as 107 ignoradas vinham de `whatsapp` (97),
+        // `manual` (7), `instagram` (2) e `Internet` (1). NENHUMA tinha id da
+        // Meta. Sao fechamentos de lead que nunca veio de anuncio: a Meta nao
+        // tem o que casar, e ignorar esta certo.
+        //
+        // A tela chamava as 107 de "lista de conserto", o que e falso e manda
+        // alguem procurar defeito onde nao ha. O que DE FATO pede conserto e a
+        // ignorada de lead PAGO — essa a Meta casaria se tivesse contato.
+        //
+        // O `lead_id` no hash e a prova: o normalizador so o grava quando o lead
+        // tem `facebook_lead_id`.
+        ignorados_de_lead_pago: eventos.filter(
+          (e: any) => e?.status === 'skipped' && e?.user_data_hash?.lead_id,
+        ).length,
+        ignorados_organicos: eventos.filter(
+          (e: any) => e?.status === 'skipped' && !e?.user_data_hash?.lead_id,
+        ).length,
         motivos_ignorado: eventos
           .filter((e: any) => e?.status === 'skipped' && e?.motivo_skip)
           .reduce((acc: Record<string, number>, e: any) => {

@@ -315,3 +315,19 @@ A planilha precisa carregar a **data do fechamento**, e o `bpc-sheet-sync` grava
 essa data em vez de `now()`. Enquanto não carregar, o aviso é o que impede a
 leitura errada — e a comparação entre acolhedores só é honesta em janela que
 inclua 09/09.
+
+## "Ignoradas" não é lista de conserto (11/09/2026)
+
+O card de conversões mostrava 107 ignoradas e dizia "é lista de conserto". Medido:
+**nenhuma das 107 tem id da Meta.** Vêm de `whatsapp` (97), `manual` (7),
+`instagram` (2) e `Internet` (1) — são fechamentos de lead que nunca veio de
+anúncio. A Meta não tem o que casar, e ignorar está certo.
+
+O texto mandava alguém procurar defeito onde não há. Agora a contagem é separada:
+
+- **ignorados_organicos** — lead sem id da Meta. Comportamento correto.
+- **ignorados_de_lead_pago** — lead de anúncio sem telefone nem e-mail. *Esses*
+  a Meta casaria, e são a lista de conserto de verdade. Hoje: zero.
+
+O `lead_id` dentro de `user_data_hash` é a prova: o normalizador só o grava
+quando o lead tem `facebook_lead_id`.
