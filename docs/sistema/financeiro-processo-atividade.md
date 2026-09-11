@@ -1227,3 +1227,23 @@ Terceira opção nas **quatro** telas — `PendingTransactionsList`,
   conserto do vazamento descrito acima;
 - ver/criar (olho e +) continuam valendo só para lead e contato: grupo de
   WhatsApp não se cria daqui, nasce na conversa.
+
+### Aba "Grupo (caso)" no diálogo de categorizar — 11/09/2026
+
+`TransactionCategorizer` já deixava escolher o grupo, mas **por dentro do lead**:
+era preciso achar o lead certo primeiro. Quem olha uma despesa de deslocamento
+reconhece o nome do grupo (*"LEAD 2313 - JOELMA - BPC/LOAS"*), não
+necessariamente qual lead do CRM é aquele — e num lead com dois grupos a escolha
+continuava sendo a última pergunta, não a primeira.
+
+Agora são **três abas**: Lead · Contato · **Grupo (caso)**, a terceira com o
+mesmo `SeletorGrupoCaso` das outras telas. Regras que a aba prende:
+
+- escolher o grupo **preenche o lead dele** e mostra qual é, na tela;
+- grupo sem lead vinculado é dito em amarelo — a despesa entra no caso, mas fica
+  de fora de relatório que soma por lead, e o conserto é vincular o grupo ao lead
+  na ficha, não adivinhar;
+- **escolher contato larga o grupo** (`setSelectedGroupJid('')`). O grupo é do
+  lead; contato + grupo de outro lead grava vínculo cruzado que ninguém vê;
+- override com `group_jid` **abre já na aba Grupo**: foi a escolha mais
+  específica que alguém fez.
