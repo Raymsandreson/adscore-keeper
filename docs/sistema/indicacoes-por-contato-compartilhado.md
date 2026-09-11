@@ -40,7 +40,7 @@ Volume medido em 11/09/2026 (banco Externo): 214 cartões recebidos em 10 dias,
 | `referral-outreach` | `railway-server/src/functions/` | `draft` escreve a apresentação; `send` envia. |
 | `referral-backfill` | `railway-server/src/functions/` | Recupera o histórico, dia a dia. |
 | Aba Indicações | `src/components/contacts/ReferralsInboxTab.tsx` | Fila, ranking de quem mais indica, ficha em Sheet. |
-| Tabela `referrals` | `supabase/migrations/20260911140000_…sql` | Banco **Externo**. |
+| Tabela `referrals` | `supabase/migrations/20260911141500_…sql` | Banco **Externo**. |
 
 ## Esteira
 
