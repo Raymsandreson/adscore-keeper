@@ -32,6 +32,7 @@ import { useContacts } from '@/hooks/useContacts';
 import { useLeads } from '@/hooks/useLeads';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { useAccountCategoryLinks } from '@/hooks/useAccountCategoryLinks';
+import { useGruposDoLead } from '@/hooks/useVinculoDespesas';
 import { toast } from 'sonner';
 
 interface Transaction {
@@ -97,6 +98,10 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedContact, setSelectedContact] = useState<string>('');
   const [selectedLead, setSelectedLead] = useState<string>('');
+  // Grupo de WhatsApp = o caso. Guardar na despesa é o que permite o limite
+  // `per_whatsapp_group` somar certo quando o lead tem mais de um grupo —
+  // sem isso a despesa vira pendência em vez de entrar na conta.
+  const [selectedGroupJid, setSelectedGroupJid] = useState<string>('');
   const [contactSearchTerm, setContactSearchTerm] = useState('');
   const [leadSearchTerm, setLeadSearchTerm] = useState('');
   const [notes, setNotes] = useState('');
@@ -110,6 +115,7 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
   const [quickAddColor, setQuickAddColor] = useState('bg-gray-500');
 
   const existingOverride = getTransactionOverride(transaction.id);
+  const { grupos: gruposDoLead, carregando: carregandoGrupos } = useGruposDoLead(selectedLead || null);
 
   // Filter categories by account if links exist
   const allowedCategoryIds = transaction.pluggy_account_id 
@@ -135,6 +141,7 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
       setSelectedCategory(existingOverride.category_id || '');
       setSelectedContact(existingOverride.contact_id || '');
       setSelectedLead(existingOverride.lead_id || '');
+      setSelectedGroupJid(existingOverride.group_jid || '');
       setNotes(existingOverride.notes || '');
       setManualCity(existingOverride.manual_city || '');
       setManualState(existingOverride.manual_state || '');
@@ -150,6 +157,7 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
       setSelectedCategory('');
       setSelectedContact('');
       setSelectedLead('');
+      setSelectedGroupJid('');
       setNotes('');
       setActiveTab('lead');
       setManualCity(transaction.merchant_city || '');
@@ -188,7 +196,9 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
       notes || undefined,
       manualCity || undefined,
       manualState || undefined,
-      linkAcknowledged
+      linkAcknowledged,
+      undefined,
+      { group_jid: selectedGroupJid || null }
     );
     
     onOpenChange(false);
@@ -563,7 +573,7 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
                       className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors text-muted-foreground italic ${
                         !selectedLead ? 'bg-muted font-medium' : 'hover:bg-muted'
                       }`}
-                      onClick={() => setSelectedLead('')}
+                      onClick={() => { setSelectedLead(''); setSelectedGroupJid(''); }}
                     >
                       Nenhum Lead Vinculado
                     </button>
@@ -578,6 +588,7 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
                         }`}
                         onClick={() => {
                           setSelectedLead(lead.id);
+                          setSelectedGroupJid('');
                           setSelectedContact('');
                         }}
                       >
@@ -600,6 +611,42 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
                       Destino: {selectedLeadData.city || 'Cidade não cadastrada'}
                       {selectedLeadData.state && `, ${selectedLeadData.state}`}
                     </span>
+                  </div>
+                )}
+                {selectedLead && (
+                  <div className="mt-2">
+                    <Label className="text-xs text-muted-foreground">
+                      Grupo de WhatsApp (o caso)
+                    </Label>
+                    {carregandoGrupos ? (
+                      <p className="text-xs text-muted-foreground mt-1">Carregando grupos...</p>
+                    ) : gruposDoLead.length === 0 ? (
+                      <p className="text-xs text-amber-600 mt-1">
+                        Este lead não tem grupo de WhatsApp. Limite por caso não vai somar esta
+                        despesa até o grupo existir.
+                      </p>
+                    ) : (
+                      <Select
+                        value={selectedGroupJid || 'auto'}
+                        onValueChange={(v) => setSelectedGroupJid(v === 'auto' ? '' : v)}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">
+                            {gruposDoLead.length === 1
+                              ? 'Automático (único grupo do lead)'
+                              : `Automático — não resolve, o lead tem ${gruposDoLead.length} grupos`}
+                          </SelectItem>
+                          {gruposDoLead.map((grupo) => (
+                            <SelectItem key={grupo.group_jid} value={grupo.group_jid}>
+                              {grupo.group_name || grupo.group_jid}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 )}
               </TabsContent>

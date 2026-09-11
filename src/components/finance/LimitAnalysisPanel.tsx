@@ -8,9 +8,18 @@ import {
   TrendingUp, 
   Calendar,
   BarChart3,
-  CheckCircle2
+  CheckCircle2,
+  Users,
+  Wrench
 } from 'lucide-react';
 import { useExpenseCategories, DailyLimitAnalysis, AverageLimitAnalysis, ExpenseCategory } from '@/hooks/useExpenseCategories';
+import { useVinculoDespesas } from '@/hooks/useVinculoDespesas';
+import {
+  calcularLimitesPorVinculo,
+  TEXTO_DO_MOTIVO,
+  type EstouroPorVinculo,
+  type PendenciaVinculo,
+} from '@/lib/limitesPorVinculo';
 
 interface Transaction {
   id: string;
@@ -27,8 +36,19 @@ export function LimitAnalysisPanel({ transactions }: LimitAnalysisPanelProps) {
   const { 
     getAllDailyViolations, 
     getAllAverageAnalysis,
-    getCategoryById 
+    getCategoryById,
+    categories,
+    overrides,
   } = useExpenseCategories();
+
+  // Limites por vínculo (grupo de WhatsApp = o caso, e cliente) precisam de
+  // mapas que não vêm da transação: lead ↔ grupo ↔ contato.
+  const { mapa, carregando: carregandoVinculos } = useVinculoDespesas(overrides);
+
+  const porVinculo = useMemo(
+    () => calcularLimitesPorVinculo(transactions, categories, overrides, mapa),
+    [transactions, categories, overrides, mapa]
+  );
 
   const dailyViolations = useMemo(() => {
     return getAllDailyViolations(transactions);
@@ -58,6 +78,8 @@ export function LimitAnalysisPanel({ transactions }: LimitAnalysisPanelProps) {
       case 'per_transaction': return '/transação';
       case 'per_day': return '/dia';
       case 'per_month': return '/mês';
+      case 'per_whatsapp_group': return '/grupo';
+      case 'per_client': return '/cliente';
       default: return '';
     }
   };
@@ -72,7 +94,7 @@ export function LimitAnalysisPanel({ transactions }: LimitAnalysisPanelProps) {
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="daily" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="daily" className="flex items-center gap-2">
               <Calendar className="h-4 w-4" />
               Por Dia
@@ -85,6 +107,15 @@ export function LimitAnalysisPanel({ transactions }: LimitAnalysisPanelProps) {
             <TabsTrigger value="average" className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4" />
               Médias
+            </TabsTrigger>
+            <TabsTrigger value="vinculo" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Caso/Cliente
+              {(porVinculo.estouros.length + porVinculo.pendencias.length) > 0 && (
+                <Badge variant="destructive" className="ml-1 h-5 px-1.5 text-xs">
+                  {porVinculo.estouros.length + porVinculo.pendencias.length}
+                </Badge>
+              )}
             </TabsTrigger>
           </TabsList>
 
@@ -132,9 +163,133 @@ export function LimitAnalysisPanel({ transactions }: LimitAnalysisPanelProps) {
               </ScrollArea>
             )}
           </TabsContent>
+
+          <TabsContent value="vinculo" className="mt-4">
+            {carregandoVinculos ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                Carregando vínculos das despesas...
+              </div>
+            ) : porVinculo.totais.length === 0 && porVinculo.pendencias.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Users className="h-12 w-12 text-muted-foreground mb-3" />
+                <p className="font-medium">Nenhuma categoria com limite por caso ou cliente</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Defina a unidade "Por grupo de WhatsApp (caso)" ou "Por cliente" na categoria
+                </p>
+              </div>
+            ) : (
+              <ScrollArea className="h-[300px]">
+                <div className="space-y-3">
+                  {porVinculo.estouros.length === 0 && (
+                    <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-400">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      Nenhum caso ou cliente passou do limite
+                    </div>
+                  )}
+
+                  {porVinculo.estouros.map((estouro) => (
+                    <EstouroVinculoCard
+                      key={`${estouro.categoryId}-${estouro.chave}`}
+                      estouro={estouro}
+                      formatCurrency={formatCurrency}
+                    />
+                  ))}
+
+                  {porVinculo.pendencias.length > 0 && (
+                    <div className="pt-2">
+                      <p className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <Wrench className="h-3.5 w-3.5 text-amber-500" />
+                        {porVinculo.pendencias.length} despesa(s) fora da conta — o vínculo não
+                        resolveu o caso/cliente
+                      </p>
+                      <div className="space-y-2">
+                        {porVinculo.pendencias.map((pendencia) => (
+                          <PendenciaVinculoCard
+                            key={`${pendencia.categoryId}-${pendencia.transactionId}`}
+                            pendencia={pendencia}
+                            formatCurrency={formatCurrency}
+                            formatDate={formatDate}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            )}
+          </TabsContent>
         </Tabs>
       </CardContent>
     </Card>
+  );
+}
+
+function EstouroVinculoCard({
+  estouro,
+  formatCurrency,
+}: {
+  estouro: EstouroPorVinculo;
+  formatCurrency: (value: number) => string;
+}) {
+  const percentual = Math.round((estouro.totalGasto / estouro.limite) * 100);
+
+  return (
+    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate font-medium">{estouro.rotulo}</p>
+          <p className="text-xs text-muted-foreground">
+            {estouro.categoryName} ·{' '}
+            {estouro.unidade === 'per_whatsapp_group' ? 'grupo de WhatsApp (caso)' : 'cliente'} ·{' '}
+            {estouro.transacoes} despesa(s)
+          </p>
+        </div>
+        <Badge variant="destructive" className="shrink-0">{percentual}%</Badge>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <span>
+          Gasto: <strong>{formatCurrency(estouro.totalGasto)}</strong>
+        </span>
+        <span className="text-muted-foreground">Limite: {formatCurrency(estouro.limite)}</span>
+        <span className="text-destructive">
+          Excedente: <strong>{formatCurrency(estouro.excedente)}</strong>
+        </span>
+      </div>
+      {estouro.temDeducao && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Inclui despesa cujo {estouro.unidade === 'per_whatsapp_group' ? 'grupo' : 'cliente'} foi
+          deduzido do lead, não escolhido na despesa.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function PendenciaVinculoCard({
+  pendencia,
+  formatCurrency,
+  formatDate,
+}: {
+  pendencia: PendenciaVinculo;
+  formatCurrency: (value: number) => string;
+  formatDate: (dateStr: string) => string;
+}) {
+  return (
+    <div className="rounded-lg border border-amber-300/60 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/20">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{pendencia.categoryName}</p>
+          <p className="text-xs text-muted-foreground">
+            {formatDate(pendencia.transactionDate)} ·{' '}
+            {pendencia.unidade === 'per_whatsapp_group' ? 'sem grupo' : 'sem cliente'}
+          </p>
+        </div>
+        <span className="shrink-0 text-sm font-medium">{formatCurrency(pendencia.valor)}</span>
+      </div>
+      <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+        {TEXTO_DO_MOTIVO[pendencia.motivo]}
+      </p>
+    </div>
   );
 }
 

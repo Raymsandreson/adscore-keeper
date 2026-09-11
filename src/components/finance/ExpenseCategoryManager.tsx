@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ExpenseCategory, useExpenseCategories } from '@/hooks/useExpenseCategories';
+import type { UnidadeLimite } from '@/lib/limitesPorVinculo';
 import { useCategoryApiMappings, availableApiCategories } from '@/hooks/useCategoryApiMappings';
 import { useAccountCategoryLinks } from '@/hooks/useAccountCategoryLinks';
 import { DeleteCategoryDialog } from './DeleteCategoryDialog';
@@ -233,7 +234,7 @@ export function ExpenseCategoryManager({ connections = [] }: ExpenseCategoryMana
     if (!formData.name.trim()) return;
 
     const limitUnit = formData.limit_unit && formData.limit_unit !== '' && formData.limit_unit !== 'none'
-      ? formData.limit_unit as 'per_transaction' | 'per_day' | 'per_month' 
+      ? formData.limit_unit as UnidadeLimite 
       : null;
     
     const maxLimit = formData.max_limit_per_unit && formData.max_limit_per_unit.trim() !== '' 
@@ -324,6 +325,8 @@ export function ExpenseCategoryManager({ connections = [] }: ExpenseCategoryMana
       case 'per_transaction': return 'por transação';
       case 'per_day': return 'por dia';
       case 'per_month': return 'por mês';
+      case 'per_whatsapp_group': return 'por grupo de WhatsApp (caso)';
+      case 'per_client': return 'por cliente';
       default: return '';
     }
   };
@@ -573,6 +576,8 @@ export function ExpenseCategoryManager({ connections = [] }: ExpenseCategoryMana
                           <SelectItem value="per_transaction">Por transação</SelectItem>
                           <SelectItem value="per_day">Por dia</SelectItem>
                           <SelectItem value="per_month">Por mês</SelectItem>
+                          <SelectItem value="per_whatsapp_group">Por grupo de WhatsApp (caso)</SelectItem>
+                          <SelectItem value="per_client">Por cliente</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
