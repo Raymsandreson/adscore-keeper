@@ -19,6 +19,7 @@ import { loadCurrentLabelNames, filterByLabelName, checkLabelName } from '../lib
 import { uploadImageThumb } from '../lib/imageThumb';
 import { notifyNewWhatsAppMessage } from '../lib/whatsapp-push';
 import { triggerProactiveFirstMessage } from '../lib/proactive-first-message';
+import { capturarIndicacao } from '../lib/referral-capture';
 import { handler as whatsappGroupExit, isGroupParticipantEvent } from './whatsapp-group-exit';
 
 // A 1ª mensagem proativa mora em lib/proactive-first-message (dois gatilhos: etiqueta e tela).
@@ -2012,6 +2013,30 @@ export const handler: RequestHandler = async (req, res) => {
         messageId: message.id,
         isGroup,
         leadId,
+      });
+    }
+
+    // ========== INDICAÇÃO POR CARTÃO DE CONTATO ==========
+    // Cartão compartilhado na conversa (ContactMessage/ContactsArrayMessage) é
+    // indicação: alguém passou o contato de outra pessoa. O parse de mídia
+    // acima não cobre vCard — ele vira `message_type = 'text'` e o telefone
+    // indicado fica só no metadata. Aqui o cartão é lido e entra na esteira.
+    //
+    // Fire-and-forget e só inbound: quem recebe indicação é a casa. A mensagem
+    // já está gravada; falha aqui não pode derrubar o webhook.
+    if (direction === 'inbound') {
+      void capturarIndicacao(supabase, {
+        message: body.message || body.chat?.message,
+        chatPhone: phone,
+        chatName: contactName,
+        externalMessageId,
+        messageRowId: message.id,
+        instanceName,
+        direction: 'inbound',
+        isGroup,
+        senderPhone: body.message?.sender_pn || body.message?.sender || null,
+        contactId,
+        sharedAt: message.created_at,
       });
     }
 

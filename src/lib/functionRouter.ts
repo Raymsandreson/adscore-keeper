@@ -39,6 +39,11 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'sync-agent-labels': 'railway',
   // Ativar o agente pela tela também manda a 1ª mensagem proativa (antes só a etiqueta mandava)
   'agent-proactive-first-message': 'railway',
+  // Indicações: leem/escrevem referrals e whatsapp_messages (Externo) e usam
+  // o token da instância, que não sai do Railway.
+  'referral-classify': 'railway',
+  'referral-outreach': 'railway',
+  'referral-backfill': 'railway',
   'sync-result-labels': 'railway',
   'sync-stage-labels': 'railway',
   'apply-stage-label': 'railway',
