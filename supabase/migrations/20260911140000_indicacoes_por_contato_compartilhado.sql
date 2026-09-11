@@ -121,9 +121,19 @@ CREATE TABLE IF NOT EXISTS public.referrals (
 
 -- Idempotência real: o mesmo cartão da mesma mensagem não entra duas vezes,
 -- mas um ContactsArrayMessage com 3 cartões gera 3 linhas.
+--
+-- NÃO tornar este índice parcial (`WHERE source_message_id IS NOT NULL`). Foi a
+-- primeira versão e quebrava tudo: o Postgres só casa `ON CONFLICT (a, b)` com
+-- índice parcial se o predicado for repetido na cláusula, e o `upsert` do
+-- supabase-js não tem como fazer isso — a captura morria com 42P10 a cada
+-- cartão, em silêncio, porque roda fire-and-forget. Verificado no banco em
+-- 11/09/2026 antes de subir.
+--
+-- O predicado também era desnecessário: em índice único, NULL nunca conflita
+-- com NULL, então linha sem `source_message_id` continua livre para repetir
+-- (conferido: duas linhas sem id entram sem reclamação).
 CREATE UNIQUE INDEX IF NOT EXISTS uq_referrals_mensagem_indicado
-  ON public.referrals (source_message_id, indicated_phone)
-  WHERE source_message_id IS NOT NULL;
+  ON public.referrals (source_message_id, indicated_phone);
 
 -- A tela abre na fila do que ainda não foi tratado, mais recente primeiro.
 CREATE INDEX IF NOT EXISTS idx_referrals_status_data
