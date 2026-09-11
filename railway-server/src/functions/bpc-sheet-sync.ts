@@ -109,6 +109,10 @@ function rowToObj(headers: string[], r: any[]): Record<string, string> {
 interface AbaLida {
   tab: string;
   headers: string[];
+  /** Linhas da aba cuja data cai na janela pedida, ANTES de qualquer descarte. */
+  brutas_na_janela?: number;
+  /** Dessas, quantas este leitor recusou (sem nome ou sem telefone). */
+  descartadas_na_janela?: number;
   /** Em que linha (1-indexada) o cabecalho foi encontrado. 1 = topo, como sempre foi. */
   linha_do_cabecalho?: number;
   /** Quantos nomes de coluna da Meta a linha vencedora tinha. */
@@ -129,7 +133,11 @@ interface AbaLida {
   status_com_id_meta: Record<string, number>;
 }
 
-async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: string }): Promise<AbaLida> {
+async function fetchTab(
+  spreadsheetId: string,
+  meta: { tab: string; operator: string },
+  sinceMs: number,
+): Promise<AbaLida> {
   const lovableKey = process.env.LOVABLE_API_KEY || '';
   const gsKey = process.env.GOOGLE_SHEETS_API_KEY || '';
   if (!lovableKey || !gsKey) throw new Error('Missing connector keys (LOVABLE_API_KEY / GOOGLE_SHEETS_API_KEY)');
@@ -167,6 +175,22 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   const statusPlanilha: Record<string, number> = {};
   const statusComIdMeta: Record<string, number> = {};
   let trocaDeColuna = 0;
+  // BRUTAS DENTRO DA JANELA — separa "ausente da planilha" de "recusada aqui".
+  //
+  // `brutas` conta a aba inteira e `recentes` conta o que sobreviveu ao parse,
+  // entao a diferenca entre a planilha e a Meta misturava duas causas opostas:
+  // linha que a Meta exportou e a planilha nao tem (problema la) e linha que a
+  // planilha tem e este leitor recusa (problema aqui). As duas pedem conserto
+  // em lugares diferentes, e ate agora era impossivel saber qual era qual.
+  //
+  // A data sai da linha mesmo quando nome e telefone falham, entao dá para
+  // datar o descarte.
+  let brutasNaJanela = 0;
+  let descartadasNaJanela = 0;
+  const dentroDaJanela = (v: string) => {
+    const t = new Date(String(v || '')).getTime();
+    return !isNaN(t) && t >= sinceMs;
+  };
   for (let i = 0; i < values.length; i++) {
     // Pula so o cabecalho. A linha ACIMA dele, quando existe, e um lead de
     // verdade — era ela que estava sendo usada como nome de coluna, e
@@ -176,6 +200,8 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     if (!r || !r.length) continue;
     brutas += 1;
     const o = rowToObj(headers, r);
+    const naJanela = dentroDaJanela(o['created_time']);
+    if (naJanela) brutasNaJanela += 1;
     // NOME E TELEFONE TROCADOS DE COLUNA.
     //
     // A mesma aba acumula exportacoes de duas versoes do formulario, com a
@@ -198,6 +224,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     const rawPhone = trocado ? celulaNome : celulaTelefone;
     if (isJunkName(name)) {
       descNome += 1;
+      if (naJanela) descartadasNaJanela += 1;
       // QUAL das regras de isJunkName reprovou. Classificacao pura: nenhum
       // valor de cliente sai daqui, so o motivo e um tamanho.
       const t = String(name || '').trim();
@@ -216,6 +243,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     const phone = normalizePhone(rawPhone);
     if (phone.length < 10) {
       descTelefone += 1;
+      if (naJanela) descartadasNaJanela += 1;
       continue;
     }
     // CADA coluna separada. `lead_status` e campo da exportacao da Meta (vale
@@ -253,6 +281,8 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   return {
     tab: meta.tab,
     headers,
+    brutas_na_janela: brutasNaJanela,
+    descartadas_na_janela: descartadasNaJanela,
     linha_do_cabecalho: acho.linha + 1,
     cabecalho_reconhecido: acho.acertos,
     id_recuperado: acho.id_recuperado,
@@ -378,11 +408,11 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const cabecalhos = new Set<string>();
   const diagPorAba = new Map<
     string,
-    { cabecalho: string[]; linhaCabecalho?: number; idRecuperado?: boolean; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
+    { cabecalho: string[]; brutasJanela?: number; descartadasJanela?: number; linhaCabecalho?: number; idRecuperado?: boolean; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
   >();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
-    const results = await Promise.allSettled(chunk.map((t) => fetchTab(spreadsheetId, t)));
+    const results = await Promise.allSettled(chunk.map((t) => fetchTab(spreadsheetId, t, sinceMs)));
     results.forEach((r, idx) => {
       const meta = chunk[idx];
       if (r.status === 'fulfilled') {
@@ -390,6 +420,8 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
         r.value.headers.forEach((h) => cabecalhos.add(h));
         diagPorAba.set(meta.tab, {
           cabecalho: r.value.headers,
+          brutasJanela: (r.value as any).brutas_na_janela,
+          descartadasJanela: (r.value as any).descartadas_na_janela,
           linhaCabecalho: (r.value as any).linha_do_cabecalho,
           idRecuperado: (r.value as any).id_recuperado,
           brutas: r.value.brutas,
@@ -532,6 +564,12 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       cabecalho: d?.cabecalho ?? [],
       // Em que linha o cabecalho estava. Diferente de 1 significa que alguem
       // colou dado no topo da aba — util saber sem precisar abrir a planilha.
+      // A conta que separa as duas causas: `brutas_na_janela` e o que a planilha
+      // TEM no periodo; `recentes` e o que este leitor conseguiu usar. A
+      // diferenca entre a Meta e `brutas_na_janela` e problema da planilha; a
+      // diferenca entre `brutas_na_janela` e `recentes` e problema daqui.
+      brutas_na_janela: d?.brutasJanela ?? 0,
+      descartadas_na_janela: d?.descartadasJanela ?? 0,
       linha_do_cabecalho: d?.linhaCabecalho ?? 1,
       id_recuperado: d?.idRecuperado ?? false,
       preenchidas_nas_descartadas: d?.preenchidas ?? {},
