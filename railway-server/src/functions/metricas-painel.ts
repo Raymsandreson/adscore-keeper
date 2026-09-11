@@ -622,7 +622,18 @@ export const handler: RequestHandler = async (req, res) => {
     if (querDetalhe) {
       const credencial = await authorizeFunctionRequest(req as any);
       if (!credencial.ok) {
-        detalhe = { disponivel: false, motivo: 'o detalhe nominal exige usuario logado' };
+        // O PORQUE junto da recusa. Nao consigo testar o caminho feliz daqui:
+        // `RAILWAY_API_KEY` e `RAILWAY_INTERNAL_KEY` nao estao configuradas em
+        // producao (`/health` mostra `api_key: false`), entao o unico caminho
+        // que autoriza e o JWT de usuario — que so existe no navegador de quem
+        // fez login. Sem o motivo, "verificador quebrado" e "token invalido"
+        // devolveriam a mesma frase, e alguem passaria a tarde procurando o
+        // defeito no lugar errado. Nenhum valor aqui revela credencial.
+        detalhe = {
+          disponivel: false,
+          motivo: 'o detalhe nominal exige usuario logado',
+          porque: credencial.reason || 'sem credencial reconhecida',
+        };
       } else {
         const mascara = (v: string | null) => {
           const d = String(v || '').replace(/\D/g, '');

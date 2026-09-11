@@ -99,7 +99,7 @@ interface Painel {
     conjuntos_ativos?: number; conjuntos_otimizando_conversao?: number; conjuntos_usando_dataset?: number;
   };
   detalhe: {
-    disponivel: boolean; motivo?: string; teto?: number;
+    disponivel: boolean; motivo?: string; porque?: string; teto?: number;
     leads?: Array<{ nome: string; telefone: string | null; dia: string; acolhedor: string | null;
                     conjunto: string | null; funil: string | null; status: string | null; pago: boolean }>;
     leads_total?: number;
@@ -1013,7 +1013,12 @@ export default function MetricasPage() {
                   <Card className="border-destructive/50">
                     <CardContent className="pt-6 text-sm text-destructive flex items-start gap-2">
                       <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                      <span>{dados.detalhe.motivo || 'não foi possível carregar o detalhe'}</span>
+                      <span>
+                        {dados.detalhe.motivo || 'não foi possível carregar o detalhe'}
+                        {dados.detalhe.porque && (
+                          <span className="block text-xs opacity-80 mt-0.5">({dados.detalhe.porque})</span>
+                        )}
+                      </span>
                     </CardContent>
                   </Card>
                 )}
