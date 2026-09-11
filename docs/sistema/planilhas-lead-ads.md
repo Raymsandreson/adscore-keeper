@@ -339,3 +339,62 @@ Três travas para que isso não vire outro problema:
 
 O diagnóstico por aba informa `recuperadas_para_status`, e o contador de descarte
 passou a subir só quando a linha morre de verdade.
+
+## Limpeza dos 289 duplicados (11/09/2026)
+
+289 leads existiam em duplicata — mesmo `facebook_lead_id`, uma linha da planilha
+e outra da leitura direta da Meta, com telefones diferentes em **289 de 289**
+pares (nem os 8 dígitos finais coincidiam).
+
+**A primeira regra que eu ia usar estava errada.** Ia manter o lado da API e
+descartar o da planilha. Medindo o que estava pendurado em cada linha:
+
+| | Sobrevive (regra antiga) | Morre (regra antiga) |
+|---|---:|---:|
+| Campos personalizados | 24 | **588** |
+| Followups | 13 | 26 |
+
+O lado da planilha carrega as respostas do formulário em campos estruturados; o
+da API grava como texto em `notes`. Descartá-lo teria escondido 588 campos.
+
+### Regra final e consolidação
+
+Sobrevive quem tem **status trabalhado**; empate, quem tem **mais campos
+preenchidos**; empate, o lado da API. Resultado: 255 sobreviventes da planilha,
+34 da API. O que estava no descartado mudou de dono antes:
+
+| Passo | Linhas |
+|---|---:|
+| Campos personalizados movidos | 66 |
+| Campos em conflito (fica o do sobrevivente) | 2 |
+| Followups movidos | 7 |
+| Vínculo de contato movido | 1 |
+| Notas substituídas pela versão maior | 255 |
+| Telefone descartado guardado em `lead_phone_raw` | 289 |
+| Soft delete | 289 |
+
+**Nenhum `UPDATE` de `lead_status`**: esse campo dispara etiqueta do WhatsApp,
+carimbo de `became_client_date` e classificação de contato. Não foi preciso —
+em nenhum par os dois lados tinham status trabalhado *diferentes*.
+
+Backups em `zz_dedup_meta_20260911` (o pareamento congelado),
+`zz_leads_dedup_bkp_20260911` (578 linhas completas),
+`zz_lcfv_dedup_bkp_20260911`, `zz_followups_dedup_bkp_20260911` e
+`zz_contactleads_dedup_bkp_20260911`. O rollback reverte **por id gravado**,
+nunca por regra: depois da mudança não há como distinguir o followup que era do
+descartado do que já era do sobrevivente.
+
+### O que já não dá para desfazer
+
+Os 2 pares fechados enviaram **4 conversões Purchase** à Meta — duas por cliente,
+todas aceitas em 10/09. Evento enviado não se retira.
+
+### Por que o `meta-leads-sync` não recria tudo
+
+Ele deduplicava **só por telefone**, e o sobrevivente ficou com apenas um dos dois
+números. Não recriou por acaso: a varredura não filtra `deleted_at`, então o
+telefone da linha removida ainda contava como conhecido — no dia em que alguém
+acrescentasse o filtro, o que parece uma correção óbvia, as 255 duplicatas
+voltariam em 30 minutos.
+
+Agora ele dedupa também pelo **id da Meta**, como o `bpc-sheet-sync` já faz.
