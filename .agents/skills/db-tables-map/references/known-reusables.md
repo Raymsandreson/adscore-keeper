@@ -63,6 +63,26 @@ Cobrem ciclo completo de processo. `generate_case_number(nucleus_id)` já gera c
 ### `financial_entries` / `bank_transactions` / `credit_card_transactions`
 Lançamentos. `cost_accounts` + `cost_centers` para classificação.
 
+### Conta e forma de pagamento de uma despesa — NÃO crie tabela nova
+`cost_accounts` é o ÚNICO vocabulário de conta da casa (5 linhas: PESSOAL,
+ABRACI, WHATSJUD, PRUDÊNCIO CAPITAL, PRUDÊNCIO ADVOGADOS). Já é apontada por
+`card_assignments.cost_account_id`, `transaction_category_overrides.cost_account_id`
+e, desde 11/09/2026, `lead_financials.cost_account_id`.
+Forma de pagamento é TEXT (`pix`, `boleto`, `cartao_credito`, `cartao_debito`,
+`transferencia`, `dinheiro`) em `payment_method` — mesma lista em
+`FORMAS_DE_PAGAMENTO` (`src/hooks/useContasDePagamento.ts`).
+QUAL cartão se guarda pelos quatro dígitos (`card_last_digits`), porque é o que
+casa com `credit_card_transactions` — id de `card_assignments` casaria com o
+cadastro, não com o extrato.
+
+### Despesa ↔ caso: `group_jid`, não só `lead_id`
+`transaction_category_overrides.group_jid` diz de QUAL caso é a despesa quando o
+lead tem mais de um grupo. `setTransactionOverride` faz **upsert da linha
+inteira**: qualquer tela que salve um override e NÃO mande `group_jid` zera o
+vínculo do caso sem erro nenhum. Escolha do grupo:
+`src/components/finance/SeletorGrupoCaso.tsx` (busca no servidor — são 2.429
+jids, não carregue a lista toda).
+
 ## Métricas / Metas
 
 ### `monitor_kpi_snapshots`

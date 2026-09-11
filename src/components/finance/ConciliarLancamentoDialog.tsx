@@ -8,7 +8,7 @@
  * valor+data, seria palpite virando número fechado sem ninguém olhar — a mesma
  * decisão já tomada em `conferido`.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +31,12 @@ export interface LancamentoConciliavel extends ConciliacaoDoLancamento {
   /** Vencimento. Vira a referência da busca quando ainda não houve baixa. */
   entry_date: string;
   settled_at: string | null;
+  /**
+   * Cartão declarado no cadastro do lançamento. Quando existe, a busca abre já
+   * estreitada nele — quem lançou disse por onde o dinheiro saiu, e varrer
+   * conta e cartão inteiros de novo é refazer trabalho já feito.
+   */
+  card_last_digits?: string | null;
 }
 
 interface Props {
@@ -61,8 +67,19 @@ export function ConciliarLancamentoDialog({ lancamento, onOpenChange, onMudou, c
   // Trocar a transação de um lançamento já conciliado: a mesma tela de busca,
   // aberta por cima do retrato em vez de no lugar dele.
   const [trocando, setTrocando] = useState(false);
+  // Começa ligado quando o lançamento diz o cartão. É preferência de busca, não
+  // verdade: o gasto pode ter sido cadastrado no cartão errado, e por isso a
+  // tela sempre diz quantas linhas o filtro tirou e deixa desligar.
+  const [soDoCartao, setSoDoCartao] = useState(true);
+  // Só o clique da pessoa refaz a busca por causa do filtro. Sem isto, abrir um
+  // lançamento logo depois de outro em que alguém tinha clicado "ver tudo"
+  // dispararia DUAS leituras do extrato no mesmo instante (a de sempre e a do
+  // filtro voltando ao padrão) — quatro chamadas de edge para mostrar uma lista.
+  const trocouOFiltro = useRef(false);
 
   const conciliado = !!lancamento?.of_transacao_id;
+  const cartaoDoLancamento = lancamento?.card_last_digits || null;
+  const filtroCartao = soDoCartao ? cartaoDoLancamento : null;
   const mostrarBusca = !!lancamento && (!conciliado || trocando);
   const referencia = lancamento?.settled_at || lancamento?.entry_date || '';
 
@@ -76,13 +93,14 @@ export function ConciliarLancamentoDialog({ lancamento, onOpenChange, onMudou, c
         dias: Number(dias),
         busca,
         direcao: lancamento.entry_type,
+        cartao: filtroCartao,
       });
       setResultado(r);
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
       setResultado(null);
     }
-  }, [lancamento, dias, busca, buscarCandidatos]);
+  }, [lancamento, dias, busca, filtroCartao, buscarCandidatos]);
 
   // Reabrir o diálogo em outro lançamento não pode reaproveitar a busca do
   // anterior: seriam candidatos de outro valor, apresentados como deste.
@@ -92,12 +110,24 @@ export function ConciliarLancamentoDialog({ lancamento, onOpenChange, onMudou, c
     setBusca('');
     setDias('15');
     setTrocando(false);
+    setSoDoCartao(true);
+    trocouOFiltro.current = false;
   }, [lancamento?.id]);
 
   useEffect(() => {
     if (mostrarBusca && !resultado && !buscando && !erro) void procurar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mostrarBusca, lancamento?.id]);
+
+  // Ligar/desligar o filtro de cartão refaz a busca na hora — deixar o
+  // resultado velho na tela com o filtro trocado seria mentir sobre o que está
+  // sendo mostrado.
+  useEffect(() => {
+    if (!trocouOFiltro.current) return;
+    trocouOFiltro.current = false;
+    if (mostrarBusca && cartaoDoLancamento) { setResultado(null); void procurar(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soDoCartao]);
 
   const aplicar = async (t: TransacaoExtrato) => {
     if (!lancamento) return;
@@ -220,6 +250,29 @@ export function ConciliarLancamentoDialog({ lancamento, onOpenChange, onMudou, c
               Procurando em torno de {dia(referencia)}
               {resultado ? ' (' + dia(resultado.janela.de) + ' a ' + dia(resultado.janela.ate) + ')' : ''}.
             </p>
+
+            {/* O lançamento já disse o cartão: a busca abre nele. O que o filtro
+                tirou aparece contado — e um clique traz de volta, porque o
+                cadastro pode ter errado o cartão. */}
+            {cartaoDoLancamento && (
+              <div className="flex items-center gap-2 rounded border border-dashed px-2 py-1.5 text-[11px]">
+                <CreditCard className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+                <span className="min-w-0">
+                  {soDoCartao
+                    ? <>Só o cartão <strong>****{cartaoDoLancamento}</strong>, como foi cadastrado
+                        {resultado?.ocultadas_pelo_cartao
+                          ? ' · ' + resultado.ocultadas_pelo_cartao + ' linha(s) de fora'
+                          : ''}.</>
+                    : <>Extrato inteiro — o lançamento diz <strong>****{cartaoDoLancamento}</strong>.</>}
+                </span>
+                <Button
+                  variant="ghost" size="sm" className="ml-auto h-6 flex-shrink-0 text-[11px]"
+                  onClick={() => { trocouOFiltro.current = true; setSoDoCartao(v => !v); }}
+                >
+                  {soDoCartao ? 'ver tudo' : 'só este cartão'}
+                </Button>
+              </div>
+            )}
 
             {erro && <p className="text-xs text-destructive">{erro}</p>}
 

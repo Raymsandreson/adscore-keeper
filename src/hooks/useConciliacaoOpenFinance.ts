@@ -66,6 +66,10 @@ export interface CandidatosConciliacao {
   janela: { de: string; ate: string; dias: number };
   /** Quantos candidatos ficaram de fora do teto. >0 = estreite a busca. */
   cortados: number;
+  /** Cartão usado para estreitar a busca, quando o lançamento diz qual foi. */
+  cartao_filtrado: string | null;
+  /** Quantas linhas o filtro de cartão tirou da vista. Nunca some calado. */
+  ocultadas_pelo_cartao: number;
   /** 0 com `mapeado=false` explica a lista vazia sem erro. */
   contas_permitidas: number;
   mapeado: boolean;
@@ -170,6 +174,13 @@ export function useConciliacaoOpenFinance() {
     dias?: number;
     busca?: string;
     direcao?: 'entrada' | 'saida' | null;
+    /**
+     * Quatro dígitos do cartão que o lançamento diz ter pago. Estreita a lista
+     * ao extrato DAQUELE cartão — o caminho curto de quem já sabia por onde o
+     * dinheiro saiu. Nunca some calado: o que ficou de fora volta contado em
+     * `ocultadas_pelo_cartao`, para a tela poder abrir de novo.
+     */
+    cartao?: string | null;
   }): Promise<CandidatosConciliacao> => {
     setBuscando(true);
     try {
@@ -207,6 +218,13 @@ export function useConciliacaoOpenFinance() {
           `${c.descricao || ''} ${c.merchant_name || ''} ${c.categoria || ''}`.toLowerCase().includes(termo));
       }
 
+      let ocultadasPeloCartao = 0;
+      if (params.cartao) {
+        const doCartao = linhas.filter(c => c.card_last_digits === params.cartao);
+        ocultadasPeloCartao = linhas.length - doCartao.length;
+        linhas = doCartao;
+      }
+
       const ordenadas = ordenarCandidatos(linhas, params.valor, params.data);
       const candidatos = ordenadas.slice(0, TETO_CANDIDATOS);
 
@@ -237,6 +255,8 @@ export function useConciliacaoOpenFinance() {
         usadas,
         janela: { de, ate, dias },
         cortados: Math.max(0, ordenadas.length - candidatos.length),
+        cartao_filtrado: params.cartao || null,
+        ocultadas_pelo_cartao: ocultadasPeloCartao,
         contas_permitidas: Number(banco?.contas_permitidas || 0) + Number(cartao?.contas_permitidas || 0),
         // `mapeado=false` é o sintoma mais caro daqui: a leitura volta vazia sem
         // erro nenhum, e "não achei nada" fica indistinguível de "não te vejo".
