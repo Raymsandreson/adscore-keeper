@@ -25,6 +25,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cloudFunctions } from '@/lib/functionRouter';
@@ -752,154 +753,175 @@ export default function MetricasPage() {
               />
             </div>
 
-            <PorAcolhedor itens={dados.por_acolhedor || []} ativo={acolhedor} onEscolher={setAcolhedor} />
+            <Tabs defaultValue="desempenho" className="w-full">
+              {/* Agrupado por PERGUNTA, não por tipo de dado. Antes eram onze
+                  blocos empilhados e a pessoa rolava a tela inteira procurando a
+                  tabela certa; agora cada uma responde a uma das três coisas que
+                  se quer saber aqui: de onde vem contrato, como isso mudou no
+                  tempo, e se o encanamento está de pé. */}
+              <TabsList className="w-full justify-start h-auto flex-wrap gap-1">
+                <TabsTrigger value="desempenho" className="gap-1.5">
+                  <Target className="h-3.5 w-3.5" />Desempenho
+                </TabsTrigger>
+                <TabsTrigger value="evolucao" className="gap-1.5">
+                  <TrendingUp className="h-3.5 w-3.5" />Evolução e funil
+                </TabsTrigger>
+                <TabsTrigger value="sistema" className="gap-1.5">
+                  <Link2 className="h-3.5 w-3.5" />Integração e sistema
+                </TabsTrigger>
+              </TabsList>
 
-            <GastoSemLead custo={dados.custo} />
-
-            <DesempenhoPorConjunto itens={dados.desempenho_por_conjunto || []} />
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Dia a dia</CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Barras: leads de anúncio e fechamentos por dia. Linha: investimento do dia.
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[320px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={dados.serie} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="dia" tickFormatter={diaCurto} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                      <YAxis yAxisId="q" tick={{ fontSize: 11 }} />
-                      <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}`} />
-                      <Tooltip
-                        formatter={(v: any, nome: any) => (nome === 'Investido' ? brl(Number(v)) : num(Number(v)))}
-                        labelFormatter={(l) => `Dia ${diaCurto(String(l))}`}
-                      />
-                      <Legend />
-                      <Bar yAxisId="q" dataKey="leads_pagos" name="Leads de anúncio" fill="hsl(var(--primary))" fillOpacity={0.55} radius={[3, 3, 0, 0]} />
-                      <Bar yAxisId="q" dataKey="fechamentos" name="Fechamentos" fill="hsl(var(--primary))" radius={[3, 3, 0, 0]} />
-                      <Line yAxisId="r" type="monotone" dataKey="investido" name="Investido" stroke="#f59e0b" strokeWidth={2} dot={false} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <FunilPago f={dados.funil_pago} dias={dados.janela.dias} />
-              <Rotinas itens={dados.rotinas || []} />
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Link2 className="h-4 w-4" />Saúde da integração com a Meta
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Configuração da conta, não medição do período — não segue os filtros acima.
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-2.5">
-                  {!dados.integracao?.disponivel ? (
-                    <p className="text-sm text-muted-foreground">
-                      Não consegui ler a conta de anúncio agora{dados.integracao?.erro ? `: ${dados.integracao.erro}` : '.'}
-                    </p>
-                  ) : (
-                    <>
-                      <Passo
-                        ok={(dados.capi.sent || 0) > 0}
-                        texto="Conversões chegando à Meta"
-                        detalhe={`${num(dados.capi.sent || 0)} aceitas`}
-                      />
-                      <Passo
-                        ok={(dados.capi.aceitos_com_lead_id || 0) > 0}
-                        texto="Conversões com o id do lead da Meta"
-                        detalhe={`${num(dados.capi.aceitos_com_lead_id || 0)} de ${num(dados.capi.sent || 0)} — é o que casa a venda com o formulário do anúncio`}
-                      />
-                      <Passo
-                        ok={(dados.integracao.conjuntos_otimizando_conversao || 0) > 0}
-                        texto="Conjuntos otimizando por conversão"
-                        detalhe={`${num(dados.integracao.conjuntos_otimizando_conversao || 0)} de ${num(dados.integracao.conjuntos_ativos || 0)} ativos — trocar em "Leads com conversão" no Gerenciador`}
-                      />
-                      <p className="text-xs text-muted-foreground pt-2 border-t">
-                        Enquanto o último item não estiver marcado, a Meta recebe as conversões mas continua
-                        comprando lead por volume, não por quem fecha contrato.
-                      </p>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-3"><CardTitle className="text-sm">Funil por status (todos os leads do período)</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                  {Object.entries(dados.funil_por_status || {})
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([k, v]) => (
-                      <div key={k} className="flex items-center justify-between gap-2 text-sm">
-                        <span className="text-muted-foreground">{ROTULO_STATUS[k] || k}</span>
-                        <span className="tabular-nums">{num(v)}</span>
+              <TabsContent value="desempenho" className="space-y-4 mt-4">
+                {/* O alerta abre a aba padrão de propósito: é dinheiro saindo, e
+                    dentro de uma aba secundária ninguém o encontraria. */}
+                <GastoSemLead custo={dados.custo} />
+                <PorAcolhedor itens={dados.por_acolhedor || []} ativo={acolhedor} onEscolher={setAcolhedor} />
+                <DesempenhoPorConjunto itens={dados.desempenho_por_conjunto || []} />
+                {inv?.disponivel && inv.contas.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3"><CardTitle className="text-sm">Contas de anúncio</CardTitle></CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        {inv.contas.map((c) => (
+                          <div key={c.conta} className="flex items-center justify-between gap-2 text-sm">
+                            <span className="truncate">{c.conta}</span>
+                            <span className="tabular-nums shrink-0">{brl(c.valor)}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                </CardContent>
-              </Card>
-            </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
 
-            <div className="grid gap-4 lg:grid-cols-3">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2"><Send className="h-4 w-4" />Conversões enviadas à Meta</CardTitle>
-                  <p className="text-xs text-muted-foreground">Fila inteira, desde o início — não segue os filtros.</p>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  {[
-                    ['sent', 'Aceitas pela Meta'],
-                    ['pending', 'Na fila'],
-                    ['skipped', 'Ignoradas (sem contato ou sem valor)'],
-                    ['failed', 'Recusadas'],
-                  ].map(([k, rot]) => (
-                    <div key={k} className="flex items-center justify-between gap-2">
-                      <span className="text-muted-foreground">{rot}</span>
-                      <Badge variant={k === 'failed' && (dados.capi[k] || 0) > 0 ? 'destructive' : 'secondary'} className="tabular-nums">
-                        {num(dados.capi[k] || 0)}
-                      </Badge>
-                    </div>
-                  ))}
-                  <div className="pt-2 border-t space-y-1">
-                    {Object.entries(dados.capi.motivos_ignorado || {}).map(([motivo, qtd]) => (
-                      <p key={motivo} className="text-xs text-muted-foreground">
-                        {num(qtd as number)} — {motivo}
-                      </p>
-                    ))}
+              <TabsContent value="evolucao" className="space-y-4 mt-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Dia a dia</CardTitle>
                     <p className="text-xs text-muted-foreground">
-                      Ignorada não é erro de envio: é lead fechado que a Meta descartaria. É lista de conserto.
+                      Barras: leads de anúncio e fechamentos por dia. Linha: investimento do dia.
                     </p>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-[320px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={dados.serie} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                          <XAxis dataKey="dia" tickFormatter={diaCurto} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                          <YAxis yAxisId="q" tick={{ fontSize: 11 }} />
+                          <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}`} />
+                          <Tooltip
+                            formatter={(v: any, nome: any) => (nome === 'Investido' ? brl(Number(v)) : num(Number(v)))}
+                            labelFormatter={(l) => `Dia ${diaCurto(String(l))}`}
+                          />
+                          <Legend />
+                          <Bar yAxisId="q" dataKey="leads_pagos" name="Leads de anúncio" fill="hsl(var(--primary))" fillOpacity={0.55} radius={[3, 3, 0, 0]} />
+                          <Bar yAxisId="q" dataKey="fechamentos" name="Fechamentos" fill="hsl(var(--primary))" radius={[3, 3, 0, 0]} />
+                          <Line yAxisId="r" type="monotone" dataKey="investido" name="Investido" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <FunilPago f={dados.funil_pago} dias={dados.janela.dias} />
+                  <Card>
+                    <CardHeader className="pb-3"><CardTitle className="text-sm">Funil por status (todos os leads do período)</CardTitle></CardHeader>
+                    <CardContent className="space-y-2">
+                      {Object.entries(dados.funil_por_status || {})
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([k, v]) => (
+                          <div key={k} className="flex items-center justify-between gap-2 text-sm">
+                            <span className="text-muted-foreground">{ROTULO_STATUS[k] || k}</span>
+                            <span className="tabular-nums">{num(v)}</span>
+                          </div>
+                        ))}
+                    </CardContent>
+                  </Card>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Ranking titulo="Leads por origem" itens={dados.leads.por_fonte.slice(0, 8)} />
+                  <Ranking titulo="Leads por funil" itens={dados.leads.por_board.slice(0, 8)} />
+                </div>
+              </TabsContent>
 
-              <Ranking titulo="Leads por origem" itens={dados.leads.por_fonte.slice(0, 8)} />
-              <Ranking titulo="Leads por funil" itens={dados.leads.por_board.slice(0, 8)} />
-            </div>
-
-            {inv?.disponivel && inv.contas.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3"><CardTitle className="text-sm">Contas de anúncio</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {inv.contas.map((c) => (
-                      <div key={c.conta} className="flex items-center justify-between gap-2 text-sm">
-                        <span className="truncate">{c.conta}</span>
-                        <span className="tabular-nums shrink-0">{brl(c.valor)}</span>
+              <TabsContent value="sistema" className="space-y-4 mt-4">
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Link2 className="h-4 w-4" />Saúde da integração com a Meta
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground">
+                        Configuração da conta, não medição do período — não segue os filtros acima.
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-2.5">
+                      {!dados.integracao?.disponivel ? (
+                        <p className="text-sm text-muted-foreground">
+                          Não consegui ler a conta de anúncio agora{dados.integracao?.erro ? `: ${dados.integracao.erro}` : '.'}
+                        </p>
+                      ) : (
+                        <>
+                          <Passo
+                            ok={(dados.capi.sent || 0) > 0}
+                            texto="Conversões chegando à Meta"
+                            detalhe={`${num(dados.capi.sent || 0)} aceitas`}
+                          />
+                          <Passo
+                            ok={(dados.capi.aceitos_com_lead_id || 0) > 0}
+                            texto="Conversões com o id do lead da Meta"
+                            detalhe={`${num(dados.capi.aceitos_com_lead_id || 0)} de ${num(dados.capi.sent || 0)} — é o que casa a venda com o formulário do anúncio`}
+                          />
+                          <Passo
+                            ok={(dados.integracao.conjuntos_otimizando_conversao || 0) > 0}
+                            texto="Conjuntos otimizando por conversão"
+                            detalhe={`${num(dados.integracao.conjuntos_otimizando_conversao || 0)} de ${num(dados.integracao.conjuntos_ativos || 0)} ativos — trocar em "Leads com conversão" no Gerenciador`}
+                          />
+                          <p className="text-xs text-muted-foreground pt-2 border-t">
+                            Enquanto o último item não estiver marcado, a Meta recebe as conversões mas continua
+                            comprando lead por volume, não por quem fecha contrato.
+                          </p>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center gap-2"><Send className="h-4 w-4" />Conversões enviadas à Meta</CardTitle>
+                      <p className="text-xs text-muted-foreground">Fila inteira, desde o início — não segue os filtros.</p>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      {[
+                        ['sent', 'Aceitas pela Meta'],
+                        ['pending', 'Na fila'],
+                        ['skipped', 'Ignoradas (sem contato ou sem valor)'],
+                        ['failed', 'Recusadas'],
+                      ].map(([k, rot]) => (
+                        <div key={k} className="flex items-center justify-between gap-2">
+                          <span className="text-muted-foreground">{rot}</span>
+                          <Badge variant={k === 'failed' && (dados.capi[k] || 0) > 0 ? 'destructive' : 'secondary'} className="tabular-nums">
+                            {num(dados.capi[k] || 0)}
+                          </Badge>
+                        </div>
+                      ))}
+                      <div className="pt-2 border-t space-y-1">
+                        {Object.entries(dados.capi.motivos_ignorado || {}).map(([motivo, qtd]) => (
+                          <p key={motivo} className="text-xs text-muted-foreground">
+                            {num(qtd as number)} — {motivo}
+                          </p>
+                        ))}
+                        <p className="text-xs text-muted-foreground">
+                          Ignorada não é erro de envio: é lead fechado que a Meta descartaria. É lista de conserto.
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                    </CardContent>
+                  </Card>
+                </div>
+                <Rotinas itens={dados.rotinas || []} />
+              </TabsContent>
+            </Tabs>
+
 
             <p className="text-xs text-muted-foreground text-center">
               Gerado em {new Date(dados.gerado_em).toLocaleString('pt-BR')}

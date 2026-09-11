@@ -259,3 +259,22 @@ antigo.
 acolhedores" (string que só existe na versão com filtros), esperar 24h para as
 abas abertas rodarem, e apagar o bloco `compat` do handler e os apelidos
 `*_7d`/`*_30d` de `desempenho_por_conjunto`.
+
+## Organização da tela: três abas (11/09/2026)
+
+A aba tinha crescido para onze blocos empilhados — quatro tabelas, dois gráficos,
+seis cards — e a pessoa rolava a tela inteira procurando a que queria. Agrupados
+por **pergunta**, não por tipo de dado:
+
+| Aba | Responde | O que tem |
+|---|---|---|
+| **Desempenho** (padrão) | de onde vem contrato | investimento que não alimenta o CRM · por acolhedor · por conjunto · contas de anúncio |
+| **Evolução e funil** | como mudou no tempo | dia a dia · funil dos leads de anúncio · funil por status · leads por origem · leads por funil |
+| **Integração e sistema** | o encanamento está de pé | saúde da integração · conversões enviadas à Meta · rotinas automáticas |
+
+Filtros e os quatro KPIs ficam **fora** das abas, sempre visíveis: o recorte vale
+para as três, e um filtro que some ao trocar de aba faria a pessoa duvidar do
+número que está vendo.
+
+O alerta de gasto sem lead abre a aba padrão de propósito — é dinheiro saindo, e
+dentro de uma aba secundária ninguém o encontraria.
