@@ -40,6 +40,10 @@ const conversa = {
   contactName: 'Danilo Saboia',
 };
 
+/** A assinatura que o chat aplica — aqui ela entra por `montarEnvio`. */
+const montarEnvio = (cru: string) =>
+  (cru.trim() ? { texto: `*Raym Andreson:*\n${cru.trim()}`, mentions: [] } : { texto: '', mentions: [] });
+
 const abrir = (props: Partial<React.ComponentProps<typeof AgendarMensagemDialog>> = {}) =>
   render(
     <AgendarMensagemDialog
@@ -47,7 +51,7 @@ const abrir = (props: Partial<React.ComponentProps<typeof AgendarMensagemDialog>
       onOpenChange={vi.fn()}
       conversa={conversa}
       texto="Bom dia, conseguiu ver o documento?"
-      textoFinal={'*Raym Andreson:*\nBom dia, conseguiu ver o documento?'}
+      montarEnvio={montarEnvio}
       criadoPor="user-1"
       criadoPorNome="Raym Andreson"
       {...props}
@@ -68,15 +72,23 @@ describe('AgendarMensagemDialog', () => {
   });
 
   it('agenda o envio único com a data e a hora escolhidas', async () => {
+    // Data relativa a hoje, nunca fixa: o teste anterior marcava 10/09/2026 e
+    // passou a falhar sozinho no dia em que essa data virou passado — o
+    // validador recusa horário que já passou.
+    const alvo = new Date();
+    alvo.setDate(alvo.getDate() + 30);
+    alvo.setHours(8, 30, 0, 0);
+    const diaDoCampo = `${alvo.getFullYear()}-${String(alvo.getMonth() + 1).padStart(2, '0')}-${String(alvo.getDate()).padStart(2, '0')}`;
+
     abrir();
-    fireEvent.change(screen.getByLabelText('Dia'), { target: { value: '2026-09-10' } });
+    fireEvent.change(screen.getByLabelText('Dia'), { target: { value: diaDoCampo } });
     fireEvent.change(screen.getByLabelText('Hora'), { target: { value: '08:30' } });
 
     fireEvent.click(screen.getByRole('button', { name: /^Agendar$/ }));
 
     await waitFor(() => expect(agendar).toHaveBeenCalledTimes(1));
     const payload = agendar.mock.calls[0][0];
-    expect(payload.quando).toEqual(new Date(2026, 8, 10, 8, 30));
+    expect(payload.quando).toEqual(alvo);
     expect(payload.repeticao).toBe('nenhuma');
     expect(payload.mensagem).toBe('*Raym Andreson:*\nBom dia, conseguiu ver o documento?');
     expect(payload.mensagemOriginal).toBe('Bom dia, conseguiu ver o documento?');
@@ -85,7 +97,7 @@ describe('AgendarMensagemDialog', () => {
   });
 
   it('sem texto no campo, não deixa agendar e diz por quê', () => {
-    abrir({ texto: '', textoFinal: '' });
+    abrir({ texto: '' });
     expect(screen.getByText(/Escreva a mensagem antes de agendar/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Agendar$/ })).toBeDisabled();
   });
@@ -187,5 +199,65 @@ describe('AgendarMensagemDialog', () => {
 
     abrir();
     expect(screen.getByText(/último envio falhou: WhatsApp instance is disconnected\./i)).toBeInTheDocument();
+  });
+  // O que fazia o recurso ficar escondido: a janela só exibia o texto já
+  // digitado no chat, então agendar exigia escrever antes. Agora a mensagem
+  // nasce aqui dentro — e a data pode vir da própria conversa.
+  it('deixa escrever a mensagem dentro da janela, com o chat vazio', async () => {
+    abrir({ texto: '' });
+    fireEvent.change(screen.getByLabelText('Mensagem'), {
+      target: { value: 'Doutor, bom dia! Como combinamos, passando para ver a agenda.' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Agendar$/ }));
+    await waitFor(() => expect(agendar).toHaveBeenCalledTimes(1));
+    const payload = agendar.mock.calls[0][0];
+    expect(payload.mensagemOriginal).toBe('Doutor, bom dia! Como combinamos, passando para ver a agenda.');
+    expect(payload.mensagem).toBe('*Raym Andreson:*\nDoutor, bom dia! Como combinamos, passando para ver a agenda.');
+  });
+
+  it('abre já marcada no dia que a conversa combinou, e diz de onde tirou', () => {
+    // Relativa a hoje pelo mesmo motivo do teste acima: data fixa apodrece.
+    const segunda = new Date();
+    segunda.setDate(segunda.getDate() + 5);
+    segunda.setHours(8, 0, 0, 0);
+    const diaEsperado = `${segunda.getFullYear()}-${String(segunda.getMonth() + 1).padStart(2, '0')}-${String(segunda.getDate()).padStart(2, '0')}`;
+    abrir({
+      sugestaoDeQuando: {
+        quando: segunda,
+        trecho: 'segunda-feira',
+        rotulo: 'segunda-feira',
+        horaExplicita: false,
+      },
+    });
+
+    expect((screen.getByLabelText('Dia') as HTMLInputElement).value).toBe(diaEsperado);
+    expect((screen.getByLabelText('Hora') as HTMLInputElement).value).toBe('08:00');
+    expect(screen.getByText(/segunda-feira/i)).toBeInTheDocument();
+    expect(screen.getByText(/sem marcar hora, ficou às 8h/i)).toBeInTheDocument();
+  });
+
+  it('a IA escreve a mensagem para a data escolhida', async () => {
+    const sugerirTexto = vi.fn().mockResolvedValue('Doutor, bom dia! Conforme o senhor pediu, retomando hoje.');
+    abrir({ texto: '', sugerirTexto });
+
+    const alvo = new Date();
+    alvo.setDate(alvo.getDate() + 5);
+    alvo.setHours(8, 0, 0, 0);
+    const diaDoCampo = `${alvo.getFullYear()}-${String(alvo.getMonth() + 1).padStart(2, '0')}-${String(alvo.getDate()).padStart(2, '0')}`;
+    fireEvent.change(screen.getByLabelText('Dia'), { target: { value: diaDoCampo } });
+    fireEvent.change(screen.getByLabelText('Hora'), { target: { value: '08:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /Sugerir com IA/i }));
+
+    await waitFor(() =>
+      expect((screen.getByLabelText('Mensagem') as HTMLTextAreaElement).value)
+        .toBe('Doutor, bom dia! Conforme o senhor pediu, retomando hoje.'));
+    // A data vai junto: sem ela a IA escreve a resposta de agora.
+    expect(sugerirTexto).toHaveBeenCalledWith(alvo);
+  });
+
+  it('sem a função de sugerir, o botão de IA não aparece', () => {
+    abrir({ sugerirTexto: undefined });
+    expect(screen.queryByRole('button', { name: /com IA/i })).toBeNull();
   });
 });

@@ -18,7 +18,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CalendarClock, Loader2, Repeat, Trash2, AlertTriangle } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { CalendarClock, Loader2, Repeat, Trash2, AlertTriangle, Sparkles, MessageSquareQuote } from 'lucide-react';
 import { format, addDays, addHours, startOfHour } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -36,6 +37,7 @@ import {
   type Unidade,
 } from '@/lib/mensagemAgendada';
 import { useMensagensAgendadas, type MensagemAgendada } from '@/hooks/useMensagensAgendadas';
+import { type QuandoDaConversa } from '@/lib/quandoDaConversa';
 
 interface Props {
   open: boolean;
@@ -48,11 +50,33 @@ interface Props {
     leadId?: string | null;
     contactName?: string | null;
   };
-  /** O que a pessoa digitou, sem assinatura. */
+  /**
+   * O que já está escrito no campo do chat, se houver. Vira o rascunho inicial
+   * da janela — daqui em diante ele é editável aqui dentro, e o campo do chat
+   * não precisa mais ter nada para se agendar uma mensagem.
+   */
   texto: string;
-  /** O texto exatamente como vai sair — com a assinatura, quando ligada. */
-  textoFinal: string;
-  mentions?: string[];
+  /**
+   * O rascunho pronto para sair: assinatura `*Nome:*` e `@marcados` aplicados.
+   *
+   * Vem de fora, e não daqui, porque quem sabe as escolhas da barra (formato do
+   * nome, título, apelido, quem é participante do grupo) é o chat. Sem isso a
+   * mensagem agendada sairia diferente da enviada na hora — o mesmo texto com
+   * duas assinaturas diferentes.
+   */
+  montarEnvio: (cru: string) => { texto: string; mentions: string[] };
+  /**
+   * A data que a própria conversa combinou ("me manda na segunda"), já lida por
+   * `lerQuandoDaConversa`. Quando existe, a janela abre marcada nela e diz de
+   * onde tirou. Null = cai na sugestão padrão (daqui a uma hora).
+   */
+  sugestaoDeQuando?: QuandoDaConversa | null;
+  /**
+   * Escreve com IA a mensagem que vai sair na data escolhida. Recebe o instante
+   * para a IA saber que está escrevendo para o futuro ("na segunda, como
+   * combinamos") e não para agora. Ausente = o botão de sugerir não aparece.
+   */
+  sugerirTexto?: (quando: Date | null) => Promise<string>;
   criadoPor?: string | null;
   criadoPorNome?: string | null;
   /** Chamado depois de agendar, para o chat limpar o campo. */
@@ -68,7 +92,7 @@ const horaParaCampo = (d: Date) => format(d, 'HH:mm');
 const sugestaoInicial = () => startOfHour(addHours(new Date(), 1));
 
 export function AgendarMensagemDialog({
-  open, onOpenChange, conversa, texto, textoFinal, mentions,
+  open, onOpenChange, conversa, texto, montarEnvio, sugestaoDeQuando, sugerirTexto,
   criadoPor, criadoPorNome, onAgendado,
 }: Props) {
   const { pendentes, loading, salvando, agendar, cancelar } = useMensagensAgendadas({
@@ -76,6 +100,10 @@ export function AgendarMensagemDialog({
     instanceName: conversa.instanceName,
   });
 
+  // O texto mora aqui dentro: dá para abrir a janela com o campo do chat vazio,
+  // escrever a mensagem e agendar sem passar pelo chat.
+  const [rascunho, setRascunho] = useState(texto);
+  const [sugerindo, setSugerindo] = useState(false);
   const [data, setData] = useState(() => dataParaCampo(sugestaoInicial()));
   const [hora, setHora] = useState(() => horaParaCampo(sugestaoInicial()));
   const [repeticao, setRepeticao] = useState<Repeticao>('nenhuma');
@@ -92,7 +120,12 @@ export function AgendarMensagemDialog({
   // campo AGORA, não sobre a anterior.
   useEffect(() => {
     if (!open) return;
-    const inicial = sugestaoInicial();
+    // A data que o interlocutor combinou ganha da sugestão genérica: se ele
+    // disse "me manda na segunda", a janela já abre na segunda. Quando ele não
+    // marcou a hora, vale a hora comercial que o leitor devolve, não "daqui a
+    // uma hora" — ninguém combina retorno para as 23h.
+    const inicial = sugestaoDeQuando?.quando ?? sugestaoInicial();
+    setRascunho(texto);
     setData(dataParaCampo(inicial));
     setHora(horaParaCampo(inicial));
     setRepeticao('nenhuma');
@@ -103,6 +136,10 @@ export function AgendarMensagemDialog({
     setAte('');
     setVezes(4);
     setPularSeResponder(true);
+    // De propósito só `open`: isto é o reset da ABERTURA. Com `texto` e
+    // `sugestaoDeQuando` na lista, digitar no chat por trás da janela (ou uma
+    // releitura da conversa) apagaria o rascunho e a data já escolhidos aqui.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const quando = useMemo(() => {
@@ -121,7 +158,12 @@ export function AgendarMensagemDialog({
     maxEnvios: repeticao !== 'nenhuma' && limite === 'vezes' ? vezes : null,
   }), [repeticao, intervalo, unidade, diasDaSemana, limite, ate, vezes]);
 
-  const erro = validarAgendamento(texto, quando, regra);
+  // O texto do jeito que vai sair, recalculado a cada tecla: a pré-visualização
+  // é a promessa, e ela tem que acompanhar o que está sendo escrito aqui.
+  const envio = useMemo(() => montarEnvio(rascunho), [montarEnvio, rascunho]);
+  const textoFinal = envio.texto;
+
+  const erro = validarAgendamento(rascunho, quando, regra);
   const proximos = useMemo(
     () => (quando && !erro ? listarProximosEnvios(quando, regra, new Date(), 4) : []),
     [quando, regra, erro],
@@ -152,6 +194,30 @@ export function AgendarMensagemDialog({
     return d;
   })();
 
+  /**
+   * Pede à IA a mensagem que vai sair na data escolhida.
+   *
+   * A sugestão do chat responde AGORA; esta escreve para depois — muda o tempo
+   * verbal e o gancho ("como combinamos", "conforme o senhor pediu"). Por isso
+   * a data vai junto no pedido, e não só a conversa.
+   */
+  const pedirSugestao = async () => {
+    if (!sugerirTexto || sugerindo) return;
+    setSugerindo(true);
+    try {
+      const sugerido = (await sugerirTexto(quando)).trim();
+      if (!sugerido) {
+        toast.info('A IA não conseguiu escrever agora — tente de novo em instantes.');
+        return;
+      }
+      setRascunho(sugerido);
+    } catch (e) {
+      toast.error('Não consegui sugerir: ' + ((e as Error)?.message || 'erro desconhecido'));
+    } finally {
+      setSugerindo(false);
+    }
+  };
+
   const confirmar = async () => {
     if (erro || !quando) return;
     try {
@@ -163,8 +229,8 @@ export function AgendarMensagemDialog({
         leadId: conversa.leadId,
         contactName: conversa.contactName,
         mensagem: textoFinal,
-        mensagemOriginal: texto,
-        mentions,
+        mensagemOriginal: rascunho.trim(),
+        mentions: envio.mentions,
         quando,
         repeticao: regra.repeticao,
         intervalo: regra.intervalo,
@@ -206,19 +272,46 @@ export function AgendarMensagemDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* O que vai sair, do jeito que vai sair. */}
-          <div className="rounded-md border bg-muted/40 p-3">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
-              Vai sair assim
-            </p>
-            {textoFinal.trim() ? (
-              <p className="whitespace-pre-wrap break-words text-sm max-h-28 overflow-y-auto">{textoFinal}</p>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                O campo está vazio. Escreva a mensagem no chat e volte aqui.
-              </p>
-            )}
+          {/* A mensagem: escrita aqui mesmo. Antes a janela só exibia o que já
+              estava no campo do chat e mandava a pessoa voltar para digitar —
+              agendar exigia começar a escrever primeiro. */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="agendar-texto" className="text-xs">Mensagem</Label>
+              {sugerirTexto && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs text-primary hover:text-primary"
+                  onClick={pedirSugestao}
+                  disabled={sugerindo}
+                >
+                  {sugerindo
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Sparkles className="h-3.5 w-3.5" />}
+                  {rascunho.trim() ? 'Reescrever com IA' : 'Sugerir com IA'}
+                </Button>
+              )}
+            </div>
+            <Textarea
+              id="agendar-texto"
+              value={rascunho}
+              onChange={(e) => setRascunho(e.target.value)}
+              placeholder="O que vai sair na hora marcada..."
+              className="min-h-[80px] max-h-40 resize-none text-sm"
+            />
           </div>
+
+          {/* O que vai sair, do jeito que vai sair — com a assinatura já pronta. */}
+          {textoFinal.trim() && textoFinal.trim() !== rascunho.trim() && (
+            <div className="rounded-md border bg-muted/40 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
+                Vai sair assim
+              </p>
+              <p className="whitespace-pre-wrap break-words text-sm max-h-28 overflow-y-auto">{textoFinal}</p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
@@ -230,6 +323,32 @@ export function AgendarMensagemDialog({
               <Input id="agendar-hora" type="time" value={hora} onChange={(e) => setHora(e.target.value)} className="h-9" />
             </div>
           </div>
+
+          {/* A data que a própria conversa combinou. Não é palpite: vem de uma
+              fala do interlocutor, e o trecho fica à vista para conferência. */}
+          {sugestaoDeQuando && (
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-2.5">
+              <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                <MessageSquareQuote className="h-3.5 w-3.5 shrink-0 text-primary" />
+                <span>
+                  Na conversa ele falou em <strong className="text-foreground">{sugestaoDeQuando.rotulo}</strong>
+                  {!sugestaoDeQuando.horaExplicita && ' — sem marcar hora, ficou às 8h'}.
+                </span>
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-1.5 h-7 text-xs"
+                onClick={() => {
+                  setData(dataParaCampo(sugestaoDeQuando.quando));
+                  setHora(horaParaCampo(sugestaoDeQuando.quando));
+                }}
+              >
+                Usar {format(sugestaoDeQuando.quando, "dd/MM 'às' HH:mm", { locale: ptBR })}
+              </Button>
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-1.5">
             {atalho('Daqui a 1 hora', startOfHour(addHours(new Date(), 1)))}

@@ -47,6 +47,8 @@ import { buildReminderText } from '@/lib/clientCommitments';
 import { lastSenderName, matchMemberByName, prefixarRemetente, separarPrefixoRemetente } from '@/lib/whatsappSenderName';
 import { useAutoriaDasMensagens, idDaMensagemNoWhatsApp } from '@/hooks/useAutoriaDasMensagens';
 import { AgendarMensagemDialog } from './AgendarMensagemDialog';
+import { lerQuandoDaConversa } from '@/lib/quandoDaConversa';
+import { gerarSugestaoDeResposta } from '@/lib/sugestaoDeResposta';
 import { descreverRepeticao, regraDaLinha } from '@/lib/mensagemAgendada';
 import { useMensagensAgendadas } from '@/hooks/useMensagensAgendadas';
 import { ContagemAteEnvio } from './ContagemAteEnvio';
@@ -3033,15 +3035,17 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   };
 
   /**
-   * O texto exatamente como vai sair — com a assinatura `*Nome:*` quando
-   * "Identificar remetente" está ligado.
+   * Qualquer texto, exatamente como vai sair — com a assinatura `*Nome:*`
+   * quando "Identificar remetente" está ligado e com os `@marcados` já
+   * reescritos em número.
    *
-   * A mensagem agendada grava o texto JÁ PRONTO no banco, então ele não pode
-   * divergir do envio na hora: os dois passam pelo mesmo `prefixarRemetente`,
-   * com as mesmas escolhas da barra (formato do nome, título, apelido).
+   * É função, e não o valor do campo, porque a janela de agendar passou a ter
+   * rascunho próprio: ela monta o envio do que está sendo escrito LÁ. A regra
+   * mora aqui, num lugar só — a mensagem agendada grava o texto JÁ PRONTO no
+   * banco e não pode divergir do envio na hora.
    */
-  const envioComoVaiSair = useMemo(() => {
-    const cru = newMessage.trim();
+  const montarEnvio = useCallback((bruto: string) => {
+    const cru = (bruto || '').trim();
     if (!cru) return { texto: '', mentions: [] as string[] };
     // Em grupo, "@Fulano" vira "@<número>" antes de sair — o agendado tem que
     // guardar o texto já reescrito, com a lista de marcados.
@@ -3060,9 +3064,66 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       mentions,
     };
   }, [
-    newMessage, shareInfo, identifySender, user, profile?.full_name, perfilDoEnvio,
+    shareInfo, identifySender, user, profile?.full_name, perfilDoEnvio,
     nameFormat, treatmentTitle, selectedNickname,
-    mentionedParticipants,
+    // `buildMentionPayload` lê os dois: reescrever "@Fulano" em "@<número>"
+    // só acontece em grupo e depende de quem já foi marcado.
+    isGroup, mentionedParticipants,
+  ]);
+
+  /**
+   * "Me manda na segunda" — a data que o interlocutor já combinou na conversa.
+   *
+   * Lida só quando a janela de agendar abre: é conta de calendário barata, mas
+   * não há motivo para refazê-la a cada mensagem que chega. Null quando ninguém
+   * marcou dia nenhum, e aí a janela usa a sugestão padrão.
+   */
+  const quandoCombinadoNaConversa = useMemo(() => {
+    if (!showAgendar) return null;
+    const falasDele = (messages || [])
+      .filter((m) => m && m.direction !== 'outbound' && m.message_text && String(m.message_text).trim())
+      .slice(-8)
+      .map((m) => String(m.message_text));
+    return lerQuandoDaConversa(falasDele);
+  }, [showAgendar, messages]);
+
+  /**
+   * A mensagem que vai sair na data marcada, escrita pela IA.
+   *
+   * Reaproveita o mesmo motor da sugestão do chat (mesmo tom, mesmo
+   * relacionamento, mesmo andamento do processo), mudando uma coisa: a
+   * instrução diz que o texto sai DEPOIS, na data escolhida. Sem isso a IA
+   * escreve a resposta de agora, que chega deslocada dias mais tarde.
+   */
+  const sugerirTextoAgendado = useCallback(async (quando: Date | null): Promise<string> => {
+    const ctx = buildReplyContext();
+    if (!ctx.trim()) return '';
+    const st = buildReplyState();
+    const dia = quando
+      ? format(quando, "EEEE, dd/MM 'às' HH:mm", { locale: ptBR })
+      : 'uma data ainda a definir';
+    const opcoes = await gerarSugestaoDeResposta({
+      contexto: ctx,
+      modo: 'client',
+      jaEnviado: st.lastOutboundText,
+      ultimaDoInterlocutor: st.lastClientText,
+      pendenciasDoCliente: pendenciasDoClienteParaIA,
+      contextoDaRelacao: relacionamento.linhas,
+      comoEuEscrevo: comoEuEscrevoParaIA,
+      instrucao:
+        `esta mensagem NÃO sai agora — ela foi agendada para ${dia}. ` +
+        `Escreva como quem está retomando o assunto NA DATA COMBINADA, não respondendo neste instante: ` +
+        `retome o combinado ("como o senhor pediu", "conforme falamos"), sem repetir a última mensagem já enviada ` +
+        `e sem dizer "acabei de ver" ou "agora há pouco". Se a outra pessoa marcou esse dia, mostre que a data é a dela.`,
+    });
+    return (opcoes[0] || '').trim();
+    // `buildReplyContext`/`buildReplyState` são recriadas a cada render e leem
+    // só `messages` e o nome do contato — que estão aqui. Incluí-las na lista
+    // trocaria a função a cada tecla digitada, sem mudar o que ela lê.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    messages, conversation.contact_name, pendenciasDoClienteParaIA,
+    relacionamento.linhas, comoEuEscrevoParaIA,
   ]);
 
   // Quem assina só faz falta na hora de agendar (o envio imediato busca por
@@ -6179,10 +6240,13 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 <ArrowRight className="h-4 w-4" />
               </Button>
             )}
-            {/* Mandar depois: mesma mensagem, hora marcada. Só faz sentido no
-                modo mensagem — nota interna e chat da equipe não saem para o
-                cliente. */}
-            {inputMode === 'message' && newMessage.trim() && (
+            {/* Mandar depois: hora marcada. Só faz sentido no modo mensagem —
+                nota interna e chat da equipe não saem para o cliente.
+                Aparece com o campo vazio de propósito: agendar é uma decisão
+                que vem ANTES de escrever ("ele pediu para eu voltar na
+                segunda"), e exigir que a pessoa digitasse alguma coisa só para
+                o botão nascer escondia o recurso de quem mais precisa dele. */}
+            {inputMode === 'message' && (
               <Button
                 size="icon"
                 variant="ghost"
@@ -6233,9 +6297,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             leadId: conversation.lead_id,
             contactName: conversation.contact_name,
           }}
-          texto={newMessage.trim()}
-          textoFinal={envioComoVaiSair.texto}
-          mentions={envioComoVaiSair.mentions}
+          texto={newMessage.trim() || (temSugestaoNoCampo ? sugestaoAuto : '')}
+          montarEnvio={montarEnvio}
+          sugestaoDeQuando={quandoCombinadoNaConversa}
+          sugerirTexto={sugerirTextoAgendado}
           criadoPor={user?.id || null}
           criadoPorNome={perfilDoEnvio?.full_name || profile?.full_name || null}
           onAgendado={() => { setNewMessage(''); setMentionedParticipants([]); setGroupMentionQuery(null); }}
