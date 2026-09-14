@@ -703,10 +703,35 @@ peso na correspondência da Meta e está 100% ausente — vale medir quantos fec
 têm `lead_email` preenchido antes de concluir se o buraco é de cadastro ou de
 leitura.
 
-> **Frente de segurança aberta (14/09/2026).** `{ "modo": "dono_do_dataset" }`
-> devolve a resposta crua da Graph API, e as URLs de paginação da Meta
-> (`paging.next` / `paging.previous`) **embutem o `access_token` em claro**.
-> Quem chama o endpoint — com `x-api-key`, portanto já autenticado — recebe o
-> token da CAPI de volta no corpo, e qualquer log dessa resposta o persiste.
-> Vale para todo modo de diagnóstico que repassa `paging` sem filtrar. O conserto
-> é remover `paging` das respostas antes de devolvê-las.
+### O endpoint devolvia o próprio token — corrigido em 14/09/2026
+
+`{ "modo": "dono_do_dataset" }` devolvia a resposta crua da Graph API, e as URLs
+de paginação **que a Meta monta** (`paging.next` / `paging.previous`) embutem o
+`access_token` em claro. Quem chamasse o endpoint — com `x-api-key`, portanto já
+autenticado — recebia o token da CAPI de volta no corpo, e qualquer log dessa
+resposta o persistia. Medido nos 6 modos antes do conserto: só o
+`dono_do_dataset` vazava, porque era o único que repassava `paging`.
+
+O conserto **não** foi limpar `paging` naquele modo. São 25 saídas HTTP no
+`meta-capi-dispatch`, e o modo 26 nasceria vazando igual — foi exatamente assim
+que este defeito apareceu. `railway-server/src/lib/semSegredo.ts` (puro, com
+teste) limpa credencial de qualquer estrutura, e o handler passa **toda** saída
+por ele:
+
+```ts
+const jsonCru = res.json.bind(res);
+res.json = (corpo: unknown) => jsonCru(semSegredo(corpo));
+```
+
+Quem escrever um modo novo fica coberto sem precisar saber que isso existe.
+
+O que o filtro preserva de propósito: o resto da URL de paginação (saber qual
+borda foi chamada, e com que cursor, é o que torna o diagnóstico útil) e
+booleanos derivados como `tem_token_de_pagina`, que são informação e não segredo.
+O uso **interno** do token de página continua intacto — `me/accounts` devolve um
+token por página e ele é necessário para ler `leadgen_forms`; a limpeza acontece
+na saída, não na leitura.
+
+> Isto é rede de segurança, não substituto de minimização: o certo continua
+> sendo não colocar segredo no corpo. Serve para o caso em que o segredo vem de
+> fora — a própria Meta devolvendo o token dela — e ninguém reparou.
