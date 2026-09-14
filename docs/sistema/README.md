@@ -18,6 +18,16 @@ Documentação de todas as seções do sistema: propósito de cada tela, funcion
 - [Dom — Assessor Jurídico Virtual](dom-assessor-virtual.md) — atendente virtual que responde o cliente no grupo do caso com o andamento real dos autos: as três travas, o isolamento por grupo, como ele fala e o que ainda falta
 - [Open Finance / Celcoin](open-finance-celcoin.md) — conciliação bancária que substitui a Pluggy: caminhos versionados, janela de datas, consentimento PJ e o que ainda falta conectar
 
+### Aquisição: do anúncio ao caso fechado
+
+O caminho completo de um lead pago, do formulário no anúncio até a conversão
+devolvida à Meta. Ler nesta ordem:
+
+- [Planilhas de Lead Ads → funil](planilhas-lead-ads.md) — como o lead sai do formulário e vira card pela planilha do Google: abas, dedup, cabeçalho e o que o leitor descarta
+- [Lead da Meta direto no funil](meta-leads-direto.md) — o mesmo lead pela Graph API, sem depender da planilha; os dois caminhos convivem e o dedup é quem impede a duplicata
+- [Meta Conversions API](meta-conversions-api.md) — o fechamento no CRM voltando à Meta como conversão: a fila, o reconciliador, o dataset certo e o piloto de Conversion Leads
+- [Aba Métricas](aba-metricas.md) — investimento, leads e fechamentos na mesma tela, e as regras que impedem número inventado
+
 ## Observação sobre propriedade intelectual (Brasil)
 
 - **Código-fonte**: protegido por direito autoral automaticamente (Lei 9.609/98). O **registro de programa de computador no INPI** é opcional, barato e serve como prova de autoria e data — recomendado.
