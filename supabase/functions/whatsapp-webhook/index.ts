@@ -2111,9 +2111,36 @@ Deno.serve(async (req) => {
               );}
           }
 
+          // Conversa triada pelo time como "não é lead, é só contato": a criação
+          // automática para aqui. Sem esta trava, a próxima mensagem recriava o
+          // lead e a decisão humana virava pó. Chave é o telefone só com dígitos
+          // — a mesma normalização usada na UI e em execute-agent-automations.
+          // Ver supabase/migrations/20260914200000_conversa_marcada_como_nao_lead.sql
+          let marcadaComoNaoLead = false;
+          if (!leadId && phone) {
+            try {
+              const { data: marcaNaoLead } = await supabase
+                .from("whatsapp_nao_lead")
+                .select("motivo")
+                .eq("phone", phone.replace(/\D/g, ""))
+                .maybeSingle();
+              if (marcaNaoLead) {
+                marcadaComoNaoLead = true;
+                console.log(
+                  "CTWA: criação de lead bloqueada — conversa marcada como \"não é lead\":",
+                  marcaNaoLead.motivo || "sem motivo informado",
+                );
+              }
+            } catch (naoLeadErr: any) {
+              // Tabela ausente ou indisponível não pode derrubar o webhook: o
+              // comportamento volta a ser o de antes (cria o lead).
+              console.warn("CTWA: checagem de \"não é lead\" falhou:", naoLeadErr?.message);
+            }
+          }
+
           // Auto-create lead if none exists and campaign link is ACTIVE with auto_create_lead enabled
           if (
-            !leadId && instanceName && matchedCampaignLink &&
+            !leadId && !marcadaComoNaoLead && instanceName && matchedCampaignLink &&
             isCampaignLinkActive && matchedCampaignLink.auto_create_lead &&
             matchedCampaignLink.board_id
           ) {

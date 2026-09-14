@@ -296,6 +296,29 @@ Deno.serve(async (req) => {
             const boardId = action.config?.board_id;
             if (!boardId) { results.push({ type: 'create_lead', skipped: 'no board_id' }); break; }
 
+            // Alguém do time já triou esta conversa e decidiu que não é lead
+            // (parceiro, fornecedor, grupo da família). Sem esta trava a IA
+            // recriava o lead na próxima mensagem e a decisão humana virava pó.
+            // A marcação é por telefone, não por instância — ver
+            // supabase/migrations/20260914200000_conversa_marcada_como_nao_lead.sql
+            const { data: marcaNaoLead } = await supabase
+              .from('whatsapp_nao_lead')
+              .select('motivo')
+              .eq('phone', normalizedMainPhone)
+              .maybeSingle();
+
+            if (marcaNaoLead) {
+              console.log('[agent-automations] create_lead bloqueado: conversa marcada como "não é lead"', {
+                motivo: marcaNaoLead.motivo || null,
+              });
+              results.push({
+                type: 'create_lead',
+                skipped: 'conversa marcada como nao-lead',
+                motivo: marcaNaoLead.motivo || null,
+              });
+              break;
+            }
+
             const { data: existingLead } = await supabase
               .from('leads')
               .select('id')

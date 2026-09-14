@@ -1305,8 +1305,30 @@ export const handler: RequestHandler = async (req, res) => {
               // de um grupo é o LID (ex.: 120363xxxxxxxx), não um telefone real.
               // Quem manda mensagem em grupo é um participante individual.
               const isGroupChat = String(chatId || '').includes('@g.us') || phoneDigits.length >= 17;
-              if (isGroupChat) {
-                console.log('[label-trigger][stage] auto-create skipped (group chat)', { chatId, phoneDigits, board: lastStageMatch.board_id, label: lastStageMatch.label_name });
+              // Guard 2: alguém do time já triou esta conversa e decidiu que não é
+              // lead (parceiro, fornecedor, grupo da família). Etiquetar a conversa
+              // não pode ressuscitar o lead que a pessoa acabou de dispensar.
+              // Marcação por telefone, só dígitos — mesma normalização da UI.
+              // Ver supabase/migrations/20260914200000_conversa_marcada_como_nao_lead.sql
+              let marcadaComoNaoLead = false;
+              if (!isGroupChat && phoneDigits) {
+                try {
+                  const { data: marcaNaoLead } = await supabase
+                    .from('whatsapp_nao_lead')
+                    .select('motivo')
+                    .eq('phone', phoneDigits)
+                    .maybeSingle();
+                  marcadaComoNaoLead = !!marcaNaoLead;
+                  if (marcadaComoNaoLead) {
+                    console.log('[label-trigger][stage] auto-create skipped (conversa marcada como "não é lead")', { phone: phoneDigits, motivo: (marcaNaoLead as any)?.motivo || null });
+                  }
+                } catch (e: any) {
+                  // Tabela indisponível não derruba o webhook: volta ao comportamento antigo.
+                  console.warn('[label-trigger][stage] checagem "não é lead" falhou:', e?.message);
+                }
+              }
+              if (isGroupChat || marcadaComoNaoLead) {
+                if (isGroupChat) console.log('[label-trigger][stage] auto-create skipped (group chat)', { chatId, phoneDigits, board: lastStageMatch.board_id, label: lastStageMatch.label_name });
               } else {
               // === NOVO: nenhum lead nesse board com esse telefone → cria automaticamente
               console.log('[label-trigger][stage] no lead matched, auto-creating', { phone: phoneDigits, board: lastStageMatch.board_id, label: lastStageMatch.label_name });

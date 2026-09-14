@@ -17,7 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Bell, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
 import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock, Settings2, ChevronsUp, ChevronsDown, Instagram, Smartphone, SendHorizonal } from 'lucide-react';
-import { Check, CheckCheck, AlertTriangle } from 'lucide-react';
+import { Check, CheckCheck, AlertTriangle, UserX, UserCheck } from 'lucide-react';
 import { deliveryBadge } from '@/lib/whatsappDeliveryStatus';
 import { janelaDeAtendimento, formatarRestante } from '@/lib/whatsapp24hWindow';
 import { CloudTemplateDialog } from '@/components/whatsapp/CloudTemplateDialog';
@@ -91,6 +91,12 @@ import { useSugestaoAutomatica } from '@/hooks/useSugestaoAutomatica';
 import { useRelacionamentoDoContato } from '@/hooks/useRelacionamentoDoContato';
 import { RelacionamentoBar } from '@/components/whatsapp/RelacionamentoBar';
 import { StageLabelSelect } from '@/components/kanban/StageLabelSelect';
+import {
+  loadMarcaNaoLead,
+  marcarConversaComoNaoLead,
+  desmarcarConversaNaoLead,
+  type WhatsAppNaoLeadMark,
+} from '@/lib/whatsappNaoLead';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 import {
   loadWhatsAppMessageActivities,
@@ -302,6 +308,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [enviandoAgendada, setEnviandoAgendada] = useState<string | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
   const [togglingPrivate, setTogglingPrivate] = useState(false);
+  // "Não é lead, é só contato": decisão de triagem gravada na conversa. Enquanto
+  // marcada, o agente IA e o CTWA não criam lead para este telefone.
+  const [marcaNaoLead, setMarcaNaoLead] = useState<WhatsAppNaoLeadMark | null>(null);
+  const [salvandoNaoLead, setSalvandoNaoLead] = useState(false);
+  const [dialogNaoLeadAberto, setDialogNaoLeadAberto] = useState(false);
+  const [motivoNaoLead, setMotivoNaoLead] = useState('');
   const [showGroupMembers, setShowGroupMembers] = useState(false);
   const [refreshingRoster, setRefreshingRoster] = useState(false);
   
@@ -2315,6 +2327,17 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     checkPrivate();
   }, [conversation.phone, conversation.instance_name]);
 
+  // Esta conversa já foi triada como "não é lead"?
+  useEffect(() => {
+    if (!conversation.phone) { setMarcaNaoLead(null); return; }
+    let cancelado = false;
+    loadMarcaNaoLead(conversation.phone)
+      .then(marca => { if (!cancelado) setMarcaNaoLead(marca); })
+      // A conversa funciona sem isso: só o selo e o bloqueio visual somem.
+      .catch(e => console.warn('[WhatsAppChat] marcação "não é lead" indisponível:', e));
+    return () => { cancelado = true; };
+  }, [conversation.phone]);
+
   // Check if contact/lead has a linked group that actually exists
   useEffect(() => {
     const checkLinkedGroup = async () => {
@@ -2392,6 +2415,48 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       toast.error('Erro ao alterar privacidade');
     } finally {
       setTogglingPrivate(false);
+    }
+  };
+
+  /**
+   * Marca a conversa como "não é lead". O motivo é opcional de propósito: exigir
+   * texto faria o time pular a triagem, e triagem pulada é o problema que esta
+   * marcação existe para resolver.
+   */
+  const confirmarNaoLead = async () => {
+    if (!conversation.phone || salvandoNaoLead) return;
+    setSalvandoNaoLead(true);
+    try {
+      const { data: { user: usuarioAtual } } = await supabase.auth.getUser();
+      if (!usuarioAtual) { toast.error('Sessão expirada — entre de novo para marcar'); return; }
+      await marcarConversaComoNaoLead({
+        phone: conversation.phone,
+        instanceName: conversation.instance_name,
+        motivo: motivoNaoLead,
+        marcadoPor: usuarioAtual.id,
+      });
+      setMarcaNaoLead(await loadMarcaNaoLead(conversation.phone));
+      setDialogNaoLeadAberto(false);
+      setMotivoNaoLead('');
+      toast.success('Marcada como "não é lead" — a IA não vai mais criar lead para este número');
+    } catch (e: any) {
+      toast.error(`Erro ao marcar: ${e?.message || e}`);
+    } finally {
+      setSalvandoNaoLead(false);
+    }
+  };
+
+  const reverterNaoLead = async () => {
+    if (!conversation.phone || salvandoNaoLead) return;
+    setSalvandoNaoLead(true);
+    try {
+      await desmarcarConversaNaoLead(conversation.phone);
+      setMarcaNaoLead(null);
+      toast.success('Conversa volta a ser tratada como lead em potencial');
+    } catch (e: any) {
+      toast.error(`Erro ao desmarcar: ${e?.message || e}`);
+    } finally {
+      setSalvandoNaoLead(false);
     }
   };
 
@@ -3751,6 +3816,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 <User className="h-3 w-3" /> Ver Contato
               </button>
             )}
+            {/* Triagem já feita: esta conversa não é uma venda em potencial. O selo
+                fica na mesma linha dos outros chips — nada cobre o nome. */}
+            {marcaNaoLead && (
+              <span
+                className="h-6 max-w-[220px] text-[11px] bg-slate-600 text-white px-2 rounded-full inline-flex items-center gap-1 whitespace-nowrap shrink-0"
+                title={
+                  marcaNaoLead.motivo
+                    ? `Não é lead — ${marcaNaoLead.motivo}. A IA não cria lead para este número.`
+                    : 'Não é lead, é só contato. A IA não cria lead para este número.'
+                }
+              >
+                <UserX className="h-3 w-3 shrink-0" />
+                <span className="truncate">Não é lead</span>
+              </span>
+            )}
             {/* Era um <button> sem onClick: sem a extensão da CallFace o clique não
                 fazia absolutamente nada. Vira <a href="tel:">, que mantém a classe e o
                 data-phone (o gancho que a extensão procura) e ainda ganha o fallback
@@ -3882,7 +3962,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   <Link2 className="h-4 w-4" /> Vincular Lead
                 </DropdownMenuItem>
               )}
-              {!primaryLeadId && contactLinkedLeadIds.length === 0 && (
+              {!primaryLeadId && contactLinkedLeadIds.length === 0 && !marcaNaoLead && (
                 <DropdownMenuItem onClick={onCreateLead} className="gap-2">
                   <Plus className="h-4 w-4" /> Criar Lead + Contato
                 </DropdownMenuItem>
@@ -3890,6 +3970,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <DropdownMenuItem onClick={onCreateContact} className="gap-2">
                 <UserPlus className="h-4 w-4" /> Criar Contato
               </DropdownMenuItem>
+              {/* Nem toda conversa é lead. Marcar aqui tira a conversa da fila de
+                  triagem E impede o agente IA / CTWA de criar lead para o número.
+                  Para criar lead depois, desmarque primeiro — por isso o item
+                  acima some enquanto a marcação está de pé. */}
+              {!primaryLeadId && (
+                marcaNaoLead ? (
+                  <DropdownMenuItem onClick={reverterNaoLead} disabled={salvandoNaoLead} className="gap-2">
+                    <UserCheck className="h-4 w-4" /> Voltar a tratar como lead
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={() => { setMotivoNaoLead(''); setDialogNaoLeadAberto(true); }} className="gap-2">
+                    <UserX className="h-4 w-4" /> Não é lead (só contato)
+                  </DropdownMenuItem>
+                )
+              )}
               {onCreateCase && (
                 <DropdownMenuItem onClick={onCreateCase} className="gap-2">
                   <Scale className="h-4 w-4" /> Criar Caso Jurídico
@@ -4694,6 +4789,42 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           </SheetContent>
         </Sheet>
       )}
+
+      {/* "Não é lead": pergunta o porquê em uma linha antes de gravar. O motivo é
+          opcional — o que importa é registrar que a triagem foi feita. */}
+      <Dialog open={dialogNaoLeadAberto} onOpenChange={setDialogNaoLeadAberto}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Marcar como "não é lead"</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              A conversa sai da fila de triagem e o agente IA para de criar lead para
+              este número. A conversa, as mensagens e o contato continuam intactos.
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="motivo-nao-lead">Por quê? (opcional)</Label>
+              <Input
+                id="motivo-nao-lead"
+                value={motivoNaoLead}
+                onChange={(e) => setMotivoNaoLead(e.target.value)}
+                placeholder="parceiro, fornecedor, grupo da família..."
+                maxLength={120}
+                onKeyDown={(e) => { if (e.key === 'Enter') confirmarNaoLead(); }}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={() => setDialogNaoLeadAberto(false)} disabled={salvandoNaoLead}>
+                Cancelar
+              </Button>
+              <Button onClick={confirmarNaoLead} disabled={salvandoNaoLead} className="gap-2">
+                {salvandoNaoLead ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserX className="h-4 w-4" />}
+                Marcar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Lead Edit Dialog — opens directly when clicking "Ver Lead" */}
       {editingLeadData && (

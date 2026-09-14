@@ -9,17 +9,22 @@ import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare,
 import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { useSharedWithMe, sharedConversationKey, type ShareMark } from '@/hooks/useSharedWithMe';
 import { useProfileNames } from '@/hooks/useProfileNames';
-import { Share2, ClipboardList } from 'lucide-react';
+import { Share2, ClipboardList, UserX } from 'lucide-react';
 import {
   loadPhonesWithPendingActivity,
   subscribeWhatsAppMessageActivityLinked,
 } from '@/lib/whatsappMessageActivities';
+import {
+  loadPhonesNaoLead,
+  subscribeNaoLeadChanged,
+  normalizarTelefoneNaoLead,
+} from '@/lib/whatsappNaoLead';
 import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { WhatsAppAvatar } from './WhatsAppAvatar';
 import { ehInstanciaCloud, rotuloDaLinha } from '@/lib/cloudApiInstances';
@@ -99,7 +104,7 @@ interface Props {
   hasMore?: boolean;
 }
 
-type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups' | 'shared' | 'lead_active' | 'lead_closed' | 'lead_inviavel' | 'mine' | 'unassigned' | 'activity_pending';
+type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'nao_lead' | 'unanswered' | 'calls' | 'groups' | 'shared' | 'lead_active' | 'lead_closed' | 'lead_inviavel' | 'mine' | 'unassigned' | 'activity_pending';
 type SortMode = 'alpha' | 'last_activity';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
@@ -207,6 +212,28 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     const unsubscribe = subscribeWhatsAppMessageActivityLinked(load);
     return () => { cancelled = true; unsubscribe(); };
   }, []);
+
+  // Conversas já triadas como "não é lead, é só contato". Sem isto o chip
+  // "Sem lead" continuaria somando o que já foi olhado com o que não foi.
+  const [phonesNaoLead, setPhonesNaoLead] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      loadPhonesNaoLead()
+        .then(phones => { if (!cancelled) setPhonesNaoLead(phones); })
+        // A lista funciona sem isso — só o filtro fica vazio.
+        .catch(e => console.warn('[WhatsAppConversationList] marcações "não é lead" indisponíveis:', e));
+    };
+    load();
+    const unsubscribe = subscribeNaoLeadChanged(load);
+    return () => { cancelled = true; unsubscribe(); };
+  }, []);
+
+  /** Telefone triado como "não é lead" — vale em qualquer instância. */
+  const ehNaoLead = useCallback(
+    (c: WhatsAppConversation) => phonesNaoLead.has(normalizarTelefoneNaoLead(c.phone)),
+    [phonesNaoLead]
+  );
 
   // Listener para filtros disparados externamente (ex: cards do FocusDashboard)
   useEffect(() => {
@@ -466,7 +493,10 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     )) return false;
 
     if (quickFilter === 'has_lead' && !c.lead_id) return false;
-    if (quickFilter === 'no_lead' && c.lead_id) return false;
+    // "Sem lead" = ainda NÃO TRIADO. O que já foi decidido como "não é lead" tem
+    // chip próprio: senão a fila de triagem nunca encolhe.
+    if (quickFilter === 'no_lead' && (c.lead_id || ehNaoLead(c))) return false;
+    if (quickFilter === 'nao_lead' && !ehNaoLead(c)) return false;
     if (quickFilter === 'unanswered' && !isUnanswered(c)) return false;
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
     if (quickFilter === 'groups' && !isGroupConversation(c)) return false;
@@ -541,7 +571,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     }
 
     return true;
-  }), [conversations, search, quickFilter, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls, marksByKey, sharedDirection, sharedPerson, phonesWithPendingActivity]);
+  }), [conversations, search, quickFilter, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls, marksByKey, sharedDirection, sharedPerson, phonesWithPendingActivity, ehNaoLead]);
 
   // Sort conversations based on mode
   const sortedFiltered = useMemo(() => {
@@ -614,6 +644,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     ] : []),
     { key: 'has_lead', label: 'Com lead', icon: <UserCheck className="h-3 w-3" /> },
     { key: 'no_lead', label: 'Sem lead', icon: <Unlink className="h-3 w-3" /> },
+    { key: 'nao_lead', label: 'Não é lead', icon: <UserX className="h-3 w-3" /> },
     { key: 'lead_active', label: 'Leads', icon: <Briefcase className="h-3 w-3" /> },
     { key: 'lead_closed', label: 'Fechados', icon: <Trophy className="h-3 w-3" /> },
     { key: 'lead_inviavel', label: 'Inviáveis', icon: <AlertTriangle className="h-3 w-3" /> },
@@ -627,7 +658,9 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   const counts: Record<QuickFilter, number> = {
     all: conversations.length,
     has_lead: conversations.filter(c => !!c.lead_id).length,
-    no_lead: conversations.filter(c => !c.lead_id).length,
+    // Fila de triagem de verdade: sem lead E ainda não decidido.
+    no_lead: conversations.filter(c => !c.lead_id && !ehNaoLead(c)).length,
+    nao_lead: conversations.filter(c => ehNaoLead(c)).length,
     lead_active: conversations.filter(c => {
       if (!c.lead_id) return false;
       const s = statusOf(c);
