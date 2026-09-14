@@ -1,0 +1,67 @@
+{
+  "_meta": {
+    "assunto": "Offboarding de Edilan da Silva Santos, aplicado em 14/09/2026 18:36 UTC",
+    "ext_uuid": "4ede440c-f05a-40d6-a035-27ce0fe96870",
+    "cloud_uuid": "c989aa6b-e86e-4030-affc-7cabcf435b01",
+    "profile_id": "329f7cd5-bdb5-4cdc-a4ee-85fb23c80631",
+    "origem_deste_arquivo": "reconstruido em 14/09/2026 a partir do transcript da sessao 56f74690-77e5-4701-b525-a7443eb2d8b3 (tool_result de 2026-09-14T18:36:09Z, backup; RETURNING das 3 escritas em 18:36:24). O original foi gravado em /tmp (tmpfs) e o reboot apagou.",
+    "conferencia": "estado atual do Externo relido em 14/09/2026 e identico ao aplicado: acesso_ativo=false, roles_restantes=0, instancias_restantes=0, banido_ate=2126-08-21, profile=1, mapping=1, work_shifts=8, atividades_pendentes=452",
+    "rollback": "scratchpad/rollback-edilan-20260914.sql"
+  },
+
+  "backup": {
+    "user_roles": [
+      {
+        "id": "abbcb869-d85e-47ff-8c51-bebbf1eab2de",
+        "user_id": "4ede440c-f05a-40d6-a035-27ce0fe96870",
+        "role": "admin",
+        "created_at": "2026-03-30T20:57:22.76746+00:00",
+        "access_profile_id": null
+      },
+      {
+        "id": "1f232cf6-f0b1-4f30-9fe3-58492aa4adc8",
+        "user_id": "4ede440c-f05a-40d6-a035-27ce0fe96870",
+        "role": "member",
+        "created_at": "2026-02-10T18:26:14.392053+00:00",
+        "access_profile_id": "c8bc3058-9d05-4561-9566-b6acc8c1ec7a"
+      }
+    ],
+    "whatsapp_instance_users": [
+      {
+        "id": "28bb09f6-c1ca-4774-b4be-e016f22adf7a",
+        "instance_id": "4ac12887-9bbf-44dc-92bc-48a6b6e50806",
+        "user_id": "4ede440c-f05a-40d6-a035-27ce0fe96870",
+        "created_at": "2026-04-07T12:50:38.024376+00:00"
+      },
+      {
+        "id": "8f765097-110e-4e1f-9e7d-ab7117a8b8e5",
+        "instance_id": "f6a97ae2-e0b1-498d-b736-7e0e1d75886f",
+        "user_id": "4ede440c-f05a-40d6-a035-27ce0fe96870",
+        "created_at": "2026-04-19T16:13:51.530985+00:00"
+      },
+      {
+        "id": "ad9ffbff-ad49-4571-9e5f-84d9c7dee33c",
+        "instance_id": "cba1d1b9-6263-4029-b65a-a9e8964acdd7",
+        "user_id": "4ede440c-f05a-40d6-a035-27ce0fe96870",
+        "created_at": "2026-04-07T12:50:39.126441+00:00"
+      }
+    ],
+    "org_user_status": null
+  },
+
+  "auth_externo_antes_do_ban": {
+    "id": "4ede440c-f05a-40d6-a035-27ce0fe96870",
+    "banned_until": null,
+    "created_at": "2026-03-30T20:57:22.76746+00:00",
+    "last_sign_in_at": "2026-03-31T13:58:31.19842+00:00",
+    "observacao": "nao estava no backup original; veio da leitura de 2026-09-14T18:22:21Z do mesmo transcript. Por isso o rollback desbanir com 'none', e nao com uma data anterior."
+  },
+
+  "nomes_para_leitura_humana": {
+    "access_profile_id c8bc3058-9d05-4561-9566-b6acc8c1ec7a": "Comercial",
+    "instance 4ac12887-9bbf-44dc-92bc-48a6b6e50806": "Atendimento Previdenciario (is_active=true)",
+    "instance f6a97ae2-e0b1-498d-b736-7e0e1d75886f": "Andreia Atendimento Maternidade (is_active=false)",
+    "instance cba1d1b9-6263-4029-b65a-a9e8964acdd7": "Atendimento Processual (is_active=true)",
+    "instance b16fb149-b181-49d8-b2d1-585c485998a1": "Prev. Edilan - ele segue como owner_user_id, preservado de proposito, nao faz parte deste rollback"
+  }
+}

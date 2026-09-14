@@ -833,6 +833,17 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       const withMe = (withMeData || []) as ConvShare[];
       setSharedConvs(withMe);
 
+      // Caixa travada num canal (`lockInstanceName` — o menu WhatsApp API): a
+      // lista mostra o que o canal traz, e só. Compartilhamento não acrescenta
+      // conversa nenhuma ali, nem de outra instância nem do próprio canal.
+      // Sai antes da RPC de resumo: a busca só serviria para montar uma lista
+      // que essa tela não usa. `sharedConvs` acima continua valendo — é dele
+      // que o chat tira identify_sender/can_reshare.
+      if (lockInstanceName) {
+        setSharedMessages([]);
+        return;
+      }
+
       // Compartilhadas POR MIM: a sidebar precisa mostrar os dois lados. Uma
       // conversa que eu compartilhei de uma instância que não estou vendo agora
       // sumia da lista, e com ela sumia do filtro "Compartilhadas".
@@ -936,7 +947,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
 
     fetchShared();
     return () => { alive = false; };
-  }, [user, hasLoaded]);
+  }, [user, hasLoaded, lockInstanceName]);
 
   // Filter out private conversations the user can't see and merge shared conversations
   const visibleConversations = useMemo(() => {
@@ -2298,6 +2309,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
                 cloudAssignees={cloudAssignees}
                 currentUserId={user?.id || null}
                 canSeeAllAssignments={canViewPrivate}
+                hideSharedFilter={!!lockInstanceName}
                 onServerSearch={searchConversations}
                 onLoadMore={loadMoreConversations}
                 hasMore={hasMoreConversations}
@@ -2386,6 +2398,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
               cloudAssignees={cloudAssignees}
               currentUserId={user?.id || null}
               canSeeAllAssignments={canViewPrivate}
+              hideSharedFilter={!!lockInstanceName}
               onServerSearch={searchConversations}
               onLoadMore={loadMoreConversations}
               hasMore={hasMoreConversations}

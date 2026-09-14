@@ -15,6 +15,7 @@
 // com o erro da Meta preservado em `resposta`.
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
+import { semSegredo } from '../lib/semSegredo';
 import {
   enviaParaMeta,
   registraStatusCredencial,
@@ -355,6 +356,19 @@ async function probe(datasetAlvo?: string) {
 }
 
 export const handler: RequestHandler = async (req, res) => {
+  // TODA saida deste handler passa por `semSegredo`, sem excecao.
+  //
+  // Varios modos daqui devolvem o JSON cru da Graph API, e a Meta embute o
+  // PROPRIO token nas URLs de paginacao que ela devolve (`paging.next`). Em
+  // 14/09/2026 `modo: 'dono_do_dataset'` entregava o token da CAPI de volta no
+  // corpo da resposta por causa disso.
+  //
+  // O filtro fica aqui, e nao em cada `res.json`, porque sao 25 saidas e o modo
+  // 26 nasceria vazando igual — que foi exatamente como este defeito apareceu.
+  // Quem escrever um modo novo fica coberto sem saber que isto existe.
+  const jsonCru = res.json.bind(res);
+  res.json = (corpo: unknown) => jsonCru(semSegredo(corpo));
+
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
       modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset' | 'reenviar' | 'trocar_otimizacao' | 'conjunto' | 'historico_conjunto';

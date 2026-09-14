@@ -206,3 +206,52 @@ export function celulaDeTelefone(o: Record<string, string>): string {
   }
   return '';
 }
+
+
+// ============================================================
+// EM QUAL COLUNA ESTA O STATUS QUE A EQUIPE ESCREVE
+// ============================================================
+//
+// Mesma armadilha do telefone, e desta vez custou um funil inteiro: o leitor
+// procurava exatamente `status da lead`, e a planilha do Auxilio Acidente usa
+// `status lead` — sem o "da". Resultado medido em 14/09/2026: aquele funil
+// aplicava ZERO status, e o diagnostico nem mostrava a coluna, porque a lista de
+// contagem tambem nao a conhecia. Nao aparecia como erro; aparecia como
+// "a equipe nao preenche", que e uma conclusao errada sobre pessoas.
+//
+// `lead_status` fica DE FORA em qualquer caso: e coluna da exportacao da Meta e
+// vale sempre "created". Foi ela que, com `||`, curto-circuitava a leitura da
+// coluna de verdade na primeira versao desta funcao.
+
+/** Colunas de status da equipe, na ordem de confianca. `lead_status` nunca entra. */
+const COLUNAS_DE_STATUS = [
+  'status da lead', 'status lead', 'status do lead', 'status_da_lead', 'status',
+  'situacao', 'situação', 'status atendimento',
+];
+
+/** Coluna da exportacao da Meta — nunca e o status da equipe. */
+const NAO_E_STATUS_DA_EQUIPE = new Set(['lead_status', 'status_lead_meta']);
+
+/**
+ * Acha o status escrito pela equipe, mesmo quando a coluna tem nome inesperado.
+ * Devolve em minusculas e sem espaco nas pontas, pronto para o de-para.
+ */
+export function celulaDeStatusDaEquipe(o: Record<string, string>): string {
+  for (const c of COLUNAS_DE_STATUS) {
+    if (NAO_E_STATUS_DA_EQUIPE.has(c)) continue;
+    const v = String(o[c] ?? '').trim();
+    if (v) return v.toLowerCase();
+  }
+  for (const [chave, valor] of Object.entries(o)) {
+    const k = String(chave).toLowerCase();
+    if (NAO_E_STATUS_DA_EQUIPE.has(k) || !k.includes('status')) continue;
+    const v = String(valor ?? '').trim();
+    if (v) return v.toLowerCase();
+  }
+  return '';
+}
+
+/** Os nomes que o diagnostico deve contar, para a coluna aparecer mesmo quando ninguem a le. */
+export const COLUNAS_DE_STATUS_PARA_DIAGNOSTICO = [
+  'lead_status', ...COLUNAS_DE_STATUS, 'observações', 'observacoes',
+];

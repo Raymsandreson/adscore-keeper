@@ -102,6 +102,14 @@ export interface ActivityMessageContext {
   leadPreview: { board_id?: string | null } | null;
   systemOabs: any;
   currentUserId: string | null;
+  /**
+   * Nome de quem está com a tela aberta — o REMETENTE da mensagem. Só é usado
+   * como rede de segurança: `resolveUserName(currentUserId)` só enxerga a lista
+   * de assinaláveis (`filterAssignableMembers`), então quem está bloqueado ou
+   * ainda não carregou em `profiles` voltaria nulo e a mensagem sairia sem
+   * assinatura. Callers passam `profile?.full_name` do AuthContext.
+   */
+  currentUserName?: string | null;
   /** Resolve nome do usuário (cloud ou ext) — cada tela tem sua lista de membros. */
   resolveUserName: (userId: string | null) => string | null;
   /** Template salvo pro board/fluxo (hook useActivityMessageTemplates). */
@@ -260,7 +268,7 @@ export function buildActivityMessage(
     formCaseTitle, formProcessId, formProcessTitle,
     fieldSettings, selectedActivity, caseProcesses, stepContext, faseProcessual, regua, leadPreview, systemOabs,
     completarCamposComMarcos = false,
-    currentUserId, resolveUserName, getTemplateForContext, inssDesfecho,
+    currentUserId, currentUserName, resolveUserName, getTemplateForContext, inssDesfecho,
   } = ctx;
   const stripHtml = stripHtmlForMessage;
     const joinNames = (names: string[]) =>
@@ -322,6 +330,22 @@ export function buildActivityMessage(
       .map(({ label, value }) => `*${label}:* ${value}`)
       .join('\n\n');
     const createdByName = selectedActivity ? resolveUserName(selectedActivity.created_by) : resolveUserName(currentUserId);
+    /**
+     * Quem ASSINA a mensagem: o membro logado que apertou o botão agora, não
+     * quem criou a atividade lá atrás.
+     *
+     * A atividade anda de mão em mão — "concluir e próximo" passa adiante — e a
+     * assinatura ia junto com o criador original: em 60 dias (medição de
+     * 14/09/2026) 3.094 das 14.953 atividades já tinham sido editadas por
+     * alguém diferente de quem as criou, 20,7%. Nesses casos a mensagem chegava
+     * ao cliente dizendo "Com carinho, Fulano" com o nome de quem não escreveu
+     * nem enviou nada. E o número é piso, não teto: quem só copia a mensagem
+     * sem editar nem aparece no `updated_by`.
+     *
+     * Sem saber quem está mandando, NÃO assina — melhor sem assinatura do que
+     * assinada com o nome errado.
+     */
+    const senderName = resolveUserName(currentUserId) || (currentUserName || '').trim() || null;
     const createdAtFmt = selectedActivity ? format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy 'às' HH:mm");
     const updatedByName = selectedActivity ? resolveUserName((selectedActivity as any).updated_by) : null;
     const updatedAtFmt = selectedActivity?.updated_at && selectedActivity.updated_at !== selectedActivity.created_at ? format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm") : null;
@@ -520,12 +544,11 @@ export function buildActivityMessage(
       const sysTag = formIsSystem ? '🤖 *Atividade interna (de equipe)* — sob sua responsabilidade.' : '';
       const prazoLine = formDeadline ? `*Prazo:* ${format(parseISO(formDeadline), 'dd/MM/yyyy')}` : '';
       const notifLine = notifDate ? `*Notificação:* ${notifDate}` : '';
-      // Rastreabilidade: quem criou (e quando), última atualização e assinatura de
-      // quem criou — para o assessor saber de onde veio a atividade.
-      const authoriaLine = createdByName
-        ? `*Atividade criada por:* ${createdByName} em ${createdAtFmt}${updatedInfo}`
-        : (updatedInfo ? updatedInfo.trimStart() : '');
-      const signature = createdByName ? `Com carinho,\n${createdByName} 💚` : '';
+      // "Atividade criada por X em DD/MM" saiu daqui (14/09/2026, pedido do
+      // usuário): a assinatura logo abaixo já diz quem está falando, e o criador
+      // original raramente é essa pessoa depois de a atividade trocar de mão.
+      // Quem quiser a autoria de volta num template usa {{criado_por}}.
+      const signature = senderName ? `Com carinho,\n${senderName} 💚` : '';
       return [
         header,
         sysTag,
@@ -535,7 +558,6 @@ export function buildActivityMessage(
         [prazoLine, notifLine].filter(Boolean).join('\n'),
         workflowInfo,
         progressDetail,
-        authoriaLine,
         activityLink,
         signature,
       ].filter(Boolean).join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
@@ -565,6 +587,7 @@ export function buildActivityMessage(
         data_retorno: notifDate,
         linha_retorno: returnDateLine,
         criado_por: createdByName || '—',
+        enviado_por: senderName || '—',
         criado_em: createdAtFmt,
         atualizado_info: updatedInfo,
         // Mantido vazio (não removido) pra templates salvos com {{tempo_dedicado}}
@@ -652,11 +675,11 @@ export function buildActivityMessage(
         result = lines.join('\n');
       }
 
-      // Assinatura carinhosa com o nome de quem CRIOU a atividade, ao final.
-      if (createdByName && !result.includes('Com carinho')) {
+      // Assinatura carinhosa com o nome de quem está MANDANDO a mensagem, ao final.
+      if (senderName && !result.includes('Com carinho')) {
         const lines = result.split('\n');
         const digiteIdx = lines.findIndex(line => line.includes('Digite 1'));
-        const sig = `Com carinho,\n${createdByName} 💚`;
+        const sig = `Com carinho,\n${senderName} 💚`;
         if (digiteIdx >= 0) lines.splice(digiteIdx, 0, sig, '');
         else lines.push('', sig);
         result = lines.join('\n');
@@ -694,6 +717,6 @@ export function buildActivityMessage(
     const linkLineFb = activityLink ? `\n\n${activityLink}` : '';
     const workflowLineFb = workflowInfo ? `\n\n${workflowInfo}` : '';
     const progressLineFb = progressInfo ? `\n\n${progressInfo}` : '';
-    const signatureFb = createdByName ? `\n\nCom carinho,\n${createdByName} 💚` : '';
+    const signatureFb = senderName ? `\n\nCom carinho,\n${senderName} 💚` : '';
     return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowLineFb}${progressLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
 }

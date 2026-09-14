@@ -3719,7 +3719,8 @@ const ActivitiesPage = () => {
       // Só completa os campos vazios com os marcos se a pessoa tiver ligado —
       // de fábrica a mensagem sai com o que está escrito na ficha, e só.
       completarCamposComMarcos: completarCamposComMarcosLigado(),
-      currentUserId: user?.id || null, resolveUserName, getTemplateForContext, inssDesfecho,
+      currentUserId: user?.id || null, currentUserName: profile?.full_name || null,
+      resolveUserName, getTemplateForContext, inssDesfecho,
     }, audience);
 
   // Active step context — process workflow > lead's funnel board.
