@@ -356,13 +356,15 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   compactLabel?: boolean;
 }) {
   const [sending, setSending] = useState(false);
+  const [loadingRecording, setLoadingRecording] = useState(false);
   const { user } = useAuthContext();
   const { isAdmin } = useUserRole();
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('');
-  // Gravação de ligação anexada à atividade (para enviar junto, se o usuário quiser).
-  const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  // Gravação de ligação anexada à atividade (para enviar junto com o texto).
+  const [recording, setRecording] = useState<{ url: string; name: string | null; createdAt: string | null } | null>(null);
   const [includeRecording, setIncludeRecording] = useState(false);
+  const recordingUrl = recording?.url || null;
   // Preview editável + escolha de destino
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewText, setPreviewText] = useState('');
@@ -386,24 +388,45 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
     return () => { cancelled = true; };
   }, [leadId]);
 
+  // Trocou de atividade: a gravação da anterior não pode sobreviver no estado.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!activityId) { setRecordingUrl(null); setIncludeRecording(false); return; }
-      const { data } = await externalSupabase
-        .from('activity_attachments')
-        .select('file_url, file_type')
-        .eq('activity_id', activityId)
-        .eq('attachment_type', 'audio')
-        .order('created_at', { ascending: false })
-        .limit(1);
-      if (cancelled) return;
-      const rec = (data || [])[0] as { file_url?: string } | undefined;
-      setRecordingUrl(rec?.file_url || null);
-      if (!rec) setIncludeRecording(false);
-    })();
-    return () => { cancelled = true; };
+    setRecording(null);
+    setIncludeRecording(false);
   }, [activityId]);
+
+  /**
+   * Busca a gravação mais recente da atividade. Roda NO CLIQUE de "Enviar", não
+   * na montagem: a pessoa grava a ligação DEPOIS de abrir a atividade, e uma
+   * leitura presa a `[activityId]` nunca enxergava esse anexo — a caixa "Incluir
+   * gravação" não era renderizada e o áudio ficava para trás. Medido em
+   * 14/09/2026: das 87 atividades com gravação que notificaram o grupo em 30
+   * dias, 87 gravaram antes do envio (73 a menos de 30 min).
+   *
+   * `ensureExternalSession()` é obrigatório: `activity_attachments` tem policy
+   * `TO authenticated` e, sem sessão, o PostgREST devolve `200 []` — falso-vazio
+   * silencioso (mesmo defeito do incidente de 17/08/2026).
+   */
+  const fetchLatestRecording = async (): Promise<{ url: string; name: string | null; createdAt: string | null } | null> => {
+    if (!activityId) return null;
+    await ensureExternalSession();
+    const { data, error } = await externalSupabase
+      .from('activity_attachments')
+      .select('file_url, file_name, created_at')
+      .eq('activity_id', activityId)
+      .eq('attachment_type', 'audio')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (error) {
+      // Não some com a gravação em silêncio: sem isso, falha de leitura vira
+      // "não tem áudio" e o texto sai sozinho sem ninguém perceber.
+      console.error('[SendToGroupSection] falha lendo a gravação da atividade:', error);
+      toast.warning('Não consegui conferir se há gravação nesta atividade — envie o áudio pelo botão "Enviar áudio".');
+      return null;
+    }
+    const rec = (data || [])[0] as { file_url?: string; file_name?: string; created_at?: string } | undefined;
+    if (!rec?.file_url) return null;
+    return { url: rec.file_url, name: rec.file_name || null, createdAt: rec.created_at || null };
+  };
 
   const sendRecording = async (phone: string, chatId?: string, instanceId?: string) => {
     if (!recordingUrl) return;
@@ -594,8 +617,8 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
     }
   };
 
-  // Abre o preview com a mensagem montada e destinos padrão.
-  const openPreview = () => {
+  // Abre o preview com a mensagem montada, destinos padrão e a gravação da hora.
+  const openPreview = async () => {
     let msg = '';
     try {
       msg = buildMsg(hasGroup ? 'client' : 'assessor');
@@ -607,6 +630,16 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
     setPreviewText(msg);
     setDestGroup(hasGroup);
     setDestAssessor(!hasGroup && !!formAssignedTo);
+    setLoadingRecording(true);
+    try {
+      const rec = await fetchLatestRecording();
+      setRecording(rec);
+      // Gravou e escreveu na mesma atividade: o padrão é os dois irem juntos.
+      // A caixa continua visível no diálogo (com nome e hora) para desmarcar.
+      setIncludeRecording(!!rec);
+    } finally {
+      setLoadingRecording(false);
+    }
     setPreviewOpen(true);
   };
 
@@ -693,8 +726,8 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
           Avaliação
         </Button>
       )}
-      <Button type="button" variant="default" size="sm" className="gap-1 h-8 text-xs" onClick={openPreview} disabled={sending}>
-        {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+      <Button type="button" variant="default" size="sm" className="gap-1 h-8 text-xs" onClick={() => { void openPreview(); }} disabled={sending || loadingRecording}>
+        {sending || loadingRecording ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
         {buttonLabel}
       </Button>
       <ActivityTTSButton messageText={buildMsg()} leadId={formLeadIdForTTS} contactId={formContactIdForTTS} />
@@ -767,14 +800,24 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
               </div>
             )}
 
-            {recordingUrl && (
-              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+            {recording && (
+              <label className="flex items-start gap-2 text-sm cursor-pointer select-none">
                 <Checkbox
                   checked={includeRecording}
                   onCheckedChange={(v) => setIncludeRecording(!!v)}
+                  className="mt-0.5"
                 />
-                <Mic className="h-3.5 w-3.5 text-red-500" />
-                Incluir gravação da ligação
+                <Mic className="h-3.5 w-3.5 text-red-500 mt-0.5 shrink-0" />
+                <span>
+                  Incluir gravação da ligação
+                  {/* Nome e hora à vista: com a caixa marcada por padrão, é o que
+                      impede mandar uma gravação antiga da atividade sem perceber. */}
+                  {recording.createdAt && (
+                    <span className="block text-[11px] text-muted-foreground">
+                      {recording.name || 'Gravação'} — {new Date(recording.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </span>
               </label>
             )}
           </div>
