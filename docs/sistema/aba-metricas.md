@@ -240,25 +240,15 @@ Dois casos de formulário registrado na Meta que nunca chegou ao CRM:
 com **26**. Ou é roteamento faltando, ou é lead de produto que não usa o CRM — e
 a diferença entre as duas respostas vale dinheiro.
 
-## Apelidos de compatibilidade (temporário)
+## Apelidos de compatibilidade — removidos em 14/09/2026
 
-Os filtros renomearam campos do payload (`total_7d` → `na_janela`, `gasto_7d` →
-`gasto`, e assim por diante). Numa SPA isso **não** é um problema de deploy que
-passa em minutos: quem está com a aba aberta continua rodando o bundle antigo até
-recarregar, e isso dura horas (ver [[deploy-front-lovable-verificacao]]).
+Os nomes antigos (`total_7d`, `gasto_7d`, `ultimos_30d`…) conviveram com os novos
+por três dias, para não quebrar a tela de quem estava com a aba aberta no bundle
+anterior.
 
-Sem apelido, essa pessoa veria meia tela de "—" e concluiria que o painel quebrou
-— pior que o número velho, porque parece defeito de dado.
-
-Então o handler devolve os nomes antigos **junto** com os novos. Eles só são
-corretos para a janela padrão (30 dias até hoje), que é a única que o bundle
-antigo pede: fora dela vão `null`, em vez de número de outro recorte com nome
-antigo.
-
-**Como remover:** conferir que o chunk publicado da página contém "Todos os
-acolhedores" (string que só existe na versão com filtros), esperar 24h para as
-abas abertas rodarem, e apagar o bloco `compat` do handler e os apelidos
-`*_7d`/`*_30d` de `desempenho_por_conjunto`.
+Removidos depois de conferir o chunk publicado: `MetricasPage-CR6jZS-f.js` tem as
+abas novas e **zero** ocorrências de qualquer nome antigo. O critério era esse,
+não o calendário.
 
 ## Organização da tela: três abas (11/09/2026)
 
@@ -331,3 +321,74 @@ O texto mandava alguém procurar defeito onde não há. Agora a contagem é sepa
 
 O `lead_id` dentro de `user_data_hash` é a prova: o normalizador só o grava
 quando o lead tem `facebook_lead_id`.
+
+## Lista nominal: aba "Leads e fechamentos" (11/09/2026)
+
+A aba passou a mostrar **lead a lead** e **fechamento a fechamento**, agrupados
+por acolhedor. Duas travas, e a razão de cada uma:
+
+**1. Só sai quando pedido (`detalhar: true`).** O painel se atualiza sozinho a
+cada minuto; puxar nome e telefone de 2.500 leads a cada ciclo, sem ninguém ter
+pedido, é carregar PII de graça. As colunas `lead_name` e `lead_phone` nem entram
+no `select` quando o detalhe não foi pedido.
+
+**2. Só sai para quem está logado.** `AUTH_ENFORCE` está **desligado** em
+produção — `/functions/metricas-painel` responde a qualquer um que saiba a URL.
+Devolver a lista nominal por padrão seria publicar a carteira de clientes numa
+URL aberta. O detalhe chama `authorizeFunctionRequest`, que aceita JWT de usuário
+logado, chave interna ou de API; o front já injeta o JWT da sessão nas chamadas
+ao Railway, então para quem está na aba isso é transparente.
+
+**Telefone sai mascarado** (`•••• 1234`), do servidor, não da tela. Quem precisa
+do número inteiro abre o lead no funil, onde existe registro de quem olhou.
+Painel de métricas não é lugar de copiar carteira.
+
+### O que deliberadamente não está lá
+
+**"Dias até fechar".** `became_client_date` guarda a data da importação da
+planilha, não a do contrato — 24 dos 28 fechamentos pagos caem todos em 09/09.
+Qualquer duração calculada daí seria inventada, e com cara de métrica. A legenda
+do card diz isso em vez de mostrar o número.
+
+O acolhedor sai do nome do conjunto, então **fechamento de lead orgânico não tem
+um** e aparece em "Sem acolhedor identificado", marcado como "não veio de
+anúncio" — em vez de ser escondido ou atribuído a alguém por chute.
+
+## A aba cobre só PREV (14/09/2026)
+
+Trabalhista e Previdenciário têm **estrutura de lead diferente, acolhedores
+diferentes e origem diferente**. O board de Acidente de Trabalho tem 7.990 leads
+vivos e **zero** vindos de formulário de anúncio. Somar os dois num painel que
+existe para medir anúncio produzia um "total de leads" que não servia a nenhuma
+das duas equipes: a janela de 30 dias trazia 3.100 leads de Trabalhista.
+
+Agora a leitura é escopada: entram só os boards cujo nome mapeia para um funil
+conhecido do PREV (`BPC - Autismo`, `Auxílio Acidente`). **Pelo nome, não por
+lista de ids** — board novo de BPC passa a contar sozinho, e board de outro
+negócio não entra por engano. A tela diz o escopo no cabeçalho e na barra de
+filtros.
+
+Os acolhedores de `ACOLHEDORES` (Israel, Mateus, Karolyne, Edilan) são os do
+PREV. Trabalhista tem outros, e quando entrar precisará da sua própria lista.
+
+### O defeito que isso expôs
+
+`funilDoNome` casava por token solto, e `ACIDENTE` casa "Acidente de Trabalho".
+Medido em 14/09/2026: filtrar a aba por "Auxílio Acidente" devolvia **3.224 leads
+do board de Acidente de Trabalho contra 544 do funil de verdade** — 86% do
+recorte era o funil errado, e o custo por lead daquele recorte estava dividindo
+gasto de Auxílio Acidente por leads de Trabalhista.
+
+A regra passou a ser por **grupos de tokens**: "ou" dentro do grupo, "e" entre
+grupos. `auxilio_acidente` exige `ACIDENTE` **e** (`AUXILIO` ou `AUX`). Isso
+separa sem lista negra:
+
+| Nome | Antes | Agora |
+|---|---|---|
+| `[AUXÍLIO-ACIDENTE]` | auxilio_acidente | auxilio_acidente |
+| `AUXÍLIO - ACIDENTE [EDILAN]` | auxilio_acidente | auxilio_acidente |
+| `Acidente de Trabalho` | **auxilio_acidente** | — |
+| `[SEGURO ACIDENTE DE TRÂNSITO]` | **auxilio_acidente** | — |
+| `[ANALYNE][ACD. DE TRABALHO]` | — | — |
+
+Há teste para cada uma dessas linhas.

@@ -39,6 +39,7 @@ export const TEMPLATE_VARIABLES = [
   { var: '{{responsavel_dr}}', label: 'Nome do responsável com Dr. (ex: Dr. Martin Rafael)' },
   { var: '{{data_retorno}}', label: 'Data de retorno/notificação' },
   { var: '{{linha_retorno}}', label: 'Frase de retorno com responsável quando houver' },
+  { var: '{{enviado_por}}', label: 'Nome de quem está enviando a mensagem (assina o "Com carinho")' },
   { var: '{{criado_por}}', label: 'Nome de quem criou' },
   { var: '{{criado_em}}', label: 'Data/hora de criação' },
   { var: '{{atualizado_info}}', label: 'Info de última atualização' },

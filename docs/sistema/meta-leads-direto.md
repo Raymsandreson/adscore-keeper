@@ -1,7 +1,16 @@
-# Lead da Meta direto no funil (sem planilha)
+# Lead da Meta direto no funil (sem depender da planilha)
 
 `meta-leads-sync` no Railway. Lê os formulários de Lead Ads pela Graph API e
-cria o lead no board, dispensando a planilha do Google.
+cria o lead no board, sem depender da planilha do Google no meio do caminho.
+A planilha **continua ligada** e trazendo lead em paralelo — ver "Os dois
+caminhos convivem", no fim.
+
+**Roda sozinha desde então: cron a cada 30 min, janela de 7 dias**
+(`META_LEADS_INTERVAL_MS` / `META_LEADS_DIAS` em `railway-server/src/index.ts`).
+Estado em `/health` → `meta_leads_sync`, que mostra execuções, última rodada e o
+último resultado no formato `criados=N formularios=N alertas=N`. A janela de 7
+dias é folga deliberada sobre o intervalo: perder uma rodada não perde lead,
+porque a próxima revarre a mesma semana e o dedup descarta o repetido.
 
 ## Por que existe (medido em 09/09/2026)
 
@@ -116,3 +125,30 @@ pior que erro nenhum.
 Varrer todos os boards com janela de 30 dias em uma requisição só devolve
 `upstream error` (timeout do Railway) — mas nada se perde, porque a função é
 idempotente: basta rodar de novo, e por `board_id` para encurtar cada chamada.
+
+## Os dois caminhos convivem — medido em 14/09/2026
+
+A API direta **não** aposentou a planilha, e não era para aposentar: quem alimenta
+a planilha é a integração nativa da Meta, que continua ligada por conta própria.
+Leads criados por caminho:
+
+| Caminho (`source`) | 7 dias | 30 dias |
+|---|---:|---:|
+| `Meta Lead Ads — *` (API direta) | 266 | 1.652 |
+| `Planilha Meta Ads — *` (planilha) | 402 | 1.184 |
+
+Nos últimos 7 dias a planilha trouxe **mais** lead que a API. Isso não é defeito
+de nenhum dos dois: o mesmo lead chega pelos dois caminhos e **quem impede a
+duplicata é o dedup por `phoneKey`**, compartilhado com `lib/leadAdsSheet` de
+propósito. Se cada caminho normalizasse telefone do seu jeito, um não enxergaria
+o outro e a pessoa entraria duas vezes.
+
+Consequência prática: **desligar a planilha não é neutro**, e medir a saúde da
+ingestão por um caminho só engana. Quem for aposentar a planilha precisa
+confirmar antes que a API cobre os mesmos formulários — os `formularios_ignorados`
+existem e não são adivinhados.
+
+**Os dois caminhos gravam `facebook_lead_id`**, que é o que casa a conversão com
+o formulário em Conversion Leads: 4.168 linhas com o id, 3.882 em leads vivos,
+contra 0 em 04/09. Ver `docs/sistema/meta-conversions-api.md`, seção "Conversion
+Leads: o que o evento leva".

@@ -46,6 +46,19 @@ Dialog com resumo do quadro por período (Hoje / Ontem / 7 dias / 30 dias), copi
 - **Novos Leads** é métrica diferente: entradas no 1º estágio segundo `lead_stage_history`, não cadastros — fica 0 em dias sem movimentação, mesmo com cadastros no dia.
 - O período "Ontem" é janela fechada (ontem 00:00→23:59); antes ia de ontem 00:00 até agora e somava o dia corrente.
 
+### Relatório em texto do filtro (botão "Relatório" na barra de filtros) — set/2026
+
+Botão ao lado do gatilho "Filtros", em qualquer funil e nas duas visualizações (kanban e lista). Abre um dialog com o texto pronto dos leads **que passam pelo filtro atual**, com "Copiar" e "Baixar .txt" (`src/components/kanban/LeadFilterReportDialog.tsx`).
+
+- **Um bloco por lead**, na ordenação da tela: `LEAD <lead_number> — <vítima>` e, indentados, Cidade/UF, Acidente, Visita e Etapa. Campo sem dado no banco sai como `—` (não some, não é preenchido por palpite). Sem `lead_number`, cai para `CASO <case_number>` e depois `(sem número)`.
+- **Cabeçalho** traz o funil, o carimbo de geração, a contagem e a linha "Filtros:" com os filtros ativos no mesmo vocabulário dos chips da barra (`describeLeadFilters`), datas em dd/mm/aaaa.
+- **De onde vêm os dados**: as linhas saem da view `lead_list_view` pelo mesmo caminho da visualização em lista (`fetchLeadListRows`), não do array que o kanban tem em memória — assim o relatório cobre o recorte inteiro, inclusive além da 1ª página, e a tradução dos filtros para PostgREST existe num lugar só.
+- **Data da visita** é a última visita com status `realizada` em `social_visits` (join por board, `buscarVisitasRealizadas`). `leads.first_visit_at` existe mas está zerado em 100% dos leads do Trabalhista — não serve de fonte. Visita agendada/confirmada não entra: o relatório pede visita já realizada.
+- **Etapa**: `lead_status` fechado/recusado/inviável/cancelado vence o nome da etapa do funil (mesma regra do badge da lista).
+- Arquivos: `src/lib/relatorioLeadsFiltrados.ts` (dados + formatação, com testes em `src/lib/__tests__/`), `src/components/kanban/LeadFilterReportDialog.tsx`, botão em `LeadAdvancedFilters.tsx`.
+
+**Filtros do painel só funcionam no kanban desde set/2026**: `LEAD_INDEX_COLUMNS` (`src/hooks/useLeads.ts`) não trazia `accident_date`, `victim_age`, `visit_region`, `created_by` nem `updated_by`, e `applyLeadFilters` comparava contra `undefined` — filtrar por data do acidente, faixa etária, região ou autoria **esvaziava o quadro** em vez de recortá-lo. As colunas entraram no índice (+869 kB no board maior).
+
 ---
 
 ## Gerenciamento Acolhimento — `/acolhimento`
