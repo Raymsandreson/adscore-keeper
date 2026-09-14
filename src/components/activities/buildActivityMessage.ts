@@ -158,6 +158,33 @@ export function extractClientFirstName(raw: string): string {
   return isMeaningful(result) ? result : '';
 }
 
+/**
+ * Pessoa jurídica? (CNPJ preenchido ou `tipo_pessoa` JURIDICA no envolvido)
+ *
+ * Razão social não tem "primeiro nome": "Ampla" não é o nome de ninguém, e
+ * "Sr(a). Ampla" na saudação é pior que o nome inteiro.
+ */
+export function isPessoaJuridica(envolvido: any): boolean {
+  const tp = String(envolvido?.tipo_pessoa || '').toUpperCase();
+  if (tp.startsWith('JURID')) return true;
+  return String(envolvido?.cnpj || '').replace(/\D/g, '').length > 0;
+}
+
+/**
+ * Primeiro nome de UMA parte, para a saudação ao cliente.
+ *
+ * `extractClientFirstName` limpa o rótulo (códigos, "Cidade | Vítima x Empresa")
+ * mas devolve o nome inteiro — o nome da função mente desde antes. Esta aqui
+ * corta de verdade: "Wandrey da Silva Moraes" → "Wandrey".
+ */
+export function extractPartyFirstName(raw: string): string {
+  const limpo = extractClientFirstName(raw);
+  if (!limpo) return '';
+  const primeiro = limpo.split(/\s+/).filter(Boolean)[0] || '';
+  // Token de 1 letra ("A", "M.") não é nome: devolve o rótulo limpo inteiro.
+  return /\p{L}{2,}/u.test(primeiro) ? primeiro : limpo;
+}
+
 /** Texto limpo pra mensagem: preserva quebras de <br>/<p>/<li> e decodifica entidades. */
 export function stripHtmlForMessage(html: string): string {
     if (!html) return '';
@@ -363,8 +390,12 @@ export function buildActivityMessage(
     const buildReturnDateLine = (responsavelDr: string) => {
       if (!notifDateOnly) return '';
       const subject = responsavelDr ? `${responsavelDr} voltará` : 'Retornaremos';
-      const quando = notifHora ? `às ${notifHora}` : 'até o final do dia';
-      return `*${subject} com mais informações no dia ${notifDateOnly}, ${quando}.*`;
+      // NUNCA a hora, mesmo quando a atividade tem uma marcada (decisão do
+      // usuário, 14/09/2026): "às 09:00" vira hora marcada na cabeça do cliente
+      // e a equipe não trabalha com agenda de horário para retorno. A hora
+      // continua valendo internamente — lembrete do assessor e linha
+      // "*Notificação:*" da mensagem ao assessor.
+      return `*${subject} com mais informações no dia ${notifDateOnly}, até o final do dia.*`;
     };
 
     // Linked process info — "Referente ao processo n° "X" de "Y""
@@ -384,11 +415,21 @@ export function buildActivityMessage(
     const clientePolo = (linkedProcessForMsg as any)?.cliente_polo
       || detectClientPolo(envolvidos, systemOabs)
       || 'ATIVO';
-    // Nomes das PARTES (não advogados) do polo do cliente.
+    // Nomes das PARTES (não advogados) do polo do cliente, sem repetir a mesma
+    // pessoa: a API devolve a parte uma vez por papel (neste processo o perito
+    // vem duas vezes), e nome repetido na saudação é erro visível pro cliente.
     const isParte = (e: any) => e && e.nome && !/advog/i.test(String(e.tipo || e.tipo_normalizado || ''));
-    let processClientNames: string[] = envolvidos
-      .filter((e: any) => isParte(e) && e.polo === clientePolo)
-      .map((e: any) => String(e.nome));
+    const clientParties: any[] = (() => {
+      const vistos = new Set<string>();
+      return envolvidos.filter((e: any) => {
+        if (!isParte(e) || e.polo !== clientePolo) return false;
+        const chave = String(e.nome).trim().toLowerCase();
+        if (vistos.has(chave)) return false;
+        vistos.add(chave);
+        return true;
+      });
+    })();
+    let processClientNames: string[] = clientParties.map((e: any) => String(e.nome));
     // Sem envolvidos estruturados: cai para o título do polo (polo_ativo/polo_passivo).
     if (processClientNames.length === 0) {
       const poloTitle = clientePolo === 'PASSIVO'
@@ -397,15 +438,29 @@ export function buildActivityMessage(
       if (poloTitle) processClientNames = [String(poloTitle)];
     }
 
-    // Nome exibido na saudação ao CLIENTE: só o PRIMEIRO NOME da parte cliente.
-    // Prioridade: override manual > 1ª parte do polo do cliente > nome do lead.
+    // Nome exibido na saudação ao CLIENTE: o PRIMEIRO NOME de CADA parte do polo
+    // que representamos — "Sr(a). Changrillayne, Deolinda, Edson e Elisangela",
+    // não só a primeira da lista.
+    //
+    // Pedido do usuário (14/09/2026): o processo 0100419-74.2021.5.01.0281 tem
+    // 7 autores e a mensagem saía cumprimentando um só — os outros 6 leem a
+    // mesma mensagem no grupo e não são o "Sr(a)." de ninguém. Quem escolhe o
+    // polo é `cliente_polo` (ou a detecção por OAB), então a lista é sempre do
+    // lado que representamos, nunca do adversário.
+    // Pessoa jurídica entra com a razão social inteira ("Ampla" não é nome).
+    const greetingNames = joinNames(
+      clientParties
+        .map((e: any) => (isPessoaJuridica(e) ? String(e.nome).trim() : extractPartyFirstName(String(e.nome))))
+        .filter(Boolean),
+    );
+    // Prioridade: override manual > partes do polo do cliente > nome do lead.
     // NUNCA cai no nome do assessor — se nada retornar, deixa vazio e a saudação
     // renderiza sem nome (evita o bug de "Bom dia, Dr(a). <nome do acolhedor>").
-    const rawClientCandidate = formClientNameOverride
-      || (processClientNames.length > 0 ? processClientNames[0] : '')
-      || formLeadName
-      || '';
-    const clientDisplayName = extractClientFirstName(rawClientCandidate);
+    // Sem partes estruturadas sobra o título do polo ("Edson Ribeiro e outros"),
+    // que já vem pronto e não dá pra quebrar em primeiros nomes.
+    const clientDisplayName = formClientNameOverride
+      ? extractClientFirstName(formClientNameOverride)
+      : (greetingNames || extractClientFirstName(processClientNames[0] || formLeadName || ''));
 
     // Workflow do processo (etapa / objetivo / passo atual) — vem do checklist do lead (stepContext).
     const wfPhase = stepContext?.phaseLabel || '';
@@ -584,7 +639,10 @@ export function buildActivityMessage(
         campos_dinamicos: fieldLines,
         responsavel: [formAssignedToName, ...formCoAssignees.map(c => c.full_name)].filter(Boolean).join(', '),
         responsavel_dr: responsavelDr,
-        data_retorno: notifDate,
+        // Sem hora: {{data_retorno}} só aparece em template de CLIENTE, e o
+        // template salvo emenda ", até o final do dia" logo depois — com a hora
+        // sairia "no dia 24/09 às 09:00, até o final do dia".
+        data_retorno: notifDateOnly,
         linha_retorno: returnDateLine,
         criado_por: createdByName || '—',
         enviado_por: senderName || '—',
