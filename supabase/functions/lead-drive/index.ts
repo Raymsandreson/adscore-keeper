@@ -3,6 +3,16 @@
 // Storage: pasta única por lead dentro do Drive do escritório
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { geminiChat } from "../_shared/gemini.ts";
+import {
+  candidatosDeAgrupamento,
+  classificarGrupos,
+  formatoParaPdf,
+  nomeDoGrupo,
+  ordenarPaginas,
+  type ArquivoParaAgrupar,
+  type Confianca,
+  type GrupoDeDocumento,
+} from "../_shared/agrupamentoDocumentos.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,7 +23,7 @@ const GATEWAY = "https://connector-gateway.lovable.dev/google_drive/drive/v3";
 const UPLOAD_GATEWAY = "https://connector-gateway.lovable.dev/google_drive/upload/drive/v3";
 const ROOT_FOLDER_NAME = "AdScore Keeper - Leads";
 const MAX_ANALYZE_BYTES = 8 * 1024 * 1024;
-const FUNCTION_VERSION = 6; // v6: consolidate_lead_fields — a IA lê o dossiê inteiro do lead antes de decidir cada campo
+const FUNCTION_VERSION = 7; // v7: group_documents — páginas soltas do mesmo documento viram UM PDF (ver _shared/agrupamentoDocumentos.ts)
 
 // Retry automático para falhas transitórias do gateway do Google Drive.
 // Envolvemos o fetch global para não precisar tocar em ~30 call sites.
@@ -339,6 +349,183 @@ async function getOrCreateSubfolder(parentFolderId: string, name: string): Promi
   return created.id;
 }
 
+/**
+ * Empilha um arquivo baixado como página(s) do PDF de saída.
+ *
+ * O formato sai de `formatoParaPdf`, que olha os BYTES antes do mimetype. Sem
+ * isso, mídia do WhatsApp que chega sem nome nem mimetype (vira `doc-XXXX.bin`
+ * + `application/octet-stream` em import-group-docs-to-lead) era descartada
+ * como "mime não suportado" e a página sumia do PDF sem ninguém perceber.
+ */
+async function empilharNoPdf(
+  PDFDocument: any,
+  outDoc: any,
+  bytes: Uint8Array,
+  mime?: string | null,
+  name?: string | null,
+): Promise<{ ok: true; paginas: number } | { ok: false; motivo: string }> {
+  const formato = formatoParaPdf(mime, name, bytes);
+  if (!formato) return { ok: false, motivo: `formato não suportado (mime: ${mime || "?"})` };
+
+  if (formato === "pdf") {
+    const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const copiadas = await outDoc.copyPages(src, src.getPageIndices());
+    copiadas.forEach((p: any) => outDoc.addPage(p));
+    return { ok: true, paginas: copiadas.length };
+  }
+
+  const img = formato === "png" ? await outDoc.embedPng(bytes) : await outDoc.embedJpg(bytes);
+  const page = outDoc.addPage([img.width, img.height]);
+  page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+  return { ok: true, paginas: 1 };
+}
+
+/**
+ * Baixa os arquivos do Drive NA ORDEM INFORMADA e monta um PDF único.
+ * Motor compartilhado pelo agrupamento manual (`merge_drive_files`) e pelo
+ * automático (`group_documents`) — para os dois nunca divergirem de critério.
+ */
+async function montarPdfDeArquivosDoDrive(fileIds: string[]): Promise<{
+  pdfBytes: Uint8Array | null;
+  paginas: number;
+  merged: Array<{ file_id: string; name: string }>;
+  skipped: Array<{ file_id: string; name?: string; reason: string }>;
+}> {
+  const { PDFDocument } = await import("https://esm.sh/pdf-lib@1.17.1?target=deno");
+  const outDoc = await PDFDocument.create();
+  const skipped: Array<{ file_id: string; name?: string; reason: string }> = [];
+  const merged: Array<{ file_id: string; name: string }> = [];
+
+  for (const fid of fileIds) {
+    try {
+      const metaRes = await fetch(`${GATEWAY}/files/${fid}?fields=id,name,mimeType,size`, { headers: gwHeaders() });
+      if (!metaRes.ok) { skipped.push({ file_id: fid, reason: `meta ${metaRes.status}` }); continue; }
+      const meta = await metaRes.json();
+      const mime = (meta.mimeType || "").toLowerCase();
+
+      const dlRes = await fetch(`${GATEWAY}/files/${fid}?alt=media`, { headers: gwHeaders() });
+      if (!dlRes.ok) { skipped.push({ file_id: fid, name: meta.name, reason: `download ${dlRes.status}` }); continue; }
+      const bytes = new Uint8Array(await dlRes.arrayBuffer());
+
+      const empilhado = await empilharNoPdf(PDFDocument, outDoc, bytes, mime, meta.name);
+      if (!empilhado.ok) {
+        skipped.push({ file_id: fid, name: meta.name, reason: empilhado.motivo });
+        continue;
+      }
+      merged.push({ file_id: fid, name: meta.name });
+    } catch (e) {
+      skipped.push({ file_id: fid, reason: (e as Error).message });
+    }
+  }
+
+  if (outDoc.getPageCount() === 0) return { pdfBytes: null, paginas: 0, merged, skipped };
+  return { pdfBytes: await outDoc.save(), paginas: outDoc.getPageCount(), merged, skipped };
+}
+
+/** Sobe um PDF já montado para a pasta do lead. */
+async function subirPdfNaPasta(pdfBytes: Uint8Array, fileName: string, folderId: string): Promise<any> {
+  const finalName = /\.pdf$/i.test(fileName) ? fileName : `${fileName}.pdf`;
+  const boundary = "----lovable-boundary-" + crypto.randomUUID();
+  const metadata = JSON.stringify({ name: finalName, parents: [folderId] });
+  const head = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`;
+  const tail = `\r\n--${boundary}--`;
+  const headBytes = new TextEncoder().encode(head);
+  const tailBytes = new TextEncoder().encode(tail);
+  const payload = new Uint8Array(headBytes.length + pdfBytes.length + tailBytes.length);
+  payload.set(headBytes, 0);
+  payload.set(pdfBytes, headBytes.length);
+  payload.set(tailBytes, headBytes.length + pdfBytes.length);
+
+  const upRes = await fetch(`${UPLOAD_GATEWAY}/files?uploadType=multipart&fields=id,name,webViewLink,mimeType,size,modifiedTime`, {
+    method: "POST",
+    headers: gwHeaders({ "Content-Type": `multipart/related; boundary=${boundary}` }),
+    body: payload,
+  });
+  if (!upRes.ok) throw new Error(`drive pdf upload failed [${upRes.status}]: ${await upRes.text()}`);
+  return await upRes.json();
+}
+
+/**
+ * Quando cada mídia foi ENVIADA no WhatsApp — que é a ordem real das páginas.
+ * `modifiedTime` do Drive não serve: é a hora em que o import subiu o arquivo,
+ * e o import sobe tudo em lotes de 5, embaralhando a sequência de quem mandou
+ * as 10 fotos do laudo em ordem.
+ */
+async function mapearEnvioDasMidias(
+  leadId: string,
+  ext: any,
+): Promise<Map<string, string>> {
+  const porFileId = new Map<string, string>();
+  try {
+    const cloud = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: docs } = await cloud
+      .from("process_documents")
+      .select("metadata, created_at")
+      .eq("lead_id", leadId)
+      .limit(1000);
+
+    const faltandoPorMsgId = new Map<string, string>(); // external_message_id -> file_id
+    for (const d of docs || []) {
+      const meta = (d as any)?.metadata || {};
+      const fid = meta.drive_file_id;
+      if (!fid) continue;
+      if (meta.sent_at) {
+        porFileId.set(fid, meta.sent_at);
+      } else if (meta.external_message_id) {
+        faltandoPorMsgId.set(meta.external_message_id, fid);
+      }
+    }
+
+    // Uma query só para todos os ids que faltam (nada de N+1 dentro do loop).
+    if (faltandoPorMsgId.size > 0) {
+      const ids = [...faltandoPorMsgId.keys()].slice(0, 500);
+      const { data: msgs } = await ext
+        .from("whatsapp_messages")
+        .select("external_message_id, created_at")
+        .in("external_message_id", ids);
+      for (const m of msgs || []) {
+        const fid = faltandoPorMsgId.get((m as any).external_message_id);
+        if (fid) porFileId.set(fid, (m as any).created_at);
+      }
+    }
+  } catch (e) {
+    console.warn("[lead-drive] mapearEnvioDasMidias falhou (segue com modifiedTime):", e);
+  }
+  return porFileId;
+}
+
+/** Move arquivos para uma subpasta da pasta do lead (ex.: "Páginas soltas"). */
+async function moverParaSubpasta(
+  fileIds: string[],
+  deFolderId: string,
+  paraFolderId: string,
+): Promise<{ movidos: string[]; falhas: Array<{ file_id: string; motivo: string }> }> {
+  const movidos: string[] = [];
+  const falhas: Array<{ file_id: string; motivo: string }> = [];
+  for (const fid of fileIds) {
+    try {
+      const params = new URLSearchParams({
+        addParents: paraFolderId,
+        removeParents: deFolderId,
+        fields: "id,parents",
+      });
+      const res = await fetch(`${GATEWAY}/files/${fid}?${params.toString()}`, {
+        method: "PATCH",
+        headers: gwHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({}),
+      });
+      if (res.ok) movidos.push(fid);
+      else falhas.push({ file_id: fid, motivo: `move ${res.status}` });
+    } catch (e) {
+      falhas.push({ file_id: fid, motivo: (e as Error).message });
+    }
+  }
+  return { movidos, falhas };
+}
+
 async function handleRequest(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -633,75 +820,18 @@ async function handleRequest(req: Request): Promise<Response> {
       }
 
       const folderId = await getOrCreateLeadFolder(lead_id, lead_name, ext);
-      const { PDFDocument } = await import("https://esm.sh/pdf-lib@1.17.1?target=deno");
-      const outDoc = await PDFDocument.create();
-      const skipped: Array<{ file_id: string; name?: string; reason: string }> = [];
-      const merged: Array<{ file_id: string; name: string }> = [];
+      const { pdfBytes, merged, skipped } = await montarPdfDeArquivosDoDrive(file_ids);
 
-      // Baixa cada arquivo na ordem informada e empilha no PDF
-      for (const fid of file_ids) {
-        try {
-          const metaRes = await fetch(`${GATEWAY}/files/${fid}?fields=id,name,mimeType,size`, { headers: gwHeaders() });
-          if (!metaRes.ok) { skipped.push({ file_id: fid, reason: `meta ${metaRes.status}` }); continue; }
-          const meta = await metaRes.json();
-          const mime = (meta.mimeType || "").toLowerCase();
-
-          const dlRes = await fetch(`${GATEWAY}/files/${fid}?alt=media`, { headers: gwHeaders() });
-          if (!dlRes.ok) { skipped.push({ file_id: fid, name: meta.name, reason: `download ${dlRes.status}` }); continue; }
-          const bytes = new Uint8Array(await dlRes.arrayBuffer());
-
-          if (mime.includes("pdf")) {
-            const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
-            const copied = await outDoc.copyPages(src, src.getPageIndices());
-            copied.forEach((p) => outDoc.addPage(p));
-          } else if (mime.includes("jpeg") || mime.includes("jpg")) {
-            const img = await outDoc.embedJpg(bytes);
-            const page = outDoc.addPage([img.width, img.height]);
-            page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
-          } else if (mime.includes("png")) {
-            const img = await outDoc.embedPng(bytes);
-            const page = outDoc.addPage([img.width, img.height]);
-            page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
-          } else {
-            skipped.push({ file_id: fid, name: meta.name, reason: `mime não suportado: ${mime}` });
-            continue;
-          }
-          merged.push({ file_id: fid, name: meta.name });
-        } catch (e) {
-          skipped.push({ file_id: fid, reason: (e as Error).message });
-        }
-      }
-
-      if (outDoc.getPageCount() === 0) {
+      if (!pdfBytes) {
         return new Response(
           JSON.stringify({ success: false, error: "Nenhum arquivo pôde ser agrupado", skipped }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
 
-      const pdfBytes = await outDoc.save();
       const baseName = (output_name && output_name.trim())
         || (merged[0]?.name?.replace(/\.[^.]+$/, "") || "Documento agrupado");
-      const finalName = /\.pdf$/i.test(baseName) ? baseName : `${baseName}.pdf`;
-
-      const boundary = "----lovable-boundary-" + crypto.randomUUID();
-      const metadata = JSON.stringify({ name: finalName, parents: [folderId] });
-      const head = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`;
-      const tail = `\r\n--${boundary}--`;
-      const headBytes = new TextEncoder().encode(head);
-      const tailBytes = new TextEncoder().encode(tail);
-      const payload = new Uint8Array(headBytes.length + pdfBytes.length + tailBytes.length);
-      payload.set(headBytes, 0);
-      payload.set(pdfBytes, headBytes.length);
-      payload.set(tailBytes, headBytes.length + pdfBytes.length);
-
-      const upRes = await fetch(`${UPLOAD_GATEWAY}/files?uploadType=multipart&fields=id,name,webViewLink,mimeType,size,modifiedTime`, {
-        method: "POST",
-        headers: gwHeaders({ "Content-Type": `multipart/related; boundary=${boundary}` }),
-        body: payload,
-      });
-      if (!upRes.ok) throw new Error(`drive merge_drive_files upload failed [${upRes.status}]: ${await upRes.text()}`);
-      const file = await upRes.json();
+      const file = await subirPdfNaPasta(pdfBytes, baseName, folderId);
 
       // Apaga os originais que entraram no merge (somente se solicitado)
       const deleted: string[] = [];
@@ -729,6 +859,277 @@ async function handleRequest(req: Request): Promise<Response> {
 
       return new Response(
         JSON.stringify({ ok: true, file, folder_id: folderId, merged, skipped, deleted, deleteFailed }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (action === "group_documents") {
+      // FASE 2 do agrupamento — o irmão de `consolidate_lead_fields`.
+      //
+      // `analyze_file` olha um arquivo por vez e por isso cada página do laudo
+      // se declara "documento único". Aqui a IA recebe a PASTA INTEIRA de uma
+      // vez e diz quais arquivos são páginas do mesmo documento e em que ordem.
+      // Quem decide se junta sozinho não é ela: é `classificarGrupos`, com
+      // regras objetivas (ver _shared/agrupamentoDocumentos.ts).
+      //
+      // Modos:
+      //   suggest     → só devolve os grupos (não mexe em nada no Drive)
+      //   apply       → junta sozinho os de confiança alta; o resto volta p/ confirmar
+      //   merge_group → junta UM grupo específico já confirmado pelo usuário
+      const {
+        mode = "suggest",
+        group,
+        max_groups,
+      } = body as {
+        mode?: "suggest" | "apply" | "merge_group";
+        group?: { titulo?: string; file_ids: string[]; document_type?: string | null; holder_name?: string | null };
+        max_groups?: number;
+      };
+      if (!lead_id) throw new Error("lead_id required");
+
+      const folderId = await getOrCreateLeadFolder(lead_id, lead_name, ext);
+      const SUBPASTA_ORIGINAIS = "Páginas soltas";
+
+      /** Monta o PDF, sobe e recolhe os originais na subpasta. */
+      const aplicarGrupo = async (g: {
+        titulo?: string;
+        file_ids: string[];
+        document_type?: string | null;
+        holder_name?: string | null;
+      }) => {
+        const { pdfBytes, merged, skipped } = await montarPdfDeArquivosDoDrive(g.file_ids);
+        if (!pdfBytes || merged.length < 2) {
+          return {
+            ok: false as const,
+            titulo: g.titulo || null,
+            erro: "não foi possível montar o PDF com pelo menos 2 páginas",
+            skipped,
+          };
+        }
+        const nome = (g.titulo && g.titulo.trim())
+          || nomeDoGrupo(g.document_type, g.holder_name, merged.length);
+        const file = await subirPdfNaPasta(pdfBytes, nome, folderId);
+
+        // Originais NÃO são apagados: vão para "Páginas soltas". Agrupamento
+        // errado tem volta — a peça original continua existindo.
+        const subpastaId = await getOrCreateSubfolder(folderId, SUBPASTA_ORIGINAIS);
+        const { movidos, falhas } = await moverParaSubpasta(
+          merged.map((m) => m.file_id),
+          folderId,
+          subpastaId,
+        );
+
+        console.log(`[lead-drive] DOCS_AGRUPADOS ${JSON.stringify({
+          lead_id,
+          output_file_id: file.id,
+          output_name: file.name,
+          paginas: merged.length,
+          movidos: movidos.length,
+          falhas_mover: falhas.length,
+          skipped: skipped.length,
+        })}`);
+
+        return {
+          ok: true as const,
+          titulo: file.name,
+          file,
+          paginas: merged.length,
+          originais_movidos: movidos.length,
+          falhas_mover: falhas,
+          skipped,
+        };
+      };
+
+      if (mode === "merge_group") {
+        if (!group?.file_ids || group.file_ids.length < 2) {
+          throw new Error("group.file_ids[] com pelo menos 2 arquivos é obrigatório");
+        }
+        const resultado = await aplicarGrupo(group);
+        return new Response(
+          JSON.stringify({ ok: resultado.ok, aplicados: resultado.ok ? [resultado] : [], falhas: resultado.ok ? [] : [resultado], folder_id: folderId, _functionVersion: FUNCTION_VERSION }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      // 1) Arquivos da pasta do lead (subpastas ficam de fora — "Páginas soltas"
+      //    é arquivo já agrupado, não entra de novo na roda).
+      const q = encodeURIComponent(
+        `'${folderId}' in parents and trashed=false and mimeType != 'application/vnd.google-apps.folder'`,
+      );
+      const listRes = await fetch(
+        `${GATEWAY}/files?q=${q}&fields=files(id,name,mimeType,size,modifiedTime,webViewLink,description)&pageSize=200&orderBy=modifiedTime`,
+        { headers: gwHeaders() },
+      );
+      if (!listRes.ok) throw new Error(`drive list failed [${listRes.status}]: ${await listRes.text()}`);
+      const listJson = await listRes.json();
+      const arquivosDrive = (listJson.files || []) as any[];
+
+      // 2) Quando cada mídia foi enviada no WhatsApp (ordem real das páginas).
+      const envioPorFileId = await mapearEnvioDasMidias(String(lead_id), ext);
+
+      const arquivos: ArquivoParaAgrupar[] = arquivosDrive.map((f) => ({
+        id: f.id,
+        name: f.name,
+        mimeType: f.mimeType,
+        size: f.size,
+        modifiedTime: f.modifiedTime,
+        analise: parseStoredAnalysis(f.description),
+        enviadoEm: envioPorFileId.get(f.id) ?? null,
+      }));
+      const arquivosPorId = new Map(arquivos.map((a) => [a.id, a]));
+      const semAnalise = arquivos.filter((a) => !a.analise).length;
+
+      // 3) Candidatos (tipo × titular). Sem candidato, nem chama a IA.
+      const candidatos = candidatosDeAgrupamento(arquivos);
+      if (candidatos.length === 0) {
+        return new Response(
+          JSON.stringify({
+            ok: true, grupos: [], aplicados: [], confirmar: [], arquivos: arquivos.length,
+            sem_analise: semAnalise, folder_id: folderId, _functionVersion: FUNCTION_VERSION,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      // 4) A IA olha os candidatos juntos e decide grupo + ordem.
+      const indexados = candidatos.flatMap((c) => c.arquivos);
+      const linhas = indexados.map((a, i) => {
+        const an = a.analise || {};
+        return [
+          `#${i}`,
+          `arquivo="${a.name}"`,
+          `tipo=${an.document_type ?? "?"}`,
+          `parte=${an.document_subtype ?? "?"}`,
+          `titular=${an.holder_name ?? "?"}`,
+          `enviado=${a.enviadoEm ?? a.modifiedTime ?? "?"}`,
+          an.description ? `resumo="${String(an.description).slice(0, 180)}"` : "",
+        ].filter(Boolean).join(" | ");
+      }).join("\n");
+
+      let grupos: GrupoDeDocumento[] = [];
+      try {
+        const aiData = await geminiChat({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content:
+                "Você organiza documentos de um processo jurídico brasileiro. Recebe uma lista de arquivos (cada um é UMA página ou UMA foto) e agrupa os que são partes do MESMO documento físico, na ordem correta de leitura.\n" +
+                "REGRAS:\n" +
+                "1. Só agrupe o que é literalmente o mesmo documento: frente e verso do mesmo RG; as N páginas do mesmo laudo; as folhas da mesma procuração ou contrato.\n" +
+                "2. NUNCA agrupe documentos de pessoas diferentes, nem tipos diferentes, nem duas vias distintas do mesmo tipo (dois laudos de datas diferentes são dois documentos).\n" +
+                "3. A ordem dentro do grupo importa: frente antes de verso, página 1 antes da 2, e na dúvida a ordem de envio.\n" +
+                "4. confianca='alta' só quando os sinais forem inequívocos (mesmo titular, mesmo tipo, continuidade evidente). Na menor dúvida use 'média' ou 'baixa' — um humano vai revisar.\n" +
+                "5. Arquivo que está sozinho não vira grupo. Ignore-o.",
+            },
+            {
+              role: "user",
+              content: `Arquivos da pasta do lead:\n${linhas}\n\nDevolva os grupos via tool call.`,
+            },
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "definir_grupos",
+              parameters: {
+                type: "object",
+                properties: {
+                  grupos: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        titulo: { type: "string", description: "Nome do documento unificado. Ex: 'Laudo Pericial — LUIZA DA SILVA'. Sem extensão." },
+                        document_type: { type: "string" },
+                        holder_name: { type: ["string", "null"] },
+                        indices: { type: "array", items: { type: "number" }, description: "Índices #N dos arquivos, NA ORDEM das páginas." },
+                        confianca: { type: "string", enum: ["alta", "média", "baixa"] },
+                        motivo: { type: "string", description: "Uma frase: por que estes são o mesmo documento." },
+                      },
+                      required: ["titulo", "document_type", "indices", "confianca", "motivo"],
+                    },
+                  },
+                },
+                required: ["grupos"],
+              },
+            },
+          }],
+          tool_choice: { type: "function", function: { name: "definir_grupos" } },
+        });
+
+        const args = aiData?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+        const parsed = args ? JSON.parse(args) : {};
+        const usados = new Set<string>();
+        grupos = (Array.isArray(parsed?.grupos) ? parsed.grupos : [])
+          .map((g: any) => {
+            const ids = (Array.isArray(g.indices) ? g.indices : [])
+              .map((i: number) => indexados[i]?.id)
+              .filter((id: string | undefined): id is string => !!id && !usados.has(id));
+            ids.forEach((id: string) => usados.add(id));
+            const confianca = (["alta", "média", "baixa"].includes(g.confianca) ? g.confianca : "baixa") as Confianca;
+            return {
+              titulo: String(g.titulo || "").slice(0, 180),
+              document_type: g.document_type ?? null,
+              holder_name: g.holder_name ?? null,
+              // A ordem final é a da IA, mas reordenada pelos sinais objetivos
+              // quando eles existem (numeração de página / hora de envio).
+              file_ids: ordenarPaginas(
+                ids.map((id: string) => arquivosPorId.get(id)).filter((a): a is ArquivoParaAgrupar => !!a),
+              ).map((a) => a.id),
+              confianca,
+              motivo: String(g.motivo || ""),
+              origem: "ia" as const,
+            };
+          })
+          .filter((g: GrupoDeDocumento) => g.file_ids.length >= 2);
+      } catch (e) {
+        console.warn("[lead-drive] group_documents: IA falhou, devolvendo candidatos sem decisão", e);
+        grupos = candidatos.map((c) => ({
+          titulo: nomeDoGrupo(c.document_type, c.holder_name, c.arquivos.length).replace(/\.pdf$/i, ""),
+          document_type: c.document_type,
+          holder_name: c.holder_name,
+          file_ids: c.arquivos.map((a) => a.id),
+          confianca: "baixa" as Confianca,
+          motivo: "mesmo tipo e mesmo titular (a IA não respondeu — confira antes de agrupar)",
+          origem: "heuristica" as const,
+        }));
+      }
+
+      const { aplicar, confirmar, motivosDeRebaixamento } = classificarGrupos(grupos, arquivosPorId);
+
+      if (mode === "suggest") {
+        return new Response(
+          JSON.stringify({
+            ok: true, grupos, aplicaveis: aplicar, confirmar, motivos_rebaixamento: motivosDeRebaixamento,
+            arquivos: arquivos.length, sem_analise: semAnalise, folder_id: folderId, _functionVersion: FUNCTION_VERSION,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      // mode === "apply": junta sozinho só os aprovados pelo porteiro.
+      // Teto por chamada para não bater no deadline de 120s montando PDF grande.
+      const teto = Math.max(1, Math.min(Number(max_groups) || 4, 10));
+      const aplicados: any[] = [];
+      const falhas: any[] = [];
+      for (const g of aplicar.slice(0, teto)) {
+        const r = await aplicarGrupo(g);
+        if (r.ok) aplicados.push(r); else falhas.push(r);
+      }
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          aplicados,
+          falhas,
+          restantes: Math.max(0, aplicar.length - teto),
+          confirmar,
+          motivos_rebaixamento: motivosDeRebaixamento,
+          arquivos: arquivos.length,
+          sem_analise: semAnalise,
+          folder_id: folderId,
+          _functionVersion: FUNCTION_VERSION,
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }

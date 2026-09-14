@@ -323,6 +323,10 @@ Deno.serve(async (req) => {
             metadata: {
               external_message_id: msg.external_message_id,
               group_jid: msg.phone,
+              // Hora do ENVIO no WhatsApp. É o que ordena as páginas quando o
+              // agrupamento automático monta o PDF — `created_at` da linha e
+              // `modifiedTime` do Drive só dizem quando o import rodou, em lotes.
+              sent_at: msg.created_at,
               import_strategy: strategy,
               storage_url: pub.publicUrl,
               content_hash: contentHash,

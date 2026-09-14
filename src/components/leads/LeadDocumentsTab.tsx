@@ -70,6 +70,20 @@ interface Consolidation {
   conflicts: ConsolidationConflict[];
 }
 
+/**
+ * Grupo de páginas que a IA identificou como UM documento só.
+ * Os de confiança alta o backend já junta sozinho; estes aqui são os que
+ * ficaram em dúvida e esperam o aval de quem entende do caso.
+ */
+interface GrupoSugerido {
+  titulo: string;
+  document_type: string | null;
+  holder_name: string | null;
+  file_ids: string[];
+  confianca: 'alta' | 'média' | 'baixa' | string;
+  motivo: string;
+}
+
 export interface DocCustomFieldDef {
   id: string;
   name: string;
@@ -138,6 +152,10 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
   const [mergeName, setMergeName] = useState('');
   const [mergeDeleteOriginals, setMergeDeleteOriginals] = useState(true);
   const [merging, setMerging] = useState(false);
+
+  const [gruposParaConfirmar, setGruposParaConfirmar] = useState<GrupoSugerido[]>([]);
+  const [agrupando, setAgrupando] = useState(false);
+  const [grupoEmMerge, setGrupoEmMerge] = useState<string | null>(null);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -224,6 +242,128 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
   // Roda 1x por sessão por lead; a edge `lead-drive` e `import-group-docs-to-lead`
   // deduplicam, então re-abrir o lead não cria duplicatas.
   useAutoImportGroupDocs(leadId, leadName, whatsappGroupId, load);
+
+  /**
+   * Fase 2 dos documentos: junta as páginas soltas do MESMO documento num PDF só.
+   *
+   * `analyze_file` classifica um arquivo por vez e por isso cada página do laudo
+   * se declara "documento único" — é o que fazia a pasta do lead ter dois
+   * "Laudo Pericial — (único)". Aqui a edge olha a pasta inteira de uma vez.
+   *
+   * `apply` junta sozinho SÓ o que passou no porteiro (confiança alta, mesmo
+   * titular, páginas em sequência). O resto volta em `confirmar` e aparece na
+   * tela esperando o aval de quem entende do caso. Os originais nunca são
+   * apagados: vão para a subpasta "Páginas soltas" no Drive.
+   */
+  const rodarAgrupamento = useCallback(
+    async (mode: 'suggest' | 'apply', opts: { silencioso?: boolean } = {}) => {
+      setAgrupando(true);
+      try {
+        let rodadas = 0;
+        let aplicadosTotal: Array<{ titulo: string; paginas: number }> = [];
+        let confirmar: GrupoSugerido[] = [];
+        let semAnalise = 0;
+
+        // O backend tem teto por chamada (deadline de 120s montando PDF).
+        // `restantes > 0` significa que sobrou grupo aprovado para a próxima volta.
+        while (rodadas < 3) {
+          rodadas++;
+          const { data, error } = await supabase.functions.invoke('lead-drive', {
+            body: { action: 'group_documents', lead_id: leadId, lead_name: leadName, mode },
+          });
+          if (error) throw error;
+          const d = data as any;
+          if (d?.ok === false || d?.success === false) throw new Error(d?.error || 'Falha ao agrupar');
+
+          aplicadosTotal = aplicadosTotal.concat(
+            (d?.aplicados || []).map((a: any) => ({ titulo: a.titulo, paginas: a.paginas })),
+          );
+          confirmar = d?.confirmar || [];
+          semAnalise = d?.sem_analise || 0;
+          if (mode !== 'apply' || !d?.restantes) break;
+        }
+
+        setGruposParaConfirmar(confirmar);
+
+        if (aplicadosTotal.length > 0) {
+          toast.success(
+            `${aplicadosTotal.length} documento(s) unificado(s) em PDF`,
+            {
+              description:
+                aplicadosTotal.map((a) => `${a.titulo} (${a.paginas} págs)`).join(' · ') +
+                ' — as páginas originais foram para a subpasta "Páginas soltas" no Drive.',
+              duration: 10000,
+            },
+          );
+          await load();
+        } else if (!opts.silencioso) {
+          if (confirmar.length > 0) {
+            toast.info(`${confirmar.length} agrupamento(s) esperando sua confirmação abaixo.`);
+          } else if (semAnalise > 0) {
+            toast.info(
+              'Nenhum agrupamento seguro encontrado.',
+              { description: `${semAnalise} arquivo(s) ainda sem análise IA — rode "Analisar todos" para a IA saber o que é cada página.` },
+            );
+          } else {
+            toast.info('Nada para agrupar: nenhum documento com páginas separadas.');
+          }
+        }
+      } catch (e: any) {
+        console.error('[LeadDocumentsTab] agrupamento error', e);
+        if (!opts.silencioso) toast.error(`Erro ao agrupar: ${e.message || e}`);
+      } finally {
+        setAgrupando(false);
+      }
+    },
+    [leadId, leadName, load],
+  );
+
+  // Roda 1x por sessão por lead, depois que a pasta carregou. Idempotente: o
+  // que já virou PDF saiu da raiz (foi para "Páginas soltas") e não reentra.
+  useEffect(() => {
+    if (loading || files.length < 2) return;
+    const chave = `auto-agrupar-docs:v1:${leadId}`;
+    if (sessionStorage.getItem(chave)) return;
+    sessionStorage.setItem(chave, '1');
+    void rodarAgrupamento('apply', { silencioso: true });
+  }, [loading, files.length, leadId, rodarAgrupamento]);
+
+  /** Junta um grupo que estava esperando confirmação. */
+  async function confirmarGrupo(g: GrupoSugerido) {
+    setGrupoEmMerge(g.titulo);
+    const tId = toast.loading(`Agrupando "${g.titulo}"…`);
+    try {
+      const { data, error } = await supabase.functions.invoke('lead-drive', {
+        body: {
+          action: 'group_documents',
+          mode: 'merge_group',
+          lead_id: leadId,
+          lead_name: leadName,
+          group: {
+            titulo: g.titulo,
+            file_ids: g.file_ids,
+            document_type: g.document_type,
+            holder_name: g.holder_name,
+          },
+        },
+      });
+      if (error) throw error;
+      const d = data as any;
+      if (d?.ok === false) throw new Error(d?.falhas?.[0]?.erro || d?.error || 'Falha ao agrupar');
+      const aplicado = d?.aplicados?.[0];
+      toast.success(
+        `PDF criado: ${aplicado?.titulo || g.titulo}`,
+        { id: tId, description: 'As páginas originais foram para a subpasta "Páginas soltas" no Drive.' },
+      );
+      setGruposParaConfirmar((prev) => prev.filter((x) => x.titulo !== g.titulo));
+      await load();
+    } catch (e: any) {
+      console.error('[LeadDocumentsTab] confirmarGrupo error', e);
+      toast.error(`Erro ao agrupar: ${e.message || e}`, { id: tId });
+    } finally {
+      setGrupoEmMerge(null);
+    }
+  }
 
 
 
@@ -657,6 +797,20 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
           <Button
             variant="outline"
             size="sm"
+            onClick={() => rodarAgrupamento('apply')}
+            disabled={agrupando || loading || files.length < 2}
+            title="A IA olha a pasta inteira e junta num PDF só as páginas do mesmo documento (frente e verso do RG, as 10 folhas do laudo). Os originais vão para a subpasta Páginas soltas."
+          >
+            {agrupando ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+            ) : (
+              <Combine className="h-3.5 w-3.5 mr-1" />
+            )}
+            Unificar páginas
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleReprocess}
             disabled={reprocessing}
             title="Busca a procuração assinada mais recente, extrai dados via IA e sobe o PDF na pasta Drive"
@@ -702,6 +856,63 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
           </div>
           <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         </a>
+      )}
+
+      {gruposParaConfirmar.length > 0 && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-amber-800 dark:text-amber-300">
+            <Combine className="h-4 w-4 shrink-0" />
+            {gruposParaConfirmar.length} agrupamento(s) que a IA não teve certeza
+          </div>
+          <p className="text-xs text-muted-foreground">
+            O que era certeza já virou PDF único sozinho. Estes aqui precisam do seu olho —
+            confirmar junta as páginas num PDF e manda os originais para a subpasta "Páginas soltas".
+          </p>
+          {gruposParaConfirmar.map((g) => {
+            const nomes = g.file_ids
+              .map((id) => files.find((f) => f.id === id)?.name)
+              .filter(Boolean) as string[];
+            return (
+              <div
+                key={g.titulo}
+                className="flex items-start justify-between gap-3 rounded-md border bg-background px-3 py-2 flex-wrap"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">{g.titulo}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {g.file_ids.length} página(s) · confiança {g.confianca}
+                    {g.motivo ? ` · ${g.motivo}` : ''}
+                  </div>
+                  {nomes.length > 0 && (
+                    <div className="text-[11px] text-muted-foreground/80 truncate" title={nomes.join(' → ')}>
+                      {nomes.join(' → ')}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setGruposParaConfirmar((prev) => prev.filter((x) => x.titulo !== g.titulo))
+                    }
+                    disabled={grupoEmMerge === g.titulo}
+                  >
+                    Agora não
+                  </Button>
+                  <Button size="sm" onClick={() => confirmarGrupo(g)} disabled={!!grupoEmMerge}>
+                    {grupoEmMerge === g.titulo ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <Combine className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    Agrupar
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {selectedIds.length > 0 && (
