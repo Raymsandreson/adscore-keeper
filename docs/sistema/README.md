@@ -17,6 +17,7 @@ Documentação de todas as seções do sistema: propósito de cada tela, funcion
 - [Financeiro no processo e na atividade](financeiro-processo-atividade.md) — onde lançar despesa/receita de cliente e como o lançamento sobe para processo, caso e lead
 - [Dom — Assessor Jurídico Virtual](dom-assessor-virtual.md) — atendente virtual que responde o cliente no grupo do caso com o andamento real dos autos: as três travas, o isolamento por grupo, como ele fala e o que ainda falta
 - [Open Finance / Celcoin](open-finance-celcoin.md) — conciliação bancária que substitui a Pluggy: caminhos versionados, janela de datas, consentimento PJ e o que ainda falta conectar
+- [Liberar acesso de uma pessoa](acesso-de-usuario.md) — criar acesso direto ou convite pela tela Equipe, qual perfil dá o quê, e os dois bloqueios que parecem o mesmo ("acesso desativado" × "Acesso Restrito")
 
 ### Aquisição: do anúncio ao caso fechado
 
