@@ -1942,7 +1942,7 @@ const ActivitiesPage = () => {
 
   const completeAndCreateLockRef = useRef(false);
 
-  const handleCompleteAndCreateNextWithNotify = async (notifyOptions?: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
+  const handleCompleteAndCreateNextWithNotify = async (notifyOptions?: GroupNotifyOptions) => {
     if (!selectedActivity) return;
     // Prevent double execution
     if (completeAndCreateLockRef.current) return;

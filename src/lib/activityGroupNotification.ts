@@ -3,6 +3,7 @@ import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { resolveGroupSenderInstanceName } from '@/lib/whatsappGroupInstance';
+import { gerarAudioNarracao } from '@/lib/activityAudioNarration';
 import { toast } from 'sonner';
 
 export interface GroupNotifyOptions {
@@ -10,6 +11,12 @@ export interface GroupNotifyOptions {
   message: string;
   sendAudio: boolean;
   audioText?: string;
+  /**
+   * MP3 já gerado pela prévia do dialog, para a MESMA narração. Existindo, o
+   * envio reaproveita em vez de pedir outro ao ElevenLabs: quem ouviu a prévia
+   * manda exatamente o áudio que ouviu, e o escritório paga uma geração só.
+   */
+  audioUrl?: string;
 }
 
 /**
@@ -83,18 +90,15 @@ export async function sendActivityGroupNotification(
         return;
       }
 
-      const { data: ttsData, error: ttsError } = await cloudFunctions.invoke('elevenlabs-tts', {
-        body: { text: options.audioText },
-      });
-      const audioUrl = (ttsData as { audio_url?: string } | null)?.audio_url;
-      if (ttsError || !audioUrl) {
-        const motivo =
-          (ttsData as { error?: string } | null)?.error ||
-          (ttsError instanceof Error ? ttsError.message : null) ||
-          'a geração de voz não devolveu áudio';
-        console.error('[sendActivityGroupNotification] TTS falhou:', ttsError || ttsData);
-        toast.error(`Áudio não enviado: ${motivo}`);
-        return;
+      let audioUrl = options.audioUrl?.trim();
+      if (!audioUrl) {
+        try {
+          audioUrl = (await gerarAudioNarracao(options.audioText)).audioUrl;
+        } catch (e) {
+          const motivo = (e instanceof Error && e.message) || 'a geração de voz não devolveu áudio';
+          toast.error(`Áudio não enviado: ${motivo}`);
+          return;
+        }
       }
 
       const { data: mediaData, error: mediaError } = await cloudFunctions.invoke('send-whatsapp', {

@@ -36,13 +36,23 @@ serve(async (req) => {
 
     // Get user's voice preference if no voice_id specified
     let finalVoiceId = voice_id;
+    // Qual voz saiu, devolvido na resposta: a tela que manda o áudio ao cliente
+    // precisa poder DIZER (e a prévia, provar) se é a voz da pessoa ou a do
+    // catálogo. Sem isso, "vai com a sua voz" era promessa: quem nunca gravou
+    // `voice_preferences` recebia a Laura sem nenhum aviso.
+    let voiceName = voice_id ? null : "Laura";
+    let voiceType = voice_id ? "explicit" : "preset";
     if (!finalVoiceId) {
       const { data: pref } = await supabase
         .from("voice_preferences")
-        .select("voice_id")
+        .select("voice_id, voice_name, voice_type")
         .eq("user_id", user.id)
         .maybeSingle();
       finalVoiceId = pref?.voice_id || "FGY2WhTYpPnrIDTdsKH5"; // Laura default
+      if (pref?.voice_id) {
+        voiceName = pref.voice_name || null;
+        voiceType = pref.voice_type || "preset";
+      }
     }
 
     // Clean text for TTS
@@ -104,6 +114,9 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       success: true,
       audio_url: urlData?.publicUrl,
+      voice_id: finalVoiceId,
+      voice_name: voiceName,
+      voice_type: voiceType,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
