@@ -247,7 +247,12 @@ export const handler: RequestHandler = async (req, res) => {
       nomePorBoard[b.id] = b.name;
       funilPorBoard[b.id] = funilDoNome(b.name);
     }
-    const idsPrev = Object.keys(funilPorBoard).filter((id) => funilPorBoard[id] !== null);
+    // Board marcado como desativado no proprio nome fica de fora: ele nao recebe
+    // lead novo, e so polui o rotulo do escopo na tela.
+    const desativado = (nome: string) => /desativad|descontinuad|\bantig/i.test(nome || '');
+    const idsPrev = Object.keys(funilPorBoard).filter(
+      (id) => funilPorBoard[id] !== null && !desativado(nomePorBoard[id]),
+    );
     if (!idsPrev.length) throw new Error('nenhum board de PREV encontrado — o painel ficaria vazio sem dizer por que');
 
     const [leadsBrutos, fechadosBrutos, gasto, eventos, filaCapi, integracao] = await Promise.all([
@@ -701,7 +706,9 @@ export const handler: RequestHandler = async (req, res) => {
       // Trabalhista sem avisar produz numero que ninguem consegue conferir.
       escopo: {
         area: 'PREV',
-        boards: idsPrev.map((id) => nomePorBoard[id]).sort(),
+        // Nomes repetidos existem (ha dois boards "Auxilio Acidente"): o rotulo
+        // mostra o conjunto, nao a contagem de ids.
+        boards: [...new Set(idsPrev.map((id) => nomePorBoard[id]))].sort(),
         nota: 'Trabalhista tem estrutura e equipe diferentes e fica fora desta aba.',
       },
       opcoes: {
