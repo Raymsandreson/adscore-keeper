@@ -398,3 +398,25 @@ acrescentasse o filtro, o que parece uma correção óbvia, as 255 duplicatas
 voltariam em 30 minutos.
 
 Agora ele dedupa também pelo **id da Meta**, como o `bpc-sheet-sync` já faz.
+
+## O status do Auxílio Acidente nunca foi lido (14/09/2026)
+
+Medido no diagnóstico com `aplicar_status`: o funil de Auxílio Acidente tinha
+`status_aplicado: {}` **e** `status_ignorado: {}` — os dois vazios. Não era "a
+equipe não preenche": era o leitor não saber onde olhar.
+
+A planilha do BPC usa a coluna `status da lead`. A do Auxílio Acidente usa
+`status lead`, sem o "da". O leitor procurava o nome exato do BPC.
+
+Pior: a lista de contagem do diagnóstico tinha os mesmos nomes exatos, então a
+coluna **não aparecia nem como ausente**. O sintoma era invisível, e a conclusão
+natural — errada — seria sobre as pessoas, não sobre o código.
+
+`celulaDeStatusDaEquipe` (`lib/leadAdsSheet.ts`, com teste) procura por uma lista
+de nomes conhecidos e depois por qualquer coluna que contenha "status".
+**`lead_status` fica de fora sempre**: é coluna da exportação da Meta e vale
+sempre "created" — foi ela que, com `||`, curto-circuitava a leitura na primeira
+versão.
+
+O diagnóstico passou a contar pela mesma lista que a leitura usa. Quando os dois
+divergem, a coluna some das duas pontas ao mesmo tempo e ninguém percebe.
