@@ -79,6 +79,7 @@ import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { StageTimeMetrics } from '@/components/kanban/StageTimeMetrics';
 import { StageFunnelChart } from '@/components/kanban/StageFunnelChart';
 import { KanbanReportDialog } from '@/components/kanban/KanbanReportDialog';
+import { LeadFilterReportDialog } from '@/components/kanban/LeadFilterReportDialog';
 import { ChecklistFilter } from '@/components/kanban/ChecklistFilter';
 import { LeadListView } from '@/components/kanban/LeadListView';
 import {
@@ -110,6 +111,8 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
   const [showAddLeadDialog, setShowAddLeadDialog] = usePageState<boolean>('kanban_addLeadOpen', false);
   const [showImportInstagram, setShowImportInstagram] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  // Relatório em texto do recorte atual (botão na barra de filtros).
+  const [showFilterReport, setShowFilterReport] = useState(false);
   const [editingLeadId, setEditingLeadId] = usePageState<string | null>('kanban_editingLeadId', null);
   const [showExtractor, setShowExtractor] = useState(false);
   const [storedFilters, setAdvancedFilters] = usePageState<LeadFilters>('kanban_advFilters', emptyFilters);
@@ -1141,6 +1144,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
           availableRegions={filterOptions.regions}
           availableCaseTypes={filterOptions.caseTypes}
           availableAcolhedores={filterOptions.acolhedores}
+          onOpenReport={selectedBoard ? () => setShowFilterReport(true) : undefined}
         />
       )}
 
@@ -1677,6 +1681,22 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
           board={selectedBoard}
           leads={boardLeads}
           leadsPerStage={leadsPerStage}
+        />
+      )}
+
+      {/* Relatório em texto do recorte do filtro (barra de filtros) */}
+      {selectedBoard && showFilterReport && (
+        <LeadFilterReportDialog
+          open={showFilterReport}
+          onOpenChange={setShowFilterReport}
+          board={selectedBoard}
+          filters={advancedFilters}
+          searchQuery={searchQuery}
+          acolhedorFilter={acolhedorFilter}
+          checklistFilteredIds={checklistFilteredIds}
+          chips={viewMode === 'list' ? listChips : emptyChips}
+          sort={listSort}
+          profiles={teamProfiles}
         />
       )}
     </div>
