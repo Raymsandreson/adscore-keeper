@@ -46,6 +46,7 @@ import { formatPostponeDate } from '@/lib/postponeDates';
 import { buildMotherContentPatch } from '@/lib/activityChainMother';
 import { splitAIFields, AI_FIELD_LABELS, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
+import { abrirPassosDoPop } from '@/lib/popPassosIntent';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -1170,6 +1171,20 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         onUpdated?.();
         onCreated?.(created as LeadActivity);
         onOpenChange(false);
+        // Atividade nasceu medida por um POP: pergunta se algum passo já foi
+        // dado e abre a aba lateral dos passos. Sem isso o POP ficava parado
+        // numa fase que o processo já passou (pedido do usuário, 14/09/2026).
+        // Interna/gerencial fica de fora: não há passo de POP a cobrar.
+        if (formLeadId && stepBoardId && !formIsSystem && !formIsManagement) {
+          abrirPassosDoPop({
+            leadId: formLeadId,
+            boardId: stepBoardId,
+            processId: formProcessId || null,
+            activityId: (created as LeadActivity)?.id || null,
+            perguntar: true,
+            atividadeTitulo: titleToUse,
+          });
+        }
       }
       return;
     }

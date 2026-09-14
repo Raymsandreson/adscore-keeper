@@ -316,7 +316,13 @@ const ActivitiesPage = () => {
     noteAttachmentsUploadingRef.current = uploading;
     setNoteAttachmentsUploading(uploading);
   }, []);
-  const [createdDialog, setCreatedDialog] = useState<{ open: boolean; title: string; activity: LeadActivity | null }>({ open: false, title: '', activity: null });
+  const [createdDialog, setCreatedDialog] = useState<{
+    open: boolean;
+    title: string;
+    activity: LeadActivity | null;
+    /** POP que mede a atividade criada — alimenta a pergunta "já deu algum passo?". */
+    pop: { leadId: string; boardId: string; processId?: string | null; activityId?: string | null } | null;
+  }>({ open: false, title: '', activity: null, pop: null });
   const [shareSummaryOpen, setShareSummaryOpen] = useState(false);
   const [courtContactsOpen, setCourtContactsOpen] = useState(false);
   const [leads, setLeads] = useState<LeadOption[]>([]);
@@ -1414,7 +1420,28 @@ const ActivitiesPage = () => {
     // Confirmation dialog with title + edit/delete actions
     if (createdActivityId && createdActivityFull) {
       const activityForActions = createdActivityFull as LeadActivity;
-      setCreatedDialog({ open: true, title: titleToUse, activity: activityForActions });
+      // POP da atividade, na MESMA cascata do `activeStepBoardId` e da barra de
+      // progresso: POP próprio > POP do processo > funil do lead. Lido aqui
+      // (e não depois) porque o `closeSheet()` acima só agenda a limpeza do
+      // formulário — os valores desta renderização ainda valem.
+      const popProcesso = formProcessId ? caseProcesses.find(p => p.id === formProcessId)?.workflow_id : null;
+      const popBoardId = formWorkflowId || popProcesso || leadPreview?.board_id || null;
+      // Atividade interna/gerencial não tem POP pra cobrar — perguntar ali só
+      // atrapalharia quem cria tarefa administrativa em série.
+      const perguntarPop = !!(formLeadId && popBoardId && !formIsSystem && !formIsManagement);
+      setCreatedDialog({
+        open: true,
+        title: titleToUse,
+        activity: activityForActions,
+        pop: perguntarPop
+          ? {
+              leadId: formLeadId,
+              boardId: popBoardId as string,
+              processId: formProcessId || null,
+              activityId: createdActivityId,
+            }
+          : null,
+      });
     }
   };
 
@@ -7173,6 +7200,7 @@ const ActivitiesPage = () => {
         open={createdDialog.open}
         onOpenChange={(open) => setCreatedDialog((prev) => ({ ...prev, open }))}
         title={createdDialog.title}
+        pop={createdDialog.pop}
         onEdit={() => createdDialog.activity && handleOpenEdit(createdDialog.activity)}
         onDelete={() => {
           const act = createdDialog.activity;
