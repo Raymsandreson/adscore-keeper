@@ -318,7 +318,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const completeAndCreateLockRef = useRef(false);
 
   const { types: activityTypes } = useActivityTypes();
-  const { user } = useAuthContext();
+  const { user, profile } = useAuthContext();
   const { boards: allBoards } = useKanbanBoards();
   const workflowOptions = allBoards.filter(b => b.board_type === 'workflow' && !isBoardArchived(b)).map(b => ({ id: b.id, name: b.name }));
   const profiles = useProfilesList();
@@ -1470,7 +1470,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       // Só completa os campos vazios com os marcos se a pessoa tiver ligado —
       // de fábrica a mensagem sai com o que está escrito na ficha, e só.
       completarCamposComMarcos: completarCamposComMarcosLigado(),
-      currentUserId: user?.id || null, resolveUserName, getTemplateForContext, inssDesfecho,
+      currentUserId: user?.id || null, currentUserName: profile?.full_name || null,
+      resolveUserName, getTemplateForContext, inssDesfecho,
     }, audience);
 
   return (

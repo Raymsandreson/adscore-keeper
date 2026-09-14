@@ -574,6 +574,24 @@ Agora é **opt-in**, desligado de fábrica:
 - **Desligado** (padrão), campo vazio não vira seção nenhuma: a mensagem sai só com o que está escrito na ficha.
 - Código: `completarCamposComMarcos` em `src/components/activities/buildActivityMessage.ts` (guarda o bloco da régua), preferência em `src/lib/completarCamposComMarcos.ts`, interruptor em `ActivityFieldSettingsDialog.tsx`, passado pelos três call sites (`ActivityFullSheet`, `ActivitiesPage`, `ProcessUpdatesBell`). Testes em `buildActivityMessage.progresso.test.ts`: "de fábrica, campo vazio continua vazio" (novo) e os dois antigos, que agora ligam a flag explicitamente.
 
+## Quem assina a mensagem é quem manda, não quem criou (14/09/2026)
+
+O "Com carinho, Fulano 💚" no fim da mensagem da atividade (**Copiar**, **Enviar ao Grupo**, **Enviar ao Assessor**, prévia e áudio) saía com o nome de quem **criou** a atividade — `selectedActivity.created_by`. Só que a atividade anda de mão em mão: cada "concluir e próximo" passa o bastão adiante, e quem escreve e envia a mensagem de hoje quase nunca é quem abriu o card semanas atrás.
+
+O tamanho do erro, medido no Externo em 14/09/2026 (`lead_activities`, últimos 60 dias): **3.094 de 14.953 atividades (20,7%)** já tinham `updated_by` diferente do `created_by`. Em todas elas a mensagem chegava ao cliente assinada por quem não escreveu nem enviou nada. E 20,7% é **piso**: quem só clica em Copiar, sem editar, nem aparece no `updated_by`.
+
+O que mudou em `src/components/activities/buildActivityMessage.ts`:
+
+- **`senderName`** — `resolveUserName(currentUserId) || currentUserName` — é quem assina, nos três ramos (mensagem ao assessor, template salvo e fallback embutido). `createdByName` continua existindo, mas só alimenta `{{criado_por}}`/`{{criado_em}}`.
+- **Rede de segurança `currentUserName`** (novo campo do contexto): `resolveUserName` só enxerga a lista de assinaláveis (`filterAssignableMembers`), então quem está no blocklist ou ainda não carregou em `profiles` voltaria nulo e a mensagem sairia **sem** assinatura. Os três call sites passam `profile?.full_name` do `AuthContext` (`ActivityFullSheet`, `ActivitiesPage`, `ProcessUpdatesBell`).
+- **Sem saber quem manda, não assina.** Nada de cair de volta no criador: assinatura com o nome errado é pior que assinatura nenhuma.
+- **A linha `*Atividade criada por:* X em DD/MM` saiu** da mensagem ao assessor (e com ela o `*Última atualização por:*` que vinha grudado). A assinatura logo abaixo já diz quem está falando, e o criador original quase nunca é essa pessoa. Quem quiser a autoria de volta num board específico escreve `{{criado_por}}`/`{{criado_em}}` no template daquele board.
+- **Nova variável `{{enviado_por}}`** no editor de templates, para quem quiser escrever a assinatura à mão em vez de deixar a auto-injeção fazer. Ela rende o `senderName`; `{{criado_por}}` continua rendendo o criador.
+
+Nenhum template salvo foi afetado: em 14/09/2026 existia **um** (`Acidente de Trabalho`, board `2dcd54b5`) em `activity_message_templates`, e ele não usa `{{criado_por}}` nem traz assinatura escrita — a assinatura de produção sempre veio da auto-injeção.
+
+Testes: `src/components/activities/__tests__/buildActivityMessage.assinatura.test.ts` (6 casos — cliente, assessor, template, fallback do perfil, sem remetente, atividade nova). Rollback: reverter o commit; nada de banco mudou.
+
 ## Prazo se cumpre, não se reagenda (31/08/2026)
 
 Três regras nascidas do caso `1017247-47.2025.4.01.3100` (prazo real 16/07 no título da atividade, deadline manual em 31/07, réplica protocolada 03/08 — e o prazo do robô criado 53 dias depois com título errado):

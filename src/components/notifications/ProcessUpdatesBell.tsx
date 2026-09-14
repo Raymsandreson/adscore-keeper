@@ -859,6 +859,7 @@ export function ProcessUpdatesBell({
       leadPreview: { board_id: ctx.boardId },
       systemOabs,
       currentUserId: user?.id || null,
+      currentUserName: profile?.full_name || null,
       resolveUserName,
       getTemplateForContext,
     }, 'client');
