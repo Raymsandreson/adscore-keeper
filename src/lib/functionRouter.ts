@@ -53,6 +53,15 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   // Lista os templates aprovados da WABA ativa. Só existe no Railway (usa o
   // WHATSAPP_CLOUD_TOKEN, que não sai de lá).
   'whatsapp-cloud-templates': 'railway',
+  // Mesmo motivo do de cima (o WHATSAPP_CLOUD_TOKEN so existe no Railway), mas
+  // esta estava CAINDO NO DEFAULT 'cloud' — e a edge do Cloud e so um trampolim
+  // que repassa pro Railway `if (RAILWAY_API_KEY)`, variavel que nunca teve
+  // valor. Resultado: toda checagem de token chegava no /functions/* SEM
+  // credencial nenhuma, e era um dos dois chamadores anonimos que impediam
+  // ligar o RAILWAY_AUTH_ENFORCE (medido em 14/09/2026 no /health).
+  // Indo direto, o functionRouter manda o JWT do usuario logado, que e
+  // credencial aceita — e ainda tira um hop do caminho.
+  'check-whatsapp-cloud-token': 'railway',
   'get-whatsapp-group-info': 'railway',
   'get-group-participants': 'railway', // lia whatsapp_instances/groups_cache do Cloud (moram no Externo) e descartava participante @lid
   'sync-group-contacts': 'railway', // blocklist de equipe lia instances/profiles do Cloud; ilike não casava telefone formatado (criava contato duplicado); @lid descartado e nome do roster ignorado
