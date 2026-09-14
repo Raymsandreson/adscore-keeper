@@ -496,3 +496,37 @@ Conferido em 11/09: **piloto e controle têm hoje a mesma lista** —
 story, reels, profile_feed`. Então a comparação não está enviesada por
 posicionamento. Fica o registro de que trocar a otimização pode mexer no
 targeting sem aviso: conferir os dois lados depois de cada troca.
+
+## Piloto de Leads com Conversão: leitura de 14/09/2026
+
+Dois conjuntos em `QUALITY_LEAD`, e eles estão em **campanhas diferentes** — o
+que invalida a comparação direta entre eles:
+
+| Campanha | Conjunto | Gasto 5d | Leads | CPL | Fech |
+|---|---|---:|---:|---:|---:|
+| BPC-LOAS | **CONJUNTO 7 - TAFFAREL** (piloto) | R$ 369,40 | 54 | **R$ 6,84** | 0 |
+| BPC-LOAS | CONJUNTO 6 - MATEUS | R$ 511,02 | 94 | R$ 5,44 | 1 |
+| BPC-LOAS | CONJUNTO 3 - ISRAEL | R$ 461,82 | 62 | R$ 7,45 | 1 |
+| BPC-LOAS | CONJUNTO 4 KAROL | R$ 319,15 | 52 | R$ 6,14 | 0 |
+| [AUXÍLIO-ACIDENTE] | **CONJUNTO - KAROLYNE** (piloto) | R$ 289,49 | 24 | **R$ 12,06** | 0 |
+| [AUXÍLIO-ACIDENTE] | CONJUNTO - [MATEUS] | R$ 251,14 | 17 | R$ 14,77 | 0 |
+
+**Lead de Auxílio Acidente custa cerca do dobro do de BPC.** Comparar a KAROLYNE
+(R$ 12,06) com os conjuntos de BPC (R$ 5–7) é comparar produtos diferentes — foi
+o erro da primeira leitura, em 11/09. Dentro da própria campanha, ela está **mais
+barata** que o único controle.
+
+### Por que ainda não dá para concluir
+
+**Não existe "antes".** Os dois conjuntos gastaram **R$ 0** no período anterior à
+troca (05–09/09): são conjuntos novos, não conjuntos que mudaram de otimização.
+Não há comparação antes/depois, e CPL de conjunto em aprendizado não se compara
+com o de conjunto maduro.
+
+**Fechamento não tem amostra.** Zero nos pilotos, 2 nos controles em 5 dias. E o
+que o piloto existe para melhorar é justamente fechamento, não CPL.
+
+**A medição válida começa agora**, e por um motivo concreto: até 14/09 o funil de
+Auxílio Acidente não reportava fechamento nenhum ao CRM (a coluna de status tinha
+outro nome e nunca era lida). O piloto da KAROLYNE está nesse funil — antes de
+hoje, ele era impossível de avaliar pelo critério que importa.
