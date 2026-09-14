@@ -1247,3 +1247,53 @@ mesmo `SeletorGrupoCaso` das outras telas. Regras que a aba prende:
   lead; contato + grupo de outro lead grava vínculo cruzado que ninguém vê;
 - override com `group_jid` **abre já na aba Grupo**: foi a escolha mais
   específica que alguém fez.
+
+### O teste da aba Grupo desenterrou um diálogo quebrado — 14/09/2026
+
+Escrever o teste de componente do `TransactionCategorizer` revelou que **o
+diálogo inteiro não funcionava**, e já não funcionava antes desta série de
+mudanças (conferido rodando o mesmo teste contra o arquivo como estava em
+`84f8c15`): clicar numa categoria não marcava nada e o botão **Salvar nunca
+habilitava**.
+
+**Causa raiz, em `src/hooks/useBrazilianLocations.ts`:** `fetchCities` era uma
+função comum, recriada a cada render. Ela está nas dependências do efeito que
+zera o formulário quando o diálogo abre. A cadeia:
+
+```
+clicar na categoria → setState → render → nova `fetchCities`
+  → deps mudaram → efeito roda → setSelectedCategory('') → escolha apagada
+```
+
+Nenhum erro no console. A tela simplesmente não obedecia — o pior tipo de falha,
+porque não deixa rastro para procurar.
+
+**Conserto:** `useCallback(..., [])` no `fetchCities`. Ela só usa setters de
+estado e constantes de módulo, então não há o que invalidar. São **8 telas**
+consumindo esse hook; esta era a mais sensível porque é a única cujo efeito de
+dependência apaga escolha do usuário.
+
+`src/hooks/__tests__/useBrazilianLocations.estabilidade.test.ts` prende a
+identidade estável, para o dia em que alguém tirar o `useCallback`.
+
+### Testes do diálogo
+
+`src/components/finance/__tests__/TransactionCategorizer.grupo.test.tsx`
+(6 casos, render de verdade do diálogo, busca de grupo rodando contra um `db`
+falso com a cadeia real do PostgREST):
+
+1. escolher o grupo grava `group_jid` **e** o `lead_id` dele, com o lead dito na
+   tela, e `link_acknowledged: false`;
+2. a busca do grupo sai como `or(...ilike...)` — vai ao **servidor**, não filtra
+   2.429 jids no navegador;
+3. **escolher contato larga o grupo** — visto vermelho antes (sem o conserto o
+   teste acusa `expected 'jid-joelma@g.us' to be null`, que é exatamente o
+   contato de uma pessoa com o caso de outra);
+4. override com `group_jid` abre na aba Grupo já com o nome do grupo;
+5. grupo sem lead avisa na tela e grava o caso mesmo assim, com lead em branco —
+   chutar o lead seria inventar vínculo;
+6. a aba Lead segue inteira: grava lead e `group_jid` nulo.
+
+Detalhe de quem for mexer: o mock de `useBrazilianLocations` declara
+`fetchCities` **fora** da fábrica. Um `vi.fn()` novo por render reproduz dentro
+do teste exatamente o bug acima, e aí o teste passa a medir o mock.

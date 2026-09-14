@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface State {
   id: number;
@@ -95,7 +95,16 @@ export function useBrazilianLocations() {
   const [cities, setCities] = useState<City[]>([]);
   const [loadingCities, setLoadingCities] = useState(false);
 
-  const fetchCities = async (stateAbbreviation: string) => {
+  /**
+   * `useCallback` NÃO é enfeite aqui. Sem ele esta função nascia de novo a cada
+   * render, e todo `useEffect` que a lista nas dependências — o `TransactionCategorizer`
+   * é o caso gritante — passava a rodar em TODO render. Lá o efeito é o que
+   * zera o formulário ao abrir o diálogo: com a função instável, escolher uma
+   * categoria disparava um render, o render disparava o efeito, e o efeito
+   * apagava a escolha. O botão Salvar nunca habilitava, e nada disso aparecia
+   * como erro — só como tela que "não obedece". São 8 telas usando este hook.
+   */
+  const fetchCities = useCallback(async (stateAbbreviation: string) => {
     if (!stateAbbreviation) {
       setCities([]);
       return;
@@ -122,7 +131,9 @@ export function useBrazilianLocations() {
     } finally {
       setLoadingCities(false);
     }
-  };
+    // Só usa setters de estado (estáveis) e constantes de módulo: nada para
+    // invalidar. Identidade fixa pela vida do componente.
+  }, []);
 
   return {
     states,
