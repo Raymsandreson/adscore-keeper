@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Filter, X, ChevronDown, ChevronUp, ClipboardList, UserSearch, MapPin, Search } from 'lucide-react';
+import { Filter, X, ChevronDown, ChevronUp, ClipboardList, UserSearch, MapPin, Search, FileText } from 'lucide-react';
 import { ProfileItem } from '@/hooks/useProfilesList';
 import { MultiSelectFilter } from '@/components/finance/MultiSelectFilter';
 
@@ -91,17 +91,6 @@ const CASE_TYPE_LABELS: Record<string, string> = {
   outro: 'Outro',
 };
 
-interface LeadAdvancedFiltersProps {
-  filters: LeadFilters;
-  onChange: (filters: LeadFilters) => void;
-  profiles: ProfileItem[];
-  availableStates: string[];
-  availableCities: string[];
-  availableRegions: string[];
-  availableCaseTypes: string[];
-  availableAcolhedores: string[];
-}
-
 // Map filter keys to human-readable labels
 const FILTER_LABELS: Record<keyof LeadFilters, string> = {
   searchTerm: 'Busca',
@@ -122,6 +111,64 @@ const FILTER_LABELS: Record<keyof LeadFilters, string> = {
   visitRegion: 'Região',
 };
 
+export interface FilterChip {
+  id: string;
+  key: keyof LeadFilters;
+  label: string;
+  value: string;
+  /** Presente só em filtro de lista (uma UF do multi-seleção). */
+  item?: string;
+}
+
+/**
+ * Filtros ativos em forma legível — os mesmos chips da barra e o cabeçalho do
+ * relatório em texto saem daqui, para não existirem dois vocabulários para o
+ * mesmo filtro.
+ */
+export function describeLeadFilters(filters: LeadFilters, profiles: ProfileItem[] = []): FilterChip[] {
+  const chips: FilterChip[] = [];
+  (Object.keys(filters) as (keyof LeadFilters)[]).forEach(key => {
+    const raw = filters[key];
+    if (!isFilterActive(raw)) return;
+
+    // Filtro de lista vira um chip por valor: dá pra tirar um estado sem
+    // perder os outros.
+    if (Array.isArray(raw)) {
+      raw.forEach(item => chips.push({ id: `${key}:${item}`, key, label: FILTER_LABELS[key], value: item, item }));
+      return;
+    }
+
+    let displayValue = raw;
+
+    if (key === 'createdBy' || key === 'updatedBy') {
+      const profile = profiles.find(p => p.user_id === raw);
+      displayValue = profile?.full_name || profile?.email || raw.slice(0, 8);
+    } else if (key === 'ageRange') {
+      const range = AGE_RANGES.find(r => r.value === raw);
+      displayValue = range?.label || raw;
+    } else if (key === 'caseType') {
+      displayValue = CASE_TYPE_LABELS[raw] || raw;
+    }
+
+    chips.push({ id: key, key, label: FILTER_LABELS[key], value: displayValue });
+  });
+  return chips;
+}
+
+interface LeadAdvancedFiltersProps {
+  filters: LeadFilters;
+  onChange: (filters: LeadFilters) => void;
+  profiles: ProfileItem[];
+  availableStates: string[];
+  availableCities: string[];
+  availableRegions: string[];
+  availableCaseTypes: string[];
+  availableAcolhedores: string[];
+  /** Abre o relatório em texto do recorte atual. Sem ela, o botão não aparece. */
+  onOpenReport?: () => void;
+}
+
+
 export function LeadAdvancedFilters({
   filters,
   onChange,
@@ -131,6 +178,7 @@ export function LeadAdvancedFilters({
   availableRegions,
   availableCaseTypes,
   availableAcolhedores,
+  onOpenReport,
 }: LeadAdvancedFiltersProps) {
   const [open, setOpen] = useState(false);
 
@@ -155,35 +203,7 @@ export function LeadAdvancedFilters({
   };
 
   // Build active filter chips with display values
-  const activeFilters = useMemo(() => {
-    const chips: { id: string; key: keyof LeadFilters; label: string; value: string; item?: string }[] = [];
-    (Object.keys(filters) as (keyof LeadFilters)[]).forEach(key => {
-      const raw = filters[key];
-      if (!isFilterActive(raw)) return;
-
-      // Filtro de lista vira um chip por valor: dá pra tirar um estado sem
-      // perder os outros.
-      if (Array.isArray(raw)) {
-        raw.forEach(item => chips.push({ id: `${key}:${item}`, key, label: FILTER_LABELS[key], value: item, item }));
-        return;
-      }
-
-      let displayValue = raw;
-
-      if (key === 'createdBy' || key === 'updatedBy') {
-        const profile = profiles.find(p => p.user_id === raw);
-        displayValue = profile?.full_name || profile?.email || raw.slice(0, 8);
-      } else if (key === 'ageRange') {
-        const range = AGE_RANGES.find(r => r.value === raw);
-        displayValue = range?.label || raw;
-      } else if (key === 'caseType') {
-        displayValue = CASE_TYPE_LABELS[raw] || raw;
-      }
-
-      chips.push({ id: key, key, label: FILTER_LABELS[key], value: displayValue });
-    });
-    return chips;
-  }, [filters, profiles]);
+  const activeFilters = useMemo(() => describeLeadFilters(filters, profiles), [filters, profiles]);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -231,6 +251,21 @@ export function LeadAdvancedFilters({
             {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </Button>
         </CollapsibleTrigger>
+
+        {/* Relatório do recorte atual — fica ao lado do gatilho porque é sobre
+            o que o filtro deixou na tela, e vale com o painel aberto ou não. */}
+        {onOpenReport && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={onOpenReport}
+            title="Relatório em texto dos leads que passam pelo filtro atual"
+          >
+            <FileText className="h-4 w-4" />
+            Relatório
+          </Button>
+        )}
 
         {/* Active filter chips */}
         {activeFilters.map(f => (
