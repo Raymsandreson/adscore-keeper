@@ -55,24 +55,53 @@ export function acolhedorDoConjunto(nomeDoConjunto: string | null | undefined): 
 export interface Funil {
   chave: string;
   rotulo: string;
-  /** Casa tanto o nome da campanha na Meta quanto o nome do board no CRM. */
-  tokens: string[];
+  /**
+   * Grupos de tokens. A linha casa quando CADA grupo tem ao menos um token
+   * presente — ou seja: "ou" dentro do grupo, "e" entre grupos.
+   *
+   * Nao e sofisticacao gratuita. Com uma lista simples de tokens, `ACIDENTE`
+   * casava "Acidente de Trabalho" — que e TRABALHISTA, outro negocio, com outra
+   * equipe. Medido em 14/09/2026: filtrar a aba por "Auxilio Acidente" devolvia
+   * 3.224 leads do board de Acidente de Trabalho contra 544 do funil de verdade.
+   * 86% do recorte era o funil errado.
+   *
+   * Exigir AUXILIO (ou AUX) junto de ACIDENTE separa os dois sem lista negra:
+   * "Acidente de Trabalho", "[SEGURO ACIDENTE DE TRANSITO]" e
+   * "[ANALYNE][ACD. DE TRABALHO]" deixam de casar, e as campanhas reais
+   * ("[AUXILIO-ACIDENTE]", "AUXILIO - ACIDENTE [EDILAN]") continuam casando.
+   */
+  grupos: string[][];
 }
 
+/**
+ * Os funis do PREVIDENCIARIO. Sao os unicos que a aba de Metricas cobre hoje.
+ *
+ * Trabalhista tem estrutura de lead diferente, acolhedores diferentes e nao vem
+ * de formulario de anuncio (0 leads pagos no board de Acidente de Trabalho) —
+ * misturar os dois num painel so produz numero que nao significa nada para
+ * nenhuma das duas equipes.
+ */
 export const FUNIS: Funil[] = [
-  { chave: 'bpc', rotulo: 'BPC - LOAS', tokens: ['BPC', 'LOAS', 'AUTISMO'] },
-  { chave: 'auxilio_acidente', rotulo: 'Auxílio Acidente', tokens: ['ACIDENTE'] },
+  { chave: 'bpc', rotulo: 'BPC - LOAS', grupos: [['BPC', 'LOAS', 'AUTISMO']] },
+  { chave: 'auxilio_acidente', rotulo: 'Auxílio Acidente', grupos: [['ACIDENTE'], ['AUXILIO', 'AUX']] },
 ];
 
 /**
- * Qual funil este nome descreve. Serve para os dois lados: campanha da Meta
- * ("BPC-LOAS", "[AUXÍLIO-ACIDENTE]") e board do CRM ("BPC - Autismo",
- * "Auxílio Acidente"). É o que permite cruzar gasto com lead no mesmo recorte.
+ * Qual funil do PREV este nome descreve. Serve para os dois lados: campanha da
+ * Meta ("BPC-LOAS", "[AUXILIO-ACIDENTE]") e board do CRM ("BPC - Autismo",
+ * "Auxilio Acidente"). E o que permite cruzar gasto com lead no mesmo recorte.
+ *
+ * `null` para tudo que nao e PREV — Trabalhista, venda de curso, seguro.
  */
 export function funilDoNome(nome: string | null | undefined): string | null {
   const palavras = new Set(normaliza(String(nome || '')).split(' '));
   for (const f of FUNIS) {
-    if (f.tokens.some((t) => palavras.has(t))) return f.chave;
+    if (f.grupos.every((grupo) => grupo.some((t) => palavras.has(t)))) return f.chave;
   }
   return null;
+}
+
+/** `true` quando o nome (board ou campanha) pertence ao PREV. */
+export function ehPrev(nome: string | null | undefined): boolean {
+  return funilDoNome(nome) !== null;
 }

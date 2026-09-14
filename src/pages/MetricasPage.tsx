@@ -57,6 +57,7 @@ interface Painel {
   gerado_em: string;
   janela: { de: string; ate: string; dias: number; inclui_hoje: boolean };
   filtros: { funil: string | null; acolhedor: string | null };
+  escopo?: { area: string; boards: string[]; nota: string };
   opcoes: {
     funis: Array<{ chave: string; rotulo: string }>;
     acolhedores: Array<{ chave: string; rotulo: string }>;
@@ -216,10 +217,10 @@ function desdeQuando(iso: string | null): string {
  * baixado, e o gasto da Meta nunca esteve no navegador.
  */
 function BarraDeFiltros({
-  de, ate, funil, acolhedor, opcoes, ocupado, onPeriodo, onFunil, onAcolhedor,
+  de, ate, funil, acolhedor, opcoes, ocupado, escopo, onPeriodo, onFunil, onAcolhedor,
 }: {
   de: string; ate: string; funil: string | null; acolhedor: string | null;
-  opcoes: Painel['opcoes'] | null; ocupado: boolean;
+  opcoes: Painel['opcoes'] | null; ocupado: boolean; escopo?: Painel['escopo'];
   onPeriodo: (de: string, ate: string) => void;
   onFunil: (v: string | null) => void;
   onAcolhedor: (v: string | null) => void;
@@ -321,6 +322,12 @@ function BarraDeFiltros({
             </Button>
           )}
         </div>
+
+        {escopo && (
+          <p className="text-[11px] text-muted-foreground border-t pt-2">
+            Esta aba cobre só <strong>{escopo.area}</strong> ({escopo.boards.join(' · ')}). {escopo.nota}
+          </p>
+        )}
 
         {acolhedor && (
           <p className="text-[11px] text-muted-foreground border-t pt-2">
@@ -791,7 +798,7 @@ export default function MetricasPage() {
               </h1>
               <p className="text-sm text-muted-foreground truncate">
                 {dados
-                  ? `${rotuloJanela} · atualiza sozinho a cada minuto`
+                  ? `${dados.escopo?.area || 'PREV'} · ${rotuloJanela} · atualiza sozinho a cada minuto`
                   : 'Investimento, leads e fechamentos'}
               </p>
             </div>
@@ -810,6 +817,7 @@ export default function MetricasPage() {
           acolhedor={acolhedor}
           opcoes={dados?.opcoes ?? null}
           ocupado={carregando && !dados}
+          escopo={dados?.escopo}
           onPeriodo={(d, a) => { setDe(d); setAte(a); }}
           onFunil={setFunil}
           onAcolhedor={setAcolhedor}

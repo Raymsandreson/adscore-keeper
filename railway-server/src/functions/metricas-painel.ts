@@ -228,13 +228,35 @@ export const handler: RequestHandler = async (req, res) => {
     const querDetalhe = Boolean((corpo as any).detalhar);
     const colunasDoDetalhe = querDetalhe ? ', lead_name, lead_phone' : '';
 
-    const [boards, leadsBrutos, fechadosBrutos, gasto, eventos, filaCapi, integracao] = await Promise.all([
-      supabase.from('kanban_boards').select('id, name'),
+    // ESCOPO: SO PREVIDENCIARIO.
+    //
+    // Trabalhista tem estrutura de lead diferente, acolhedores diferentes e nao
+    // vem de formulario de anuncio — o board de Acidente de Trabalho tem 7.990
+    // leads vivos e ZERO pagos. Somar os dois num painel so produzia um "total
+    // de leads" que nao servia para nenhuma das duas equipes: em 14/09/2026 a
+    // janela de 30 dias trazia 3.100 leads de Trabalhista dentro de um painel
+    // que existe para medir anuncio de PREV.
+    //
+    // O board entra pelo NOME, nao por lista de ids: board novo de BPC ou de
+    // Auxilio Acidente passa a contar sozinho, e board de outro negocio nao
+    // entra por engano.
+    const boards = await supabase.from('kanban_boards').select('id, name');
+    const funilPorBoard: Record<string, string | null> = {};
+    const nomePorBoard: Record<string, string> = {};
+    for (const b of (boards.data || []) as any[]) {
+      nomePorBoard[b.id] = b.name;
+      funilPorBoard[b.id] = funilDoNome(b.name);
+    }
+    const idsPrev = Object.keys(funilPorBoard).filter((id) => funilPorBoard[id] !== null);
+    if (!idsPrev.length) throw new Error('nenhum board de PREV encontrado — o painel ficaria vazio sem dizer por que');
+
+    const [leadsBrutos, fechadosBrutos, gasto, eventos, filaCapi, integracao] = await Promise.all([
       leTudo<any>((d, a) =>
         supabase
           .from('leads')
           .select(`created_at, source, board_id, facebook_lead_id, adset_name, lead_status${colunasDoDetalhe}`)
           .is('deleted_at', null)
+          .in('board_id', idsPrev)
           // -03:00 e nao Z: `de` ja e dia de Sao Paulo. Com `Z` a busca comecava
           // 3h antes e o total da janela contava a mais.
           .gte('created_at', `${de}T00:00:00-03:00`)
@@ -247,6 +269,7 @@ export const handler: RequestHandler = async (req, res) => {
           .from('leads')
           .select(`became_client_date, source, board_id, facebook_lead_id, adset_name${colunasDoDetalhe}`)
           .is('deleted_at', null)
+          .in('board_id', idsPrev)
           .eq('lead_status', 'closed')
           .gte('became_client_date', de)
           .lte('became_client_date', ate)
@@ -269,12 +292,10 @@ export const handler: RequestHandler = async (req, res) => {
       saudeDaIntegracao(),
     ]);
 
-    const nomeBoard: Record<string, string> = {};
-    const funilDoBoard: Record<string, string | null> = {};
-    for (const b of (boards.data || []) as any[]) {
-      nomeBoard[b.id] = b.name;
-      funilDoBoard[b.id] = funilDoNome(b.name);
-    }
+    // Os mapas ja foram montados antes das leituras — sao eles que definem o
+    // escopo, entao nao podem ser recalculados aqui com outra regra.
+    const nomeBoard = nomePorBoard;
+    const funilDoBoard = funilPorBoard;
 
     // OS FILTROS. Aplicados aos dois lados com a MESMA regra: o funil sai do
     // nome (board no CRM, campanha na Meta) e o acolhedor sai do nome do
@@ -676,6 +697,13 @@ export const handler: RequestHandler = async (req, res) => {
       gerado_em: new Date().toISOString(),
       janela: { de, ate, dias: serieDias.length, inclui_hoje: janelaInclutHoje },
       filtros: { funil: funilPedido, acolhedor: acolhedorPedido },
+      // A tela precisa poder dizer O QUE esta contando. Um painel que soma
+      // Trabalhista sem avisar produz numero que ninguem consegue conferir.
+      escopo: {
+        area: 'PREV',
+        boards: idsPrev.map((id) => nomePorBoard[id]).sort(),
+        nota: 'Trabalhista tem estrutura e equipe diferentes e fica fora desta aba.',
+      },
       opcoes: {
         funis: FUNIS.map((f) => ({ chave: f.chave, rotulo: f.rotulo })),
         acolhedores: ACOLHEDORES.map((a) => ({ chave: a.chave, rotulo: a.rotulo })),

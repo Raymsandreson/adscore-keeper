@@ -363,3 +363,42 @@ do card diz isso em vez de mostrar o número.
 O acolhedor sai do nome do conjunto, então **fechamento de lead orgânico não tem
 um** e aparece em "Sem acolhedor identificado", marcado como "não veio de
 anúncio" — em vez de ser escondido ou atribuído a alguém por chute.
+
+## A aba cobre só PREV (14/09/2026)
+
+Trabalhista e Previdenciário têm **estrutura de lead diferente, acolhedores
+diferentes e origem diferente**. O board de Acidente de Trabalho tem 7.990 leads
+vivos e **zero** vindos de formulário de anúncio. Somar os dois num painel que
+existe para medir anúncio produzia um "total de leads" que não servia a nenhuma
+das duas equipes: a janela de 30 dias trazia 3.100 leads de Trabalhista.
+
+Agora a leitura é escopada: entram só os boards cujo nome mapeia para um funil
+conhecido do PREV (`BPC - Autismo`, `Auxílio Acidente`). **Pelo nome, não por
+lista de ids** — board novo de BPC passa a contar sozinho, e board de outro
+negócio não entra por engano. A tela diz o escopo no cabeçalho e na barra de
+filtros.
+
+Os acolhedores de `ACOLHEDORES` (Israel, Mateus, Karolyne, Edilan) são os do
+PREV. Trabalhista tem outros, e quando entrar precisará da sua própria lista.
+
+### O defeito que isso expôs
+
+`funilDoNome` casava por token solto, e `ACIDENTE` casa "Acidente de Trabalho".
+Medido em 14/09/2026: filtrar a aba por "Auxílio Acidente" devolvia **3.224 leads
+do board de Acidente de Trabalho contra 544 do funil de verdade** — 86% do
+recorte era o funil errado, e o custo por lead daquele recorte estava dividindo
+gasto de Auxílio Acidente por leads de Trabalhista.
+
+A regra passou a ser por **grupos de tokens**: "ou" dentro do grupo, "e" entre
+grupos. `auxilio_acidente` exige `ACIDENTE` **e** (`AUXILIO` ou `AUX`). Isso
+separa sem lista negra:
+
+| Nome | Antes | Agora |
+|---|---|---|
+| `[AUXÍLIO-ACIDENTE]` | auxilio_acidente | auxilio_acidente |
+| `AUXÍLIO - ACIDENTE [EDILAN]` | auxilio_acidente | auxilio_acidente |
+| `Acidente de Trabalho` | **auxilio_acidente** | — |
+| `[SEGURO ACIDENTE DE TRÂNSITO]` | **auxilio_acidente** | — |
+| `[ANALYNE][ACD. DE TRABALHO]` | — | — |
+
+Há teste para cada uma dessas linhas.

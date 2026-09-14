@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { acolhedorDoConjunto, funilDoNome } from '../recortesDoPainel';
+import { acolhedorDoConjunto, funilDoNome, ehPrev } from '../recortesDoPainel';
 
 describe('acolhedorDoConjunto', () => {
   // Os 30 formatos que existem hoje em leads.adset_name (medido em 10/09/2026).
@@ -46,17 +46,44 @@ describe('funilDoNome', () => {
   it('lê a campanha da Meta', () => {
     expect(funilDoNome('BPC-LOAS')).toBe('bpc');
     expect(funilDoNome('[AUXÍLIO-ACIDENTE]')).toBe('auxilio_acidente');
+    expect(funilDoNome('[AUXÍLIO-ACIDENTE][SETEMBRO.26]')).toBe('auxilio_acidente');
+    expect(funilDoNome('AUXÍLIO - ACIDENTE [EDILAN]')).toBe('auxilio_acidente');
   });
 
   it('lê o board do CRM, que tem outro nome para o mesmo funil', () => {
-    // É por isso que os dois lados passam pela mesma função: "BPC - Autismo" e
-    // "BPC-LOAS" são o mesmo funil escrito de dois jeitos.
     expect(funilDoNome('BPC - Autismo')).toBe('bpc');
     expect(funilDoNome('Auxílio Acidente')).toBe('auxilio_acidente');
   });
 
+  it('NÃO confunde Acidente de Trabalho com Auxílio Acidente', () => {
+    // O defeito que este teste existe para impedir. Medido em 14/09/2026:
+    // filtrar a aba por "Auxílio Acidente" devolvia 3.224 leads do board de
+    // Acidente de Trabalho contra 544 do funil de verdade — 86% do recorte era
+    // o funil errado. Trabalhista é outro negócio, com outra equipe.
+    expect(funilDoNome('Acidente de Trabalho')).toBeNull();
+    expect(funilDoNome('Acidentes de Trabalho: Fatais e Graves (Incapacitantes)')).toBeNull();
+    expect(funilDoNome('[ANALYNE][ACD. DE TRABALHO]')).toBeNull();
+    expect(funilDoNome('Funil de Acidentes de Trabalho e INSS (Vítimas e Familiares)')).toBeNull();
+  });
+
+  it('não casa campanha de outro produto que fala em acidente', () => {
+    expect(funilDoNome('[SEGURO ACIDENTE DE TRÂNSITO]')).toBeNull();
+    expect(funilDoNome('CAMINHONEIRO ACIDENTADO - JOÃO MANOEL')).toBeNull();
+  });
+
   it('devolve null para funil desconhecido', () => {
     expect(funilDoNome('Trabalhista')).toBeNull();
+    expect(funilDoNome('[CBO][VENDAS][MÃES-ATÍPICAS]')).toBeNull();
     expect(funilDoNome('')).toBeNull();
+  });
+});
+
+describe('ehPrev', () => {
+  it('separa o que a aba cobre do que ela não cobre', () => {
+    expect(ehPrev('BPC - Autismo')).toBe(true);
+    expect(ehPrev('Auxílio Acidente')).toBe(true);
+    expect(ehPrev('Acidente de Trabalho')).toBe(false);
+    expect(ehPrev('Auxílio-Maternidade Administrativo (INSS)')).toBe(false);
+    expect(ehPrev('Notícias ')).toBe(false);
   });
 });
