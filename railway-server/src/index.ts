@@ -1252,3 +1252,54 @@ async function runCapiReconcile() {
 setTimeout(runCapiReconcile, 420_000);
 setInterval(runCapiReconcile, CAPI_RECONCILE_INTERVAL_MS);
 console.log('[cron:capi-reconcile] ligado — janela de 7 dias, a cada 15 min');
+
+// ============================================================
+// CRON: fila de ligacao da Meta Cloud, a cada 1 min. Substitui o pg_cron
+// (que mora no projeto Cloud, nao no Externo) apontado direto pra URL
+// publica deste /functions/meta-call-queue-processor.
+//
+// O docstring do handler diz "POST autenticado". Nao era: a chamada chega
+// sem credencial nenhuma, porque RAILWAY_API_KEY nunca teve valor — nem na
+// producao do Railway (`/health.auth.api_key: false`) nem no vault de quem
+// chama. Medido em 14/09/2026 com ~30 min de uptime: 30 de 31 chamadas
+// anonimas do /functions/* eram desta funcao, 1-2 por minuto. Era o ultimo
+// bloqueador do RAILWAY_AUTH_ENFORCE=1.
+//
+// Trazido pra dentro, autentica com o LOOPBACK_TOKEN do boot e deixa de
+// depender de segredo — mesmo movimento ja feito com o sync do funil e com
+// a caixa processual do Gmail.
+//
+// Rodar em paralelo com o pg_cron durante a transicao NAO duplica envio:
+// medido no Externo em 14/09, whatsapp_call_queue tem 2.086 linhas e
+// ZERO com provider='meta_cloud' ou nos status que este handler processa
+// (`pending_permission`/`ready_to_call`) — todas as 2.086 sao do uazapi,
+// que tem outro processador. Na pratica o handler seleciona lista vazia.
+// Fica o registro de que ele NAO tem claim atomico: se alguem enfileirar
+// pelo AutoDialer enquanto os dois gatilhos existem, duas rodadas podem
+// pegar a mesma linha e mandar o template de permissao duas vezes. A janela
+// fecha sozinha quando o enforce entrar (o pg_cron do Cloud passa a tomar
+// 401); enquanto isso, o risco e o de uma fila que hoje esta vazia.
+//   Desligar o pg_cron (painel do Cloud): select cron.unschedule('<nome>');
+// ============================================================
+const META_CALL_QUEUE_INTERVAL_MS = 60 * 1000;
+async function runMetaCallQueue() {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/meta-call-queue-processor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: '{}',
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    // Fila vazia e o caso comum (uma vez por minuto) — so loga trabalho ou erro.
+    if (json?.processed > 0 || json?.success === false || !resp.ok) {
+      console.log(
+        `[cron:meta-call-queue] status=${resp.status} processed=${json?.processed ?? 0}${json?.error ? ` error=${json.error}` : ''}`,
+      );
+    }
+  } catch (err) {
+    console.warn('[cron:meta-call-queue] failed:', err instanceof Error ? err.message : err);
+  }
+}
+// 600s: ultimo da fila de boot (o anterior e o meta-leads-sync, em 540s).
+setTimeout(runMetaCallQueue, 600_000);
+setInterval(runMetaCallQueue, META_CALL_QUEUE_INTERVAL_MS);

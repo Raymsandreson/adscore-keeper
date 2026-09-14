@@ -29,6 +29,8 @@ import { useLinkedCaseProcess } from '@/hooks/useLinkedCaseProcess';
 import ProcessMarcosInline from '@/components/cases/ProcessMarcosInline';
 import PericiaInssChips from '@/components/activities/PericiaInssChips';
 import { ActivityCallRecorder, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
+import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
+import { resolveLeadAudioTarget } from '@/lib/leadWhatsAppTarget';
 import { callFieldTextToHtml, stripHtmlToText, draftRichText } from '@/components/activities/richTextFields';
 import { useInssDesfechoCaso } from '@/hooks/useInssDesfechoCaso';
 import { buildActivityMessage } from '@/components/activities/buildActivityMessage';
@@ -297,6 +299,18 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [availableContacts, setAvailableContacts] = useState<{ id: string; full_name: string }[]>([]);
   const [availableCases, setAvailableCases] = useState<{ id: string; case_number: string; title: string; lead_id: string | null }[]>([]);
   const [leadPreview, setLeadPreview] = useState<{ board_id: string | null; lead_status: string | null; whatsapp_group_id?: string | null; lead_phone?: string | null } | null>(null);
+  // Gravação recém-feita nesta ficha, pronta para ir ao WhatsApp. Igual à tela de
+  // Atividades: antes a ficha aberta pelo caso/kanban gravava e não tinha como
+  // enviar a gravação a lugar nenhum.
+  const [pendingAudio, setPendingAudio] = useState<{ url: string; seconds: number } | null>(null);
+  const [sendingPendingAudio, setSendingPendingAudio] = useState(false);
+  // Trocou de atividade (ou fechou a ficha): a gravação da anterior não pode
+  // sobreviver no estado — foi assim que um áudio saiu no grupo de outro cliente
+  // em 06/08/2026.
+  useEffect(() => {
+    setPendingAudio(null);
+    setSendingPendingAudio(false);
+  }, [selectedActivity?.id, open]);
   // "Preencher com" (paridade com a ActivitiesPage): áudio e documento preenchem o form via IA.
   const [preencherOpen, setPreencherOpen] = useState(false);
   const [financeOpen, setFinanceOpen] = useState(false);
@@ -318,7 +332,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const completeAndCreateLockRef = useRef(false);
 
   const { types: activityTypes } = useActivityTypes();
-  const { user } = useAuthContext();
+  const { user, profile } = useAuthContext();
   const { boards: allBoards } = useKanbanBoards();
   const workflowOptions = allBoards.filter(b => b.board_type === 'workflow' && !isBoardArchived(b)).map(b => ({ id: b.id, name: b.name }));
   const profiles = useProfilesList();
@@ -1470,7 +1484,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       // Só completa os campos vazios com os marcos se a pessoa tiver ligado —
       // de fábrica a mensagem sai com o que está escrito na ficha, e só.
       completarCamposComMarcos: completarCamposComMarcosLigado(),
-      currentUserId: user?.id || null, resolveUserName, getTemplateForContext, inssDesfecho,
+      currentUserId: user?.id || null, currentUserName: profile?.full_name || null,
+      resolveUserName, getTemplateForContext, inssDesfecho,
     }, audience);
 
   return (
@@ -1679,6 +1694,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 processId={formProcessId}
                 groupJid={leadPreview?.whatsapp_group_id}
                 leadPhone={leadPreview?.lead_phone}
+                onRecordingReady={setPendingAudio}
                 context={{
                   title: formTitle,
                   type: formType,
@@ -2170,6 +2186,46 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                   activityId={selectedActivity?.id}
                   compactLabel
                 />
+                {/* Enviar só a gravação, ao lado do "Enviar" da mensagem completa.
+                    O destino sai do banco pelo lead desta atividade (nunca do state
+                    da tela — incidente 06/08/2026). */}
+                {pendingAudio && (leadPreview?.whatsapp_group_id || leadPreview?.lead_phone) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs gap-1 border-green-300 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950/30"
+                    disabled={sendingPendingAudio}
+                    onClick={async () => {
+                      if (!pendingAudio) return;
+                      setSendingPendingAudio(true);
+                      try {
+                        let dest = leadPreview?.lead_phone || '';
+                        let destLabel = 'contato';
+                        if (leadPreview?.whatsapp_group_id) {
+                          const resolved = await resolveLeadAudioTarget(formLeadId);
+                          if (!resolved.jid) { toast.error(resolved.error); return; }
+                          dest = resolved.jid;
+                          destLabel = resolved.name ? `grupo ${resolved.name}` : 'grupo';
+                        }
+                        if (!dest) { toast.error('Sem grupo nem telefone para enviar o áudio.'); return; }
+                        await sendVoiceToWa(pendingAudio.url, dest, formLeadId);
+                        toast.success(`Áudio enviado ao ${destLabel} do WhatsApp!`);
+                        setPendingAudio(null);
+                      } catch (e: any) {
+                        toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
+                      } finally {
+                        setSendingPendingAudio(false);
+                      }
+                    }}
+                    title={`Enviar a gravação como áudio no WhatsApp do ${leadPreview?.whatsapp_group_id ? 'grupo' : 'contato'}`}
+                  >
+                    {sendingPendingAudio ? (
+                      <><Loader2 className="h-3 w-3 animate-spin" /> Enviando…</>
+                    ) : (
+                      <><Mic className="h-3 w-3" /> Enviar áudio</>
+                    )}
+                  </Button>
+                )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="sm" className="h-8 text-xs gap-1">

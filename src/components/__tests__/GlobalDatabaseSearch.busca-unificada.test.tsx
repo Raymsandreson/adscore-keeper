@@ -131,11 +131,20 @@ async function buscar(termo: string) {
 describe('Ctrl+K com busca_unificada', () => {
   beforeEach(() => { rpcSpy.mockClear(); });
 
-  it('acha o processo com o CNJ colado sem máscara', async () => {
+  it('CNJ colado sem máscara chega à RPC no formato canônico', async () => {
+    // O campo reconhece o número e se mascara sozinho desde `ac7088078`
+    // (09/09/2026) — a máscara mostra qual número foi de fato buscado e faz a
+    // RPC receber o número já consertado quando a cópia perdeu um zero à
+    // esquerda. Por isso o que sai daqui é o CNJ pontuado, não os 20 dígitos
+    // que o usuário colou.
+    //
+    // Mandar mascarado não estreita a busca: conferido contra a `busca_unificada`
+    // do Externo em 14/09/2026, os dois formatos devolvem o mesmo processo —
+    // ela compara por `cnj_digitos`.
     await buscar('50046046620264047013');
     await waitFor(() => {
       expect(rpcSpy).toHaveBeenCalledWith('busca_unificada', expect.objectContaining({
-        p_termo: '50046046620264047013',
+        p_termo: '5004604-66.2026.4.04.7013',
       }));
     }, { timeout: 3000 });
     expect(await screen.findByText('5004604-66.2026.4.04.7013')).toBeInTheDocument();

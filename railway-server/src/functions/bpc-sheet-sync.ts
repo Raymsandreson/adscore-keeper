@@ -17,6 +17,8 @@ import {
   OPERATOR_KEYWORDS,
   achaCabecalho,
   celulaDeTelefone,
+  celulaDeStatusDaEquipe,
+  COLUNAS_DE_STATUS_PARA_DIAGNOSTICO,
 } from '../lib/leadAdsSheet';
 
 const GATEWAY = 'https://connector-gateway.lovable.dev/google_sheets/v4';
@@ -297,7 +299,9 @@ async function fetchTab(
     // CADA coluna separada. `lead_status` e campo da exportacao da Meta (vale
     // sempre "created"); com `||` ele curto-circuita e a coluna que a EQUIPE
     // preenche nunca era lida — foi o defeito da primeira medicao.
-    for (const col of ['lead_status', 'status da lead', 'status', 'observações', 'observacoes']) {
+    // A lista do diagnostico inclui os mesmos nomes que a leitura conhece — era
+    // por isso que a coluna do Auxilio Acidente nao aparecia nem como ausente.
+    for (const col of COLUNAS_DE_STATUS_PARA_DIAGNOSTICO) {
       const v = String(o[col] || '').trim().toLowerCase();
       if (!v) continue;
       const chave = `${col} = ${v.slice(0, 40)}`;
@@ -305,7 +309,9 @@ async function fetchTab(
       if (normalizaLeadIdMeta(o['id'])) statusComIdMeta[chave] = (statusComIdMeta[chave] || 0) + 1;
     }
     out.push({
-      status_equipe: String(o['status da lead'] || '').trim().toLowerCase(),
+      // Nome exato envelhece: a planilha do Auxilio Acidente usa `status lead`,
+      // sem o "da", e aquele funil aplicava ZERO status. Ver `celulaDeStatusDaEquipe`.
+      status_equipe: celulaDeStatusDaEquipe(o),
       facebook_lead_id: normalizaLeadIdMeta(o['id']),
       created_at: o['created_time'] || '',
       name: name.trim(),
