@@ -83,11 +83,42 @@ dia responde em instantes.
 com `whatsapp_instances.id`. O dono do número não responde "de quem é essa
 indicação".
 
+## Estado (14/09/2026)
+
+Backfill de 90 dias feito: **1.416 indicações** gravadas, de 16/06 a 14/09, em
+18 instâncias — 713 pessoas distintas indicadas, 323 indicadores, 631 já
+existiam na agenda de contatos. A captura ao vivo estava funcionando desde o
+deploy (69 indicações em 3 dias antes do backfill).
+
+O backfill NÃO rodou pela função `referral-backfill`: o ambiente daquela sessão
+não alcançava o Railway (403 do proxy). Foi executado com o MESMO parser
+(`vcard.ts` compilado, rodando fora do servidor) e o mesmo critério de
+descarte, gravando por SQL. A função continua sendo o caminho normal — pelo
+botão na aba.
+
+### Defeito conhecido: a mesma mensagem conta várias vezes
+
+Um cartão compartilhado num grupo onde participam vários números nossos chega
+uma vez por instância, e o id da mensagem carrega o número que recebeu como
+prefixo (`558695590127:3AEBAD…`). Como a chave de idempotência usa o id
+inteiro, as seis cópias entram como seis indicações.
+
+Medido: **1.416 linhas para 898 eventos reais — 36,6% de inflação**. O ranking
+sente: o grupo "ACOLHEDORES - PREVIDENCIÁRIO" aparece com 30 indicações quando
+são 7; já "TERRAS ALPHAVILLE" (grupo com uma instância só) tem 188 = 188.
+
+A correção estrutural é chavear pelo id real da mensagem — o trecho DEPOIS do
+`:`, que é o mesmo em todas as instâncias — em vez do id completo. Isso muda o
+índice único e exige desduplicar o que já está gravado. Ainda não foi feito.
+Não filtrar isso na tela: a tela some o que está no banco, e esconder a
+duplicata trocaria um número errado por outro.
+
 ## Como operar
 
-- **Backfill** (uma vez, após a migration):
-  `POST /functions/referral-backfill` com `{"days": 90, "dry_run": true}` para
-  conferir o volume, depois sem `dry_run`. É idempotente — repetir não duplica.
+- **Backfill** (uma vez, após a migration): botão **"Buscar indicações antigas"**
+  na própria aba. Ele conta primeiro e pergunta antes de gravar. É idempotente —
+  repetir não duplica. Pela API: `POST /functions/referral-backfill` com
+  `{"days": 90, "dry_run": true}`, depois sem `dry_run`.
 - **Reclassificar uma indicação**: botão "Ler a conversa" na ficha.
 - **Rollback**: `DROP TABLE public.referrals;` — nada existente é alterado por
   esta funcionalidade.

@@ -26,7 +26,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Search, UserPlus, Sparkles, Send, Phone, Trophy, Smartphone, MessageSquareQuote,
-  CheckCircle2, XCircle, Loader2, UserCheck, Users,
+  CheckCircle2, XCircle, Loader2, UserCheck, Users, History,
 } from 'lucide-react';
 
 export interface Indicacao {
@@ -121,6 +121,7 @@ export function ReferralsInboxTab() {
   const [filtroStatus, setFiltroStatus] = useState('todos');
   const [filtroInstancia, setFiltroInstancia] = useState('todas');
   const [aberta, setAberta] = useState<Indicacao | null>(null);
+  const [varrendo, setVarrendo] = useState(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -209,6 +210,46 @@ export function ReferralsInboxTab() {
       .slice(0, 5);
   }, [indicacoes]);
 
+  /**
+   * Recupera os cartões que chegaram antes da captura existir.
+   *
+   * Roda em dois tempos de propósito: primeiro conta sem gravar nada e mostra
+   * o número, depois grava se a pessoa confirmar. Repetir é seguro — a
+   * gravação é idempotente pelo id da mensagem.
+   */
+  const buscarAntigas = async () => {
+    setVarrendo(true);
+    try {
+      const previa = await cloudFunctions.invoke('referral-backfill', {
+        body: { days: 90, dry_run: true },
+      });
+      const achadas = previa.data?.mensagens_com_cartao ?? 0;
+      if (!previa.data?.success) throw new Error(previa.data?.error || 'a varredura falhou');
+      if (achadas === 0) {
+        toast({ title: 'Nada para recuperar', description: 'Nenhum cartão antigo encontrado nos últimos 90 dias.' });
+        return;
+      }
+      const confirmou = window.confirm(
+        `Encontrei ${achadas} cartão(ões) compartilhado(s) nos últimos 90 dias.\n\n` +
+        'Quer trazer para a fila de indicações? Contato que já existe na agenda é reconhecido, ' +
+        'e cartão da própria casa é descartado.',
+      );
+      if (!confirmou) return;
+
+      const feito = await cloudFunctions.invoke('referral-backfill', { body: { days: 90 } });
+      if (!feito.data?.success) throw new Error(feito.data?.error || 'a gravação falhou');
+      toast({
+        title: 'Indicações recuperadas',
+        description: `${feito.data.indicacoes_gravadas} gravada(s), ${feito.data.cartoes_ignorados} descartada(s).`,
+      });
+      await carregar();
+    } catch (e: any) {
+      toast({ title: 'Não consegui varrer o histórico', description: e?.message, variant: 'destructive' });
+    } finally {
+      setVarrendo(false);
+    }
+  };
+
   const atualizarLinha = useCallback((id: string, mudancas: Partial<Indicacao>) => {
     setIndicacoes(atual => atual.map(i => (i.id === id ? { ...i, ...mudancas } : i)));
     setAberta(atual => (atual && atual.id === id ? { ...atual, ...mudancas } : atual));
@@ -291,9 +332,22 @@ export function ReferralsInboxTab() {
           </Button>
         )}
 
-        <span className="ml-auto text-xs text-muted-foreground">
-          {filtradas.length} de {indicacoes.length}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs gap-1.5"
+            onClick={buscarAntigas}
+            disabled={varrendo}
+            title="Varre os últimos 90 dias de conversas atrás de cartões compartilhados que chegaram antes desta tela existir"
+          >
+            {varrendo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <History className="h-3.5 w-3.5" />}
+            Buscar indicações antigas
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {filtradas.length} de {indicacoes.length}
+          </span>
+        </div>
       </div>
 
       <ScrollArea className="flex-1">

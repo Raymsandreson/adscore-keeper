@@ -18,6 +18,7 @@ import { CAPI_TOKEN, GRAPH_VERSION, CAPI_DATASET_ID } from '../lib/metaCapi';
 import { hojeISO, diasAtras, corteDeDias, diaDoInstante, diaDaColuna } from '../lib/diasSaoPaulo';
 import { rotinasParaOPainel } from '../lib/estadoDosCrons';
 import { ACOLHEDORES, FUNIS, acolhedorDoConjunto, funilDoNome } from '../lib/recortesDoPainel';
+import { authorizeFunctionRequest } from '../lib/functionAuth';
 
 // PostgREST corta em 1000. Não é teoria: o dedup da planilha leu 1000 de 7.255
 // e teria recriado lead por 10 minutos até alguém notar. Toda leitura de volume
@@ -221,14 +222,46 @@ export const handler: RequestHandler = async (req, res) => {
         ? (corpo.acolhedor as string)
         : null;
     const janelaInclutHoje = de <= hoje && ate >= hoje;
+    // Nome e telefone so entram na LEITURA quando o detalhe foi pedido. Trazer
+    // PII do banco "por via das duvidas" e como deixar a carteira em cima da
+    // mesa: o agregado nunca precisou disso.
+    const querDetalhe = Boolean((corpo as any).detalhar);
+    const colunasDoDetalhe = querDetalhe ? ', lead_name, lead_phone' : '';
 
-    const [boards, leadsBrutos, fechadosBrutos, gasto, eventos, filaCapi, integracao] = await Promise.all([
-      supabase.from('kanban_boards').select('id, name'),
+    // ESCOPO: SO PREVIDENCIARIO.
+    //
+    // Trabalhista tem estrutura de lead diferente, acolhedores diferentes e nao
+    // vem de formulario de anuncio — o board de Acidente de Trabalho tem 7.990
+    // leads vivos e ZERO pagos. Somar os dois num painel so produzia um "total
+    // de leads" que nao servia para nenhuma das duas equipes: em 14/09/2026 a
+    // janela de 30 dias trazia 3.100 leads de Trabalhista dentro de um painel
+    // que existe para medir anuncio de PREV.
+    //
+    // O board entra pelo NOME, nao por lista de ids: board novo de BPC ou de
+    // Auxilio Acidente passa a contar sozinho, e board de outro negocio nao
+    // entra por engano.
+    const boards = await supabase.from('kanban_boards').select('id, name');
+    const funilPorBoard: Record<string, string | null> = {};
+    const nomePorBoard: Record<string, string> = {};
+    for (const b of (boards.data || []) as any[]) {
+      nomePorBoard[b.id] = b.name;
+      funilPorBoard[b.id] = funilDoNome(b.name);
+    }
+    // Board marcado como desativado no proprio nome fica de fora: ele nao recebe
+    // lead novo, e so polui o rotulo do escopo na tela.
+    const desativado = (nome: string) => /desativad|descontinuad|\bantig/i.test(nome || '');
+    const idsPrev = Object.keys(funilPorBoard).filter(
+      (id) => funilPorBoard[id] !== null && !desativado(nomePorBoard[id]),
+    );
+    if (!idsPrev.length) throw new Error('nenhum board de PREV encontrado — o painel ficaria vazio sem dizer por que');
+
+    const [leadsBrutos, fechadosBrutos, gasto, eventos, filaCapi, integracao] = await Promise.all([
       leTudo<any>((d, a) =>
         supabase
           .from('leads')
-          .select('created_at, source, board_id, facebook_lead_id, adset_name, lead_status')
+          .select(`created_at, source, board_id, facebook_lead_id, adset_name, lead_status${colunasDoDetalhe}`)
           .is('deleted_at', null)
+          .in('board_id', idsPrev)
           // -03:00 e nao Z: `de` ja e dia de Sao Paulo. Com `Z` a busca comecava
           // 3h antes e o total da janela contava a mais.
           .gte('created_at', `${de}T00:00:00-03:00`)
@@ -239,8 +272,9 @@ export const handler: RequestHandler = async (req, res) => {
       leTudo<any>((d, a) =>
         supabase
           .from('leads')
-          .select('became_client_date, source, board_id, facebook_lead_id, adset_name')
+          .select(`became_client_date, source, board_id, facebook_lead_id, adset_name${colunasDoDetalhe}`)
           .is('deleted_at', null)
+          .in('board_id', idsPrev)
           .eq('lead_status', 'closed')
           .gte('became_client_date', de)
           .lte('became_client_date', ate)
@@ -263,12 +297,10 @@ export const handler: RequestHandler = async (req, res) => {
       saudeDaIntegracao(),
     ]);
 
-    const nomeBoard: Record<string, string> = {};
-    const funilDoBoard: Record<string, string | null> = {};
-    for (const b of (boards.data || []) as any[]) {
-      nomeBoard[b.id] = b.name;
-      funilDoBoard[b.id] = funilDoNome(b.name);
-    }
+    // Os mapas ja foram montados antes das leituras — sao eles que definem o
+    // escopo, entao nao podem ser recalculados aqui com outra regra.
+    const nomeBoard = nomePorBoard;
+    const funilDoBoard = funilPorBoard;
 
     // OS FILTROS. Aplicados aos dois lados com a MESMA regra: o funil sai do
     // nome (board no CRM, campanha na Meta) e o acolhedor sai do nome do
@@ -354,22 +386,6 @@ export const handler: RequestHandler = async (req, res) => {
     // A junção é pelo NOME do conjunto (`leads.adset_name`), único campo comum:
     // a Meta sabe o gasto e quantos formulários preencheu; só o CRM sabe quantos
     // viraram contrato. Nenhum dos dois responde "quanto custa um cliente".
-    // Janela de 7 dias: só existe para os apelidos do bundle antigo (ver o bloco
-    // COMPATIBILIDADE). Precisa ser calculada aqui, junto com os totais da
-    // janela, para que "Gasto 7d" seja gasto de 7 dias de verdade.
-    const corte7 = corteDeDias(7);
-    const janelaEhPadrao = de <= corte7 && ate === hoje;
-    const gasto7PorConjunto: Record<string, number> = {};
-    const leads7PorConjunto: Record<string, number> = {};
-    if (janelaEhPadrao) {
-      for (const g of linhasDeGasto.filter((x) => x.dia >= corte7)) {
-        gasto7PorConjunto[g.conjunto] = (gasto7PorConjunto[g.conjunto] || 0) + g.gasto;
-      }
-      for (const l of leadsPagos) {
-        const n = String(l.adset_name || '').trim();
-        if (n && diaDoInstante(l.created_at) >= corte7) leads7PorConjunto[n] = (leads7PorConjunto[n] || 0) + 1;
-      }
-    }
     const metaPorConjunto: Record<string, { gasto: number; leads_meta: number; campanha: string | null; conta: string }> = {};
     for (const g of linhasDeGasto) {
       const e = metaPorConjunto[g.conjunto] || { gasto: 0, leads_meta: 0, campanha: g.campanha, conta: g.conta };
@@ -400,8 +416,6 @@ export const handler: RequestHandler = async (req, res) => {
         const crm = crmPorConjunto[nome] || { leads: 0, fechados: 0 };
         const cfg = conjuntosConhecidos.find((c) => c.nome === nome) || null;
         const g = m ? Number(m.gasto.toFixed(2)) : null;
-        const g7 = janelaEhPadrao ? Number((gasto7PorConjunto[nome] || 0).toFixed(2)) : null;
-        const l7 = janelaEhPadrao ? (leads7PorConjunto[nome] || 0) : null;
         return {
           nome,
           nome_invalido: nomeInvalido(nome),
@@ -422,18 +436,6 @@ export const handler: RequestHandler = async (req, res) => {
           // tanto quanto esconder o número.
           custo_por_fechamento: g && g > 0 && crm.fechados > 0 ? Number((g / crm.fechados).toFixed(2)) : null,
           taxa_fechamento: crm.leads > 0 ? Number(((crm.fechados / crm.leads) * 100).toFixed(2)) : null,
-          // Apelidos do bundle antigo — ver o bloco COMPATIBILIDADE mais abaixo.
-          // Estes são 7 dias DE VERDADE: a coluna da tela antiga diz "Gasto 7d",
-          // e devolver o total de 30 dias com esse nome seria pôr número de um
-          // recorte sob o rótulo de outro — exatamente o que os apelidos
-          // existem para evitar. Fora da janela padrão vão nulos.
-          gasto_7d: g7,
-          leads_meta_7d: null,
-          leads_crm_7d: l7,
-          leads_crm_30d: crm.leads,
-          fechados_30d: crm.fechados,
-          custo_por_lead_7d: g7 && g7 > 0 && l7 ? Number((g7 / l7).toFixed(2)) : null,
-          taxa_fechamento_30d: crm.leads > 0 ? Number(((crm.fechados / crm.leads) * 100).toFixed(2)) : null,
         };
       })
       .sort((a, b) => (b.gasto ?? -1) - (a.gasto ?? -1) || b.leads_crm - a.leads_crm);
@@ -547,64 +549,97 @@ export const handler: RequestHandler = async (req, res) => {
     const cobertura_completa = Boolean(primeiroDiaPago && primeiroDiaPago <= de);
     const avisoDeCobertura = `lead pago só existe no CRM desde ${primeiroDiaPago || 'nunca'}; a janela começa antes disso, então o custo por lead divide gasto inteiro por lead incompleto.`;
 
-    // COMPATIBILIDADE COM O BUNDLE ANTIGO DA ABA.
+    // ============================================================
+    // DETALHE NOMINAL — atras de login, e so quando pedido
+    // ============================================================
     //
-    // Os filtros trocaram os nomes dos campos (`total_7d` virou `na_janela`, e
-    // por aí vai). Numa SPA isso não é um problema de deploy que passa em
-    // minutos: quem está com a aba aberta continua rodando o bundle velho até
-    // recarregar, o que dura horas. Sem estes apelidos, essa pessoa veria meia
-    // tela de "—" e concluiria que o painel quebrou.
+    // Tudo acima desta linha e AGREGADO: nenhum nome, telefone ou e-mail de
+    // cliente atravessa. Isso nao era estilo, era necessidade — `AUTH_ENFORCE`
+    // esta DESLIGADO em producao, entao `/functions/metricas-painel` responde a
+    // qualquer um que saiba a URL. Devolver a lista nominal por padrao seria
+    // publicar a carteira de clientes do escritorio numa URL aberta.
     //
-    // A janela padrão (sem corpo na requisição) é a que o bundle velho pede, e é
-    // exatamente para ela que estes campos são corretos. Fora dela vão nulos, em
-    // vez de números de outro recorte com nome antigo.
-    const em7 = <T,>(linhas: T[], dia: (l: T) => string) =>
-      janelaEhPadrao ? linhas.filter((l) => dia(l) >= corte7).length : null;
-    const leads7 = em7(leads, (l: any) => diaDoInstante(l.created_at));
-    const pagos7 = em7(leadsPagos, (l: any) => diaDoInstante(l.created_at));
-    const fech7 = em7(fechados, (f: any) => diaDaColuna(f.became_client_date));
-    const gasto7 = janelaEhPadrao
-      ? somaGasto(linhasDeGasto.filter((g) => g.dia >= corte7))
-      : null;
-    const compat = {
-      investimento_antigo: {
-        total_hoje: investidoHoje ?? 0,
-        total_7d: gasto7 ?? 0,
-        total_30d: investidoJanela,
-      },
-      leads_antigo: {
-        hoje: leadsPorDia[hoje] || 0,
-        pagos_hoje: pagosPorDia[hoje] || 0,
-        ultimos_7d: leads7,
-        pagos_7d: pagos7,
-        ultimos_30d: leads.length,
-        pagos_30d: leadsPagos.length,
-        entraram_no_funil_hoje: entraramHoje,
-        entraram_no_funil_7d: janelaEhPadrao ? entraramNaJanela : null,
-      },
-      fechamentos_antigo: { hoje: fechPorDia[hoje] || 0, ultimos_7d: fech7, ultimos_30d: fechados.length },
-      custo_antigo: {
-        leads_pagos_7d: pagos7,
-        leads_pagos_30d: leadsPagos.length,
-        por_lead_pago_7d: gasto7 && gasto7 > 0 && pagos7 ? Number((gasto7 / pagos7).toFixed(2)) : null,
-        por_lead_pago_30d: cobertura_completa ? cpl : null,
-        por_fechamento_pago_30d: cobertura_completa ? cpf_ : null,
-        cobertura_completa_30d: cobertura_completa,
-        aviso_30d: cobertura_completa ? null : avisoDeCobertura,
-      },
-    };
+    // Entao o detalhe (1) so sai quando `detalhar` vem no corpo e (2) exige
+    // credencial de verdade: JWT de usuario logado, chave interna ou de API. O
+    // front ja injeta o JWT da sessao nas chamadas ao Railway, entao para quem
+    // esta logado na aba isso e transparente.
+    //
+    // Telefone sai MASCARADO (4 ultimos digitos). Quem precisa do numero
+    // inteiro abre o lead no funil, onde existe registro de quem olhou; painel
+    // de metricas nao e lugar de copiar carteira.
+    let detalhe: Record<string, unknown> | null = null;
+    if (querDetalhe) {
+      const credencial = await authorizeFunctionRequest(req as any);
+      if (!credencial.ok) {
+        // O PORQUE junto da recusa. Nao consigo testar o caminho feliz daqui:
+        // `RAILWAY_API_KEY` e `RAILWAY_INTERNAL_KEY` nao estao configuradas em
+        // producao (`/health` mostra `api_key: false`), entao o unico caminho
+        // que autoriza e o JWT de usuario — que so existe no navegador de quem
+        // fez login. Sem o motivo, "verificador quebrado" e "token invalido"
+        // devolveriam a mesma frase, e alguem passaria a tarde procurando o
+        // defeito no lugar errado. Nenhum valor aqui revela credencial.
+        detalhe = {
+          disponivel: false,
+          motivo: 'o detalhe nominal exige usuario logado',
+          porque: credencial.reason || 'sem credencial reconhecida',
+        };
+      } else {
+        const mascara = (v: string | null) => {
+          const d = String(v || '').replace(/\D/g, '');
+          return d.length >= 4 ? `•••• ${d.slice(-4)}` : null;
+        };
+        const TETO_DETALHE = 500;
+        detalhe = {
+          disponivel: true,
+          teto: TETO_DETALHE,
+          leads: leads.slice(0, TETO_DETALHE).map((l: any) => ({
+            nome: l.lead_name || '(sem nome)',
+            telefone: mascara(l.lead_phone),
+            dia: diaDoInstante(l.created_at),
+            acolhedor: acolhedorDoConjunto(l.adset_name),
+            conjunto: l.adset_name || null,
+            funil: nomeBoard[l.board_id] || null,
+            status: l.lead_status || null,
+            pago: ehPago(l),
+          })),
+          leads_total: leads.length,
+          // `dias_ate_fechar` fica FORA de proposito: `became_client_date` guarda
+          // a data da IMPORTACAO da planilha, nao a do fechamento — 24 dos 28
+          // fechamentos pagos caem todos em 09/09. Qualquer duracao calculada
+          // aqui seria inventada, e com cara de metrica.
+          fechamentos: fechados.slice(0, TETO_DETALHE).map((f: any) => ({
+            nome: f.lead_name || '(sem nome)',
+            telefone: mascara(f.lead_phone),
+            dia: diaDaColuna(f.became_client_date),
+            acolhedor: acolhedorDoConjunto(f.adset_name),
+            conjunto: f.adset_name || null,
+            funil: nomeBoard[f.board_id] || null,
+            pago: ehPago(f),
+          })),
+          fechamentos_total: fechados.length,
+        };
+      }
+    }
 
     return res.status(200).json({
       gerado_em: new Date().toISOString(),
       janela: { de, ate, dias: serieDias.length, inclui_hoje: janelaInclutHoje },
       filtros: { funil: funilPedido, acolhedor: acolhedorPedido },
+      // A tela precisa poder dizer O QUE esta contando. Um painel que soma
+      // Trabalhista sem avisar produz numero que ninguem consegue conferir.
+      escopo: {
+        area: 'PREV',
+        // Nomes repetidos existem (ha dois boards "Auxilio Acidente"): o rotulo
+        // mostra o conjunto, nao a contagem de ids.
+        boards: [...new Set(idsPrev.map((id) => nomePorBoard[id]))].sort(),
+        nota: 'Trabalhista tem estrutura e equipe diferentes e fica fora desta aba.',
+      },
       opcoes: {
         funis: FUNIS.map((f) => ({ chave: f.chave, rotulo: f.rotulo })),
         acolhedores: ACOLHEDORES.map((a) => ({ chave: a.chave, rotulo: a.rotulo })),
         max_dias: MAX_DIAS_JANELA,
       },
       investimento: {
-        ...compat.investimento_antigo,
         disponivel: !gasto.erro,
         erro: gasto.erro,
         na_janela: investidoJanela,
@@ -621,7 +656,6 @@ export const handler: RequestHandler = async (req, res) => {
       // custou anuncio nenhum). Total ao lado do investimento convida a leitura
       // errada, e o custo por lead ja usava so os pagos.
       leads: {
-        ...compat.leads_antigo,
         na_janela: leads.length,
         pagos_na_janela: leadsPagos.length,
         hoje: janelaInclutHoje ? (leadsPorDia[hoje] || 0) : null,
@@ -632,7 +666,6 @@ export const handler: RequestHandler = async (req, res) => {
         por_board: contaPor(leads, (l) => nomeBoard[l.board_id] || null).slice(0, 15),
       },
       fechamentos: {
-        ...compat.fechamentos_antigo,
         // Detector, não filtro: ver o bloco acima.
         concentracao,
         na_janela: fechados.length,
@@ -649,6 +682,7 @@ export const handler: RequestHandler = async (req, res) => {
         investido: Number((gastoPorDia[d] || 0).toFixed(2)),
       })),
       desempenho_por_conjunto,
+      detalhe,
       por_acolhedor,
       funil_pago,
       capi: {
@@ -658,6 +692,25 @@ export const handler: RequestHandler = async (req, res) => {
         // na maioria dos fechamentos (lead sem contato nenhum).
         com_lead_id: eventos.filter((e: any) => e?.user_data_hash?.lead_id).length,
         aceitos_com_lead_id: eventos.filter((e: any) => e?.status === 'sent' && e?.user_data_hash?.lead_id).length,
+        // IGNORADA PAGA vs IGNORADA ORGANICA — sao coisas opostas.
+        //
+        // Medido em 11/09/2026: as 107 ignoradas vinham de `whatsapp` (97),
+        // `manual` (7), `instagram` (2) e `Internet` (1). NENHUMA tinha id da
+        // Meta. Sao fechamentos de lead que nunca veio de anuncio: a Meta nao
+        // tem o que casar, e ignorar esta certo.
+        //
+        // A tela chamava as 107 de "lista de conserto", o que e falso e manda
+        // alguem procurar defeito onde nao ha. O que DE FATO pede conserto e a
+        // ignorada de lead PAGO — essa a Meta casaria se tivesse contato.
+        //
+        // O `lead_id` no hash e a prova: o normalizador so o grava quando o lead
+        // tem `facebook_lead_id`.
+        ignorados_de_lead_pago: eventos.filter(
+          (e: any) => e?.status === 'skipped' && e?.user_data_hash?.lead_id,
+        ).length,
+        ignorados_organicos: eventos.filter(
+          (e: any) => e?.status === 'skipped' && !e?.user_data_hash?.lead_id,
+        ).length,
         motivos_ignorado: eventos
           .filter((e: any) => e?.status === 'skipped' && e?.motivo_skip)
           .reduce((acc: Record<string, number>, e: any) => {
@@ -676,7 +729,6 @@ export const handler: RequestHandler = async (req, res) => {
       // Rotinas: contador zera a cada deploy, entao quem responde e `ultima_em`.
       rotinas: rotinasParaOPainel(),
       custo: {
-        ...compat.custo_antigo,
         leads_pagos: leadsPagos.length,
         // Os dois lados do mesmo investimento, nomeados. Ver o comentário acima.
         gasto_sem_lead_no_crm: gastoSemLead,

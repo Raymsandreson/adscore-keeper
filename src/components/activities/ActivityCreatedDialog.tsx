@@ -1,7 +1,8 @@
 import { useMemo, useEffect } from 'react';
-import { CheckCircle2, Pencil, Trash2, X } from 'lucide-react';
+import { CheckCircle2, Pencil, Trash2, X, ListChecks } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { abrirPassosDoPop } from '@/lib/popPassosIntent';
 
 export const CHURCHILL_QUOTES = [
   '"O sucesso é ir de fracasso em fracasso sem perder o entusiasmo." — Winston Churchill',
@@ -23,9 +24,16 @@ interface Props {
   title: string;
   onEdit: () => void;
   onDelete: () => void;
+  /**
+   * POP que mede a atividade recém-criada. Quando vem preenchido, o diálogo
+   * PERGUNTA se algum passo já foi dado e abre a aba lateral dos passos — sem
+   * isso o POP ficava parado na fase errada até alguém lembrar de marcar
+   * (pedido do usuário, 14/09/2026). Null em atividade sem POP.
+   */
+  pop?: { leadId: string; boardId: string; processId?: string | null; activityId?: string | null } | null;
 }
 
-export function ActivityCreatedDialog({ open, onOpenChange, title, onEdit, onDelete }: Props) {
+export function ActivityCreatedDialog({ open, onOpenChange, title, onEdit, onDelete, pop = null }: Props) {
   const quote = useMemo(
     () => CHURCHILL_QUOTES[Math.floor(Math.random() * CHURCHILL_QUOTES.length)],
     [open]
@@ -33,9 +41,12 @@ export function ActivityCreatedDialog({ open, onOpenChange, title, onEdit, onDel
 
   useEffect(() => {
     if (!open) return;
+    // Com pergunta de POP na tela o diálogo NÃO se fecha sozinho: fechar em 5s
+    // seria o mesmo que não ter perguntado.
+    if (pop) return;
     const t = setTimeout(() => onOpenChange(false), 5000);
     return () => clearTimeout(t);
-  }, [open, onOpenChange]);
+  }, [open, onOpenChange, pop]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -58,6 +69,39 @@ export function ActivityCreatedDialog({ open, onOpenChange, title, onEdit, onDel
             {quote}
           </p>
         </div>
+
+        {/* Lembrete do POP: parte do trabalho costuma já ter sido feita antes de
+            a atividade nascer (ligação, protocolo, documento anexado). */}
+        {pop && (
+          <div className="mt-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-left">
+            <p className="text-sm font-medium">Algum passo do POP já foi dado?</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Marque agora o que já foi feito — senão o POP fica parado numa fase que o processo já passou.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  abrirPassosDoPop({
+                    leadId: pop.leadId,
+                    boardId: pop.boardId,
+                    processId: pop.processId ?? null,
+                    activityId: pop.activityId ?? null,
+                    perguntar: false,
+                    atividadeTitulo: title,
+                  });
+                  onOpenChange(false);
+                }}
+              >
+                <ListChecks className="h-4 w-4 mr-2" />
+                Sim — marcar agora
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+                Ainda não
+              </Button>
+            </div>
+          </div>
+        )}
         <div className="flex gap-2 justify-center mt-4">
           <Button
             variant="outline"

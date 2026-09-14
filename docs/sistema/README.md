@@ -17,6 +17,17 @@ Documentação de todas as seções do sistema: propósito de cada tela, funcion
 - [Financeiro no processo e na atividade](financeiro-processo-atividade.md) — onde lançar despesa/receita de cliente e como o lançamento sobe para processo, caso e lead
 - [Dom — Assessor Jurídico Virtual](dom-assessor-virtual.md) — atendente virtual que responde o cliente no grupo do caso com o andamento real dos autos: as três travas, o isolamento por grupo, como ele fala e o que ainda falta
 - [Open Finance / Celcoin](open-finance-celcoin.md) — conciliação bancária que substitui a Pluggy: caminhos versionados, janela de datas, consentimento PJ e o que ainda falta conectar
+- [Liberar acesso de uma pessoa](acesso-de-usuario.md) — criar acesso direto ou convite pela tela Equipe, qual perfil dá o quê, e os dois bloqueios que parecem o mesmo ("acesso desativado" × "Acesso Restrito")
+
+### Aquisição: do anúncio ao caso fechado
+
+O caminho completo de um lead pago, do formulário no anúncio até a conversão
+devolvida à Meta. Ler nesta ordem:
+
+- [Planilhas de Lead Ads → funil](planilhas-lead-ads.md) — como o lead sai do formulário e vira card pela planilha do Google: abas, dedup, cabeçalho e o que o leitor descarta
+- [Lead da Meta direto no funil](meta-leads-direto.md) — o mesmo lead pela Graph API, sem depender da planilha; os dois caminhos convivem e o dedup é quem impede a duplicata
+- [Meta Conversions API](meta-conversions-api.md) — o fechamento no CRM voltando à Meta como conversão: a fila, o reconciliador, o dataset certo e o piloto de Conversion Leads
+- [Aba Métricas](aba-metricas.md) — investimento, leads e fechamentos na mesma tela, e as regras que impedem número inventado
 
 ## Observação sobre propriedade intelectual (Brasil)
 
