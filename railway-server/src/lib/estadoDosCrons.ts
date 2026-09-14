@@ -43,6 +43,14 @@ export const metaLeadsEstado = {
   criados_acumulado: 0,
 };
 
+export const avisoLeadEstado = {
+  ligado: (process.env.AVISO_LEAD_ACOLHEDOR || '').toLowerCase() === 'on',
+  execucoes: 0,
+  ultima_em: null as string | null,
+  ultimo_resultado: null as string | null,
+  enviados_acumulado: 0,
+};
+
 /** Como a aba de Métricas lê as rotinas: rótulo humano + de quanto em quanto tempo roda. */
 export function rotinasParaOPainel() {
   return [
@@ -75,6 +83,16 @@ export function rotinasParaOPainel() {
       ultima_em: sheetStatusEstado.ultima_em,
       ultimo_resultado: sheetStatusEstado.ultimo_resultado,
       acumulado: `${sheetStatusEstado.status_escritos_acumulado} status escritos`,
+    },
+    {
+      chave: 'aviso_lead_acolhedor',
+      rotulo: 'Lead novo → WhatsApp do acolhedor',
+      a_cada: '3 min',
+      ligado: avisoLeadEstado.ligado,
+      execucoes: avisoLeadEstado.execucoes,
+      ultima_em: avisoLeadEstado.ultima_em,
+      ultimo_resultado: avisoLeadEstado.ultimo_resultado,
+      acumulado: `${avisoLeadEstado.enviados_acumulado} avisos enviados`,
     },
     {
       chave: 'capi_reconcile',

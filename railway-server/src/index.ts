@@ -18,6 +18,7 @@ import {
   capiReconcileEstado,
   sheetStatusEstado,
   metaLeadsEstado,
+  avisoLeadEstado,
 } from './lib/estadoDosCrons';
 // Aliases explícitos: no Railway `SUPABASE_URL` sem prefixo é o Cloud (ver
 // CLOUD_FUNCTIONS_URL abaixo). Estes dois são do Externo.
@@ -79,6 +80,7 @@ import { handler as metaCapiDispatch } from './functions/meta-capi-dispatch';
 import { handler as metaCapiReconcile } from './functions/meta-capi-reconcile';
 import { handler as metricasPainel } from './functions/metricas-painel';
 import { handler as metaLeadsSync } from './functions/meta-leads-sync';
+import { handler as avisarAcolhedorLead } from './functions/avisar-acolhedor-lead';
 import { handler as metaCapiStatus } from './functions/meta-capi-status';
 import { handler as syncHearingsFromSheet } from './functions/sync-hearings-from-sheet';
 import { handler as gmailInssSync } from './functions/gmail-inss-sync';
@@ -215,6 +217,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'meta-capi-reconcile': metaCapiReconcile, // acha fechamento sem evento (webhook fecha lead sem passar por gatilho)
   'metricas-painel': metricasPainel, // agregados da aba de metricas (investimento ao vivo + funil)
   'meta-leads-sync': metaLeadsSync, // le lead do formulario direto da Meta, sem a planilha no meio
+  'avisar-acolhedor-lead': avisarAcolhedorLead, // leva o lead novo pro WhatsApp de quem atende, com link wa.me pronto
   'meta-capi-status': metaCapiStatus, // leitura do painel (RLS barra o navegador)
   'sync-hearings-from-sheet': syncHearingsFromSheet,
   'transcode-audio-opus': transcodeAudioOpus,
@@ -346,6 +349,9 @@ app.get('/health', (_req, res) => {
     sheet_status_sync: sheetStatusEstado,
     // Lead lido direto da Meta, sem depender da planilha.
     meta_leads_sync: metaLeadsEstado,
+    // Aviso de lead novo no WhatsApp do acolhedor. `ligado: false` com
+    // `enviados_acumulado: 0` e o estado de fabrica — nao e falha.
+    aviso_lead_acolhedor: avisoLeadEstado,
     // Webhook da UazAPI: entra sem credencial de proposito (servico externo).
     // Aqui se mede se da pra exigir o instance_token como prova de origem —
     // `sem_token_por_evento` e a lista que precisa esvaziar antes disso.
@@ -1252,3 +1258,71 @@ async function runCapiReconcile() {
 setTimeout(runCapiReconcile, 420_000);
 setInterval(runCapiReconcile, CAPI_RECONCILE_INTERVAL_MS);
 console.log('[cron:capi-reconcile] ligado — janela de 7 dias, a cada 15 min');
+
+// ============================================================
+// CRON: lead novo -> WhatsApp do acolhedor
+//
+// O acolhedor vive no WhatsApp, nao na tela. Ate aqui, para saber que entrou
+// lead do trafego pago ele tinha que abrir o sistema — e enquanto nao abria, o
+// lead esfriava. Esta rodada leva o lead ao WhatsApp dele com um link `wa.me`
+// que ja abre a conversa com o cliente com a primeira mensagem escrita.
+//
+// 3 min, e nao 30: a varredura le no MAXIMO os leads das ultimas 3h de um board
+// e so escreve quando tem aviso para mandar. Rodada sem lead novo custa duas
+// queries. O que manda na latencia real nao e este cron, e o de ingestao
+// (`meta-leads-sync`, 30 min) — este so nao pode somar atraso ao dele.
+//
+// GATE: sai DESLIGADO de proposito. Ligar e `AVISO_LEAD_ACOLHEDOR=on` no
+// Railway, DEPOIS de cadastrar quem recebe em `acolhedor_aviso_config`. Sem
+// cadastro a funcao nao manda nada, entao o gate e a segunda trava, nao a
+// unica. Desligar de volta: tirar a env var e reiniciar; nada se perde, os
+// leads continuam entrando no funil como sempre.
+// ============================================================
+const AVISO_LEAD_INTERVAL_MS = 3 * 60 * 1000;
+const AVISO_LEAD_LIGADO = (process.env.AVISO_LEAD_ACOLHEDOR || '').toLowerCase() === 'on';
+async function runAvisoLeadAcolhedor() {
+  // Antes do await: prova que a rodada disparou mesmo que ela trave depois.
+  avisoLeadEstado.execucoes += 1;
+  avisoLeadEstado.ultima_em = new Date().toISOString();
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/avisar-acolhedor-lead`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: JSON.stringify({ dry_run: false }),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    if (json?.error) {
+      console.error(`[cron:aviso-lead] ${json.error}`);
+      avisoLeadEstado.ultimo_resultado = `erro: ${String(json.error).slice(0, 120)}`;
+      return;
+    }
+    if (json?.pulado) {
+      avisoLeadEstado.ultimo_resultado = String(json.pulado);
+      return;
+    }
+    const enviados = Number(json?.enviados || 0);
+    const falhas = Number(json?.falhas || 0);
+    avisoLeadEstado.enviados_acumulado += enviados;
+    avisoLeadEstado.ultimo_resultado =
+      `enviados=${enviados} falhas=${falhas} sem_config=${json?.sem_config ?? 0} sem_operador=${json?.sem_operador ?? 0}`;
+    // Lead com dono conhecido e sem WhatsApp cadastrado e lead que ninguem vai
+    // saber que existe. Some no JSON se nao aparecer no log.
+    if (Number(json?.sem_config || 0) > 0) {
+      console.warn(`[cron:aviso-lead] ${json.sem_config} lead(s) de operador sem cadastro em acolhedor_aviso_config`);
+    }
+    if (enviados > 0 || falhas > 0) console.log(`[cron:aviso-lead] ${avisoLeadEstado.ultimo_resultado}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[cron:aviso-lead] failed:', msg);
+    avisoLeadEstado.ultimo_resultado = `falha: ${msg.slice(0, 120)}`;
+  }
+}
+
+if (AVISO_LEAD_LIGADO) {
+  // 600s: depois de meta-leads-sync (540s), pra nao competir no boot.
+  setTimeout(runAvisoLeadAcolhedor, 600_000);
+  setInterval(runAvisoLeadAcolhedor, AVISO_LEAD_INTERVAL_MS);
+  console.log('[cron:aviso-lead] ligado — a cada 3 min');
+} else {
+  console.log('[cron:aviso-lead] DESLIGADO (defina AVISO_LEAD_ACOLHEDOR=on para ligar)');
+}
