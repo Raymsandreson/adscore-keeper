@@ -69,8 +69,14 @@ const LEAD_INDEX_COLUMNS = [
   // sempre undefined e o bloco some da tela sem erro nenhum — foi o que
   // aconteceu entre 24/06 e 05/08/2026 com a empresa.
   'contractor_company', 'main_company',
-  'visit_city', 'visit_state',
+  'visit_city', 'visit_state', 'visit_region',
   'city', 'state', 'product_service_id',
+  // Colunas que só existem por causa dos FILTROS do painel. Sem elas
+  // `applyLeadFilters` compara contra `undefined` e devolve lista vazia: o
+  // filtro de data do acidente, o de faixa etária e os de autoria zeravam o
+  // kanban inteiro em vez de recortar. +869 kB no maior board — é o preço de
+  // filtro que funciona.
+  'accident_date', 'victim_age', 'created_by', 'updated_by',
   'ad_spend_at_conversion', 'conversion_value',
   'lead_status_reason', 'lead_status_changed_at',
   'followup_count', 'last_followup_at',
