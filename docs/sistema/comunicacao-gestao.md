@@ -61,6 +61,27 @@ Em grupo, **cada instância-membro grava a sua própria cópia de cada mensagem*
 
 **Mensagem enviada para o JID sumia do menu** (corrigido na edge `send-whatsapp` v25, deployada no Externo em 18/08/2026): o alvo do envio pode ser `120…@g.us`, mas a coluna `phone` tem de guardar só dígitos — é assim que o webhook grava e é por essa forma que o menu procura a conversa. Eram 1.505 linhas entre 09/04 e 18/08, todas outbound nossas (~300/mês), vindas de `sendActivityGroupNotification` e `sendVoiceToWa`. `storagePhone` separa o alvo do envio da forma gravada; backfill de 1.548 linhas aplicado (inclui 43 com `@s.whatsapp.net`, de abril).
 
+### Conversa lida no celular apaga o badge do app (14/09/2026)
+
+A mensagem digitada no aparelho já caía em `whatsapp_messages` desde sempre — o webhook grava `fromMe` como `outbound`, e é daí que saem 34% das nossas mensagens de grupo. O que nunca atravessou foi o **estado de leitura**: quem abria a conversa no celular zerava o contador no WhatsApp e o badge do app seguia aceso, porque o evento `chats` da UazAPI, que carrega esse contador, estava na lista de descarte do webhook desde o primeiro dia (`railway-server/src/functions/whatsapp-webhook.ts`).
+
+- **Agora `chats` com `wa_unreadCount: 0` carimba `read_at`** nas `inbound` daquele chat. O resto vem de graça: `trg_whatsapp_messages_update_read` decrementa `conversations.unread_count`, e tanto o web quanto o app derrubam o badge sozinhos. **Nenhuma linha de cliente mudou** — a assinatura da lista do app já contava as não lidas justamente para pegar leitura feita em outro aparelho.
+- **Só o zero é sinal.** `wa_unreadCount > 0` não desmarca nada, e campo ausente não vale por zero. A sincronia é de uma direção só: se o celular pudesse reacender o badge, ele brigaria para sempre com a leitura feita aqui — e apagar, ao contrário de acender, é idempotente.
+- **Grupo carimba as cópias de todas as instâncias**, pela mesma razão que a lista trata grupo como uma conversa só: a bolha lida é a mesma mensagem espelhada, e deixar as cópias sem `read_at` mantém o badge aceso para o próximo colega.
+- **O gate sai desligado** (`WHATSAPP_READ_SYNC=on` liga, no painel do Railway). Não é cerimônia de deploy: o `wa_unreadCount` da UazAPI nunca foi observado em produção, e se ele vier sempre zero o badge da equipe inteira apaga de uma vez, levando junto a fila de quem precisa responder. Desligado, o handler roda e **loga o que teria marcado** (`[leitura-sync][observando]`) — é essa linha que autoriza ligar.
+
+**O retroativo** (`/functions/whatsapp-sync-leitura`) existe porque o evento só resolve do dia em que entrar em diante, e o passivo é de meses. A varredura parte de **quem nós achamos não lido** (`conversations.unread_count > 0`, consulta indexada por instância) e só então pergunta à UazAPI o que o celular acha daqueles chats — instância sem pendência não gera uma chamada de rede. O `dry_run` começa ligado, porque marcar como lido é irreversível na prática.
+
+```
+{ "acao": "webhook" }                       vê o evento em cada instância (aplicar: true liga)
+{ "acao": "reconciliar" }                   dry-run
+{ "acao": "reconciliar", "dry_run": false } para valer
+```
+
+O número do dry-run é também o teste do campo: **zero chat lido no celular com milhares de pendências nossas não é "está tudo em dia"** — é motivo para não ligar o gate. O `veredito` da resposta diz isso com todas as letras.
+
+Três coisas ficaram de fora, de propósito: a **volta** (ler no app mandar `/chat/read` ao celular, que dispara confirmação de leitura para o cliente), o **`messages_update`** (tique de entrega no canal UazAPI, que o canal Cloud já tem) e o **gêmeo Deno** em `supabase/functions/whatsapp-webhook/index.ts`, que continua descartando `chats` — se alguma instância ainda apontar o webhook para a edge em vez do Railway, a leitura dela não sincroniza, e a ação `webhook` imprime a URL de cada uma para responder isso.
+
 ### Mensagem citada — o "responder" do WhatsApp na bolha (26/08/2026)
 
 Quando alguém responde citando uma mensagem, a UazAPI entrega a resposta com o id da citada em `metadata.message.quoted` (= `content.contextInfo.stanzaID`) e uma **cópia do conteúdo citado** em `content.contextInfo.quotedMessage`. Nada disso era lido: a bolha mostrava só o texto da resposta — que muitas vezes é um "." solto, porque quem responde um PDF ou um áudio escreve só um ponto para apontar o arquivo. Sem o bloco de citação, a mensagem chegava sem contexto e não havia nada para clicar (relato de 21/08/2026 no grupo FAMÍLIA 345, respondendo um PDF de 30/06).
