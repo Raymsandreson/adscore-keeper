@@ -196,7 +196,7 @@ cabeçalho: índice 19 = `4299685755`, índice 20 = `evelin iasmin castilho`.
 inequívoca; se nenhuma servir, a linha cai como antes. `recuperadas_por_troca`
 por aba mostra quantas foram recuperadas.
 
-### 2. Aba sem linha de cabeçalho (802 linhas, AINDA ABERTO)
+### 2. Aba sem linha de cabeçalho (802 linhas — contornado pela API em 14/09)
 
 `MATEUS - 2` (766 linhas) e `KAROLYNE` (36) **não têm linha de cabeçalho**: a
 primeira linha já é dado, e vira "cabeçalho" com nomes como
@@ -206,6 +206,20 @@ Isso **não** se conserta por heurística: adivinhar qual coluna é o nome pode
 trazer `qual_o_nome_da_criança_?` no lugar do responsável. O conserto é inserir a
 linha de cabeçalho na planilha — ou ler esses formulários pela API da Meta
 (`meta-leads-sync`), que não depende de formatação nenhuma.
+
+**Foi o segundo caminho que resolveu.** Com o `meta-leads-sync` em cron (30 min,
+desde 09/09), esses formulários entram pela API. Conferido em 14/09, nas
+amostras mais recentes de cada um:
+
+| `source` | amostra | nome válido | telefone válido |
+|---|---:|---:|---:|
+| `Meta Lead Ads — Karolyne` | 200 | 200 | 200 |
+| `Meta Lead Ads — Mateus` | 200 | 200 | 200 |
+
+A aba continua sem cabeçalho e o leitor de planilha continua descartando essas
+linhas — **o que mudou é que não se perde mais lead por causa disso**. Inserir o
+cabeçalho deixou de ser urgente e virou higiene: enquanto não for feito, esses
+formulários dependem de um caminho só.
 
 ### O que impedia de ver isso
 
@@ -226,8 +240,13 @@ novo". Os dois números têm que ser mostrados juntos.
   silêncio.
 - **Linha sem telefone com 10+ dígitos ou com nome-lixo é descartada** sem
   aparecer em lugar nenhum da resposta.
-- A planilha é a única fonte: se a integração Meta→Sheets cair, o CRM seca e
-  nada aqui denuncia — só a comparação com o gasto no Gerenciador de Anúncios.
+- **A planilha deixou de ser a única fonte (09/09/2026).** Se a integração
+  Meta→Sheets cair de novo — foi o que houve em agosto, sem erro em lugar
+  nenhum —, o `meta-leads-sync` continua trazendo lead pela API. Os dois caminhos
+  convivem e o dedup por `phoneKey` impede a duplicata; ver
+  `docs/sistema/meta-leads-direto.md`. O que **ainda** não existe é alarme: nada
+  aqui avisa que um dos dois secou, e a comparação com o gasto no Gerenciador
+  segue sendo a forma de perceber.
 
 ## O cabeçalho é procurado, não assumido (11/09/2026)
 

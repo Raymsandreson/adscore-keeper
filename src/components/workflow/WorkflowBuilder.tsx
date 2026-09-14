@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { VoiceDictateButton } from '@/components/ui/voice-dictate-button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -339,6 +340,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [generating, setGenerating] = useState(false);
   const [showAiDialog, setShowAiDialog] = useState(false);
   const [aiMode, setAiMode] = useState<'create' | 'edit'>('create');
+  // Fase do ditado por voz no diálogo da IA — só troca o placeholder do campo.
+  const [ditadoFase, setDitadoFase] = useState<'idle' | 'gravando' | 'transcrevendo'>('idle');
   const [aiChangelog, setAiChangelog] = useState<Array<{ action: string; location: string; detail: string }> | null>(null);
   // Cargos que a IA detectou faltarem no time para cumprir o POP (sugestão, não ação).
   const [aiCargoSugestoes, setAiCargoSugestoes] = useState<Array<{ cargo: string; motivo: string }> | null>(null);
@@ -3615,12 +3618,30 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
               ? 'Descreva o que quer alterar no fluxo. A IA vai identificar onde encaixar as mudanças e informar o que foi alterado. Ela também pode definir responsáveis por CARGO do time vinculado (a pessoa é resolvida pelo cargo) e prazos por passo, e sugere cargos se faltar função no time.'
               : 'Descreva o tipo de fluxo que precisa e a IA criará automaticamente as fases, objetivos, passos, scripts e checklists — com responsáveis por CARGO do time vinculado, prazos por passo, e sugestão de cargos se faltar função no time.'}
           </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              Digite ou dite: a IA transcreve e limpa o texto antes de ele cair no campo.
+            </p>
+            <VoiceDictateButton
+              disabled={generating}
+              className="shrink-0"
+              contexto={aiMode === 'edit'
+                ? 'instrução para a IA editar um fluxo de trabalho (POP) de um escritório de advocacia'
+                : 'instrução para a IA criar um fluxo de trabalho (POP) de um escritório de advocacia'}
+              onPhaseChange={setDitadoFase}
+              onResult={texto => setAiPrompt(prev => (prev.trim() ? `${prev.trim()} ${texto}` : texto))}
+            />
+          </div>
           <Textarea
             value={aiPrompt}
             onChange={e => setAiPrompt(e.target.value)}
-            placeholder={aiMode === 'edit'
-              ? 'Ex: Adicione um passo de envio de contrato na fase de Fechamento, com checklist de documentos necessários...'
-              : 'Ex: Fluxo para prospecção de clientes de acidente de trabalho, começando pelo contato inicial via WhatsApp...'}
+            placeholder={ditadoFase === 'gravando'
+              ? 'Gravando... fale o que você quer e clique em Parar.'
+              : ditadoFase === 'transcrevendo'
+                ? 'Transcrevendo e limpando o que você falou...'
+                : aiMode === 'edit'
+                  ? 'Ex: Adicione um passo de envio de contrato na fase de Fechamento, com checklist de documentos necessários...'
+                  : 'Ex: Fluxo para prospecção de clientes de acidente de trabalho, começando pelo contato inicial via WhatsApp...'}
             className="min-h-[120px]"
           />
           <div className="flex gap-2 justify-end">
