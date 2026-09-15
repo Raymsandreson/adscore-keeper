@@ -91,23 +91,47 @@ bloqueio — assim o teste não polui contador nem manda nada:
 select public.wa_gate_envio('<instancia morta>', '<numero>', 'teste', false);
 ```
 
-## Limpe a canary no mesmo dia — ela é porta dos fundos
+## Limpe a canary no mesmo dia
 
-Uma canary do `send-whatsapp` é uma **cópia completa do enviador com
-`verify_jwt = false`**: qualquer pessoa com a chave anon (que é pública, vai no
-bundle) pode chamá-la e mandar WhatsApp pelos números do escritório, sem
-autoria e sem ninguém monitorando.
+Enquanto viva, a canary é uma **cópia completa do enviador** num slug que
+ninguém monitora. Mesmo exigindo JWT, qualquer pessoa autenticada pode chamá-la
+e enviar por um caminho que **não tem as proteções das versões seguintes** — o
+freio da v30 e a autoria da v28 não existem numa cópia antiga. É desvio da
+proteção que acabou de ser instalada.
 
 O MCP **não tem delete de edge function**, e a Management API exige PAT (que
 não existe no ambiente). Então, terminado o deploy:
 
 1. Redeploy a canary com um stub inerte (`Deno.serve` devolvendo 410) e
-   `verify_jwt: true`. Assim ela para de ser porta, mesmo ficando listada.
+   `verify_jwt: true`.
 2. Avise o usuário que a remoção definitiva é um clique no dashboard:
    Edge Functions → `<slug>` → Delete.
 
-**Pendência aberta:** `send-whatsapp-canary-v26` está no ar com o enviador
-completo e `verify_jwt = false` desde abril/2026. Mesmo tratamento.
+Isto **já é prática estabelecida** nesta casa, não invenção: a
+`send-whatsapp-canary-v26` foi criada e esvaziada no mesmo dia (25/08/2026),
+com este mesmo stub de 410 e o mesmo aviso sobre a falta de API de exclusão.
+Confirmado lendo o corpo dela em 15/09/2026 — está inerte e com
+`verify_jwt: true`.
+
+### Não afirme o estado de uma função pela listagem
+
+Em 15/09/2026 eu disse que a canary-v26 estava "com o enviador completo,
+`verify_jwt = false`, desde abril" — **errado nas três**. Tirei isso da linha de
+metadados de `list_edge_functions` sem abrir o corpo. Ela estava inerte, exigia
+JWT, e era de agosto.
+
+`list_edge_functions` dá slug, versão e data. **Só `get_edge_function` diz o que
+a função faz.** Antes de descrever risco, ou de sobrescrever qualquer coisa,
+leia o corpo.
+
+### Buraco conhecido na cadeia de rollback
+
+Não existe `index.v26.rollback.ts` no repo, mas o cabeçalho da v27 aponta para
+ele como "espelho fiel da v26 deployada". Também faltam v23, v24, v25 e v26. O
+código da v26 não sobrevive em lugar nenhum — a canary que o tinha foi esvaziada
+em agosto. Na prática a cadeia utilizável começa na v27/v28, e o próprio
+cabeçalho da v26 sempre descreveu o rollback dela como edição de código a partir
+da v25, não como arquivo. Não tente reconstruir: vá para a v28.
 
 ## Rollback
 
