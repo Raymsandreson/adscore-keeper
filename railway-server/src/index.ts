@@ -319,6 +319,31 @@ app.get('/health', (_req, res) => {
       // Placar desde o ultimo deploy. `missing_por_funcao` e a lista que precisa
       // estar vazia antes de ligar o enforce.
       observado: authStats(),
+      // Por que a flag aparece CRUA aqui, ao contrario das credenciais acima:
+      // ela e booleana e publica, e tres defeitos diferentes produzem o MESMO
+      // `enforced: false`, sem aviso nenhum — nome digitado diferente, valor
+      // que o regex recusa, ou variavel salva em outro servico/environment.
+      // Sem isto, distinguir os tres depende de alguem ler o painel a olho.
+      // Mesmo remedio do `meta_dataset` abaixo, que nasceu de um caso igual.
+      // Valor de credencial continua fora daqui: abaixo so saem NOMES.
+      flag: {
+        RAILWAY_AUTH_ENFORCE: process.env.RAILWAY_AUTH_ENFORCE ?? null,
+        aceito_pelo_regex: AUTH_ENFORCE,
+        valores_aceitos: '1 | true | on | yes',
+        // So os NOMES das variaveis que chegaram, nunca os valores: e o que
+        // mostra a variavel salva com nome parecido (AUTH_ENFORCE,
+        // RAILWAY_ENFORCE_AUTH, um typo em ENFORCE) sem expor nada.
+        nomes_railway: Object.keys(process.env)
+          .filter((k) => k.startsWith('RAILWAY_'))
+          .sort(),
+        nomes_com_enforce: Object.keys(process.env)
+          .filter((k) => /ENFOR/i.test(k))
+          .sort(),
+        // Qual servico/environment do Railway atende esta URL. Variavel salva
+        // em outro nunca chega aqui, e isso nao da pra ver de fora.
+        servico: process.env.RAILWAY_SERVICE_NAME || null,
+        environment: process.env.RAILWAY_ENVIRONMENT_NAME || null,
+      },
     },
     // QUAL conjunto de dados esta em uso, e DE QUAL variavel ele veio.
     //
