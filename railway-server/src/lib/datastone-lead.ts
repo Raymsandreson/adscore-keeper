@@ -70,23 +70,51 @@ export function hashChave(tipo: string, valor: string): string {
   return createHash('sha256').update(`${tipo}:${valor.replace(/\D/g, '')}`).digest('hex');
 }
 
+/**
+ * O retorno REAL de `/persons/search/` (medido em 15/09/2026) é um resumo, não a
+ * ficha do `/persons/`: vem `name`, `cpf`, `age`, `city`, `district` (a UF),
+ * `ddd`, `number` e `mother_name` — sem `addresses[]`, `birthday` ou `rg`.
+ * Endereço e nascimento exigem a segunda chamada, por CPF.
+ *
+ * E `cpf` vem como NÚMERO: converter sem cuidado come o zero à esquerda e
+ * transforma 012.345.678-90 num CPF de 10 dígitos que não é de ninguém.
+ */
 export interface PessoaDataStone {
-  cpf?: string;
+  cpf?: string | number;
   name?: string;
-  mother_name?: string;
+  mother_name?: string | null;
   birthday?: string;
-  rg?: string | null;
+  age?: string | number;
+  city?: string;
+  district?: string;
+  ddd?: string | number;
+  number?: string | number;
+  rg?: string | number | null;
   addresses?: Array<{
     type?: string;
     street?: string;
-    number?: string;
+    number?: string | number;
     complement?: string;
     neighborhood?: string;
     city?: string;
     district?: string;
-    postal_code?: string;
+    postal_code?: string | number;
     priority?: number;
   }>;
+}
+
+/** Tudo que vem da API passa por aqui: qualquer campo pode chegar como número. */
+const txt = (v: unknown): string => (v === null || v === undefined ? '' : String(v).trim());
+
+/**
+ * CPF da API vem como número. `padStart` devolve o zero à esquerda que a
+ * serialização comeu — sem isso, todo CPF iniciado em 0 viraria lixo gravado
+ * na ficha do cliente.
+ */
+export function cpfDaResposta(v: unknown): string {
+  const d = txt(v).replace(/\D/g, '');
+  if (!d || d.length > 11) return '';
+  return d.padStart(11, '0');
 }
 
 export interface LeadParaEnriquecer {
@@ -120,7 +148,7 @@ export function camposParaGravar(
   const divergentes: string[] = [];
 
   const por = (coluna: keyof LeadParaEnriquecer, valor?: string | null) => {
-    const v = (valor ?? '').toString().trim();
+    const v = txt(valor);
     if (!v) return;
     if (vazio(lead[coluna])) campos[coluna] = v;
     else if (String(lead[coluna]).replace(/\W/g, '').toUpperCase() !== v.replace(/\W/g, '').toUpperCase()) {
@@ -128,22 +156,27 @@ export function camposParaGravar(
     }
   };
 
-  por('cpf', (pessoa.cpf || '').replace(/\D/g, ''));
-  por('rg', pessoa.rg || '');
-  por('birth_date', pessoa.birthday || '');
+  por('cpf', cpfDaResposta(pessoa.cpf));
+  por('rg', txt(pessoa.rg));
+  por('birth_date', txt(pessoa.birthday));
 
   // A API devolve várias moradas; `priority: 1` é a que ela considera principal.
+  // A ficha completa traz `addresses[]`; a busca por telefone traz só cidade e
+  // UF no topo. Os dois caminhos preenchem o que dá.
   const end = [...(pessoa.addresses || [])].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))[0];
   if (end) {
     const logradouro = [end.type, end.street].filter(Boolean).join(' ').trim();
     por('street', logradouro);
-    por('street_number', end.number || '');
-    por('complement', end.complement || '');
-    por('neighborhood', end.neighborhood || '');
-    por('city', end.city || '');
+    por('street_number', txt(end.number));
+    por('complement', txt(end.complement));
+    por('neighborhood', txt(end.neighborhood));
+    por('city', txt(end.city));
     // `district` vem como sigla de UF no payload da Data Stone.
-    por('state', (end.district || '').length === 2 ? end.district : '');
-    por('cep', (end.postal_code || '').replace(/\D/g, ''));
+    por('state', txt(end.district).length === 2 ? txt(end.district) : '');
+    por('cep', txt(end.postal_code).replace(/\D/g, ''));
+  } else {
+    por('city', txt(pessoa.city));
+    por('state', txt(pessoa.district).length === 2 ? txt(pessoa.district) : '');
   }
 
   return { campos, divergentes };

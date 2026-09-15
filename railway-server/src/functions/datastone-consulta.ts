@@ -21,10 +21,11 @@
 // rede e sem gastar um crédito.
 import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
-import { chamarDatastone, mascararTelefone } from '../lib/datastone';
+import { chamarDatastone, mascararTelefone, mascararCpf } from '../lib/datastone';
 import {
   telefoneParaConsulta,
   camposParaGravar,
+  cpfDaResposta,
   hashChave,
   type PessoaDataStone,
 } from '../lib/datastone-lead';
@@ -64,6 +65,8 @@ export const handler: RequestHandler = async (req, res) => {
     gravar?: boolean;
     simular?: boolean;
     formato_telefone?: 'nacional' | 'e164';
+    /** Busca também a ficha completa por CPF (+1 crédito, só com nome conferido). */
+    completo?: boolean;
   };
   const gravar = body.gravar !== false;
   const simular = body.simular === true;
@@ -104,6 +107,9 @@ export const handler: RequestHandler = async (req, res) => {
   let tetoAtingido = false;
 
   for (const lead of leads) {
+   // try por lead: um retorno fora do formato esperado não pode derrubar o lote
+   // inteiro — o crédito das consultas já feitas estaria pago e sem desfecho.
+   try {
     const tel = telefoneParaConsulta(lead.lead_phone);
     if (!tel.tel) {
       detalhes.push({ lead_id: lead.id, acao: 'recusado', motivo: tel.motivo, detalhe: tel.detalhe });
@@ -124,7 +130,7 @@ export const handler: RequestHandler = async (req, res) => {
       .limit(1)
       .maybeSingle();
 
-    let pessoa: PessoaDataStone | null = null;
+    let pessoa: PessoaDataStone = null;
     let veioDoCache = false;
 
     if (cacheado?.resposta) {
@@ -187,20 +193,75 @@ export const handler: RequestHandler = async (req, res) => {
       leadName: lead.lead_name,
     });
 
-    const { campos, divergentes } = camposParaGravar(lead, pessoa);
-
     if (conferencia.veredito !== 'ok') {
       if (conferencia.veredito === 'conflito') conflitos++;
+      const previa = camposParaGravar(lead, pessoa);
       detalhes.push({
         lead_id: lead.id,
         acao: 'para_conferencia',
         veredito: conferencia.veredito,
         motivo: conferencia.motivo,
         do_cache: veioDoCache,
-        campos_disponiveis: Object.keys(campos),
+        campos_disponiveis: Object.keys(previa.campos),
       });
       continue;
     }
+
+    // 4. Ficha completa — SÓ depois do gate aprovar.
+    //
+    // A busca por telefone devolve um resumo: nome, CPF, idade, cidade e UF.
+    // Nascimento, nome da mãe, RG e endereço exigem `/persons/?cpf=`, que é
+    // outro crédito. Pagar isso antes de conferir o nome seria comprar a ficha
+    // de quem não é o cliente. Esta chamada tem carência de 24h por documento,
+    // ao contrário da busca por telefone.
+    const cpfAchado = cpfDaResposta(pessoa.cpf);
+    if (body.completo && cpfAchado && !simular) {
+      const chaveCpf = hashChave('cpf', cpfAchado);
+      const { data: fichaCache } = await ext
+        .from('datastone_consultas')
+        .select('resposta')
+        .eq('chave_hash', chaveCpf)
+        .eq('encontrou', true)
+        .gt('expira_em', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (fichaCache?.resposta) {
+        const f = Array.isArray(fichaCache.resposta) ? fichaCache.resposta[0] : fichaCache.resposta;
+        pessoa = { ...pessoa, ...(f as PessoaDataStone) };
+        doCache++;
+      } else if (gasto < teto) {
+        const rf = await chamarDatastone<PessoaDataStone[]>('/persons/', { query: { cpf: cpfAchado } });
+        consultados++;
+        const listaF = Array.isArray(rf.dados) ? rf.dados : [];
+        const achouF = rf.ok && listaF.length > 0;
+        if (achouF) {
+          pessoa = { ...pessoa, ...listaF[0] };
+          creditos += 1;
+          gasto += 1;
+        }
+        await ext.from('datastone_consultas').insert({
+          endpoint: '/persons/',
+          chave_tipo: 'cpf',
+          chave_hash: chaveCpf,
+          chave_mascarada: mascararCpf(cpfAchado),
+          lead_id: lead.id,
+          status: rf.status,
+          creditos: achouF ? 1 : 0,
+          encontrou: achouF,
+          resposta: achouF ? (listaF as any) : null,
+        });
+        if (rf.falha === 'rate_limit' || rf.falha === 'sem_credito' || rf.falha === 'chave_ou_ip') {
+          detalhes.push({ lead_id: lead.id, acao: 'erro', falha: rf.falha, motivo: rf.motivo });
+          break;
+        }
+      } else {
+        tetoAtingido = true;
+      }
+    }
+
+    const { campos, divergentes } = camposParaGravar(lead, pessoa);
 
     if (!gravar || Object.keys(campos).length === 0) {
       detalhes.push({
@@ -232,6 +293,13 @@ export const handler: RequestHandler = async (req, res) => {
       divergentes,
       do_cache: veioDoCache,
     });
+   } catch (err) {
+      detalhes.push({
+        lead_id: lead.id,
+        acao: 'erro_inesperado',
+        motivo: err instanceof Error ? err.message : String(err),
+      });
+   }
   }
 
   return res.status(200).json({
