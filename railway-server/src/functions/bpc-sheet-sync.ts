@@ -128,6 +128,8 @@ interface AbaLida {
   headers: string[];
   /** Linhas cuja coluna de data o leitor nao soube ler. */
   datas_ilegiveis?: number;
+  /** Nas linhas descartadas por nome: em que colunas havia texto. So o nome da coluna. */
+  colunas_com_letra_nas_descartadas?: Record<string, number>;
   /** Linhas sem telefone usavel que seguiram vivas pelo id da Meta, so para status. */
   recuperadas_para_status?: number;
   /** Por que o telefone foi recusado: celula vazia, ou quantos digitos tinha. */
@@ -195,6 +197,13 @@ async function fetchTab(
   const motivosSemTelefone: Record<string, number> = {};
   let recuperadasParaStatus = 0;
   let datasIlegiveis = 0;
+  // ONDE O NOME FOI PARAR.
+  //
+  // `preenchidas_nas_descartadas` diz que a celula do nome nao servia; nao diz
+  // em que coluna o nome esta. Sem isso, "920 linhas sem letra latina" nao
+  // separa "a planilha veio sem nome" de "o nome esta na coluna ao lado" — e sao
+  // consertos opostos. Aqui sai so o NOME DA COLUNA, nunca o valor.
+  const colunasComLetraNasDescartadas: Record<string, number> = {};
   // Distribuicao dos valores das colunas de status QUE A EQUIPE PREENCHE na
   // planilha. Se houver "fechado" marcado ali que o CRM nao conhece, cada um e
   // uma conversao real que nunca foi para a Meta.
@@ -277,6 +286,13 @@ async function fetchTab(
               ? 'so pontos'
               : 'sem letra latina';
       preenchidas[motivo] = (preenchidas[motivo] || 0) + 1;
+      for (const [coluna, valor] of Object.entries(o)) {
+        const v = String(valor || '').trim();
+        // 3 letras evita pegar 'sim'/'nao' e sigla de UF como se fosse nome.
+        if (v.length >= 3 && /[a-zà-ú]{3}/i.test(v)) {
+          colunasComLetraNasDescartadas[coluna] = (colunasComLetraNasDescartadas[coluna] || 0) + 1;
+        }
+      }
       continue;
     }
     const phone = normalizePhone(rawPhone);
@@ -363,6 +379,7 @@ async function fetchTab(
     motivos_sem_telefone: motivosSemTelefone,
     recuperadas_para_status: recuperadasParaStatus,
     datas_ilegiveis: datasIlegiveis,
+    colunas_com_letra_nas_descartadas: colunasComLetraNasDescartadas,
     brutas_na_janela: brutasNaJanela,
     descartadas_na_janela: descartadasNaJanela,
     linha_do_cabecalho: acho.linha + 1,
@@ -490,7 +507,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const cabecalhos = new Set<string>();
   const diagPorAba = new Map<
     string,
-    { cabecalho: string[]; motivosFone?: Record<string, number>; recupStatus?: number; datasIlegiveis?: number; brutasJanela?: number; descartadasJanela?: number; linhaCabecalho?: number; idRecuperado?: boolean; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
+    { cabecalho: string[]; motivosFone?: Record<string, number>; recupStatus?: number; datasIlegiveis?: number; colunasComLetra?: Record<string, number>; brutasJanela?: number; descartadasJanela?: number; linhaCabecalho?: number; idRecuperado?: boolean; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
   >();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
@@ -505,6 +522,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
           motivosFone: (r.value as any).motivos_sem_telefone,
           recupStatus: (r.value as any).recuperadas_para_status,
           datasIlegiveis: (r.value as any).datas_ilegiveis,
+          colunasComLetra: (r.value as any).colunas_com_letra_nas_descartadas,
           brutasJanela: (r.value as any).brutas_na_janela,
           descartadasJanela: (r.value as any).descartadas_na_janela,
           linhaCabecalho: (r.value as any).linha_do_cabecalho,
@@ -667,6 +685,10 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       // Linhas cuja coluna de data o leitor nao soube ler. Se isto vier igual a
       // `brutas`, a coluna mudou de formato e a janela esta cega.
       datas_ilegiveis: d?.datasIlegiveis ?? 0,
+      // Em que colunas havia texto nas linhas que cairam por nome. Se o nome
+      // estiver na coluna ao lado, ele aparece aqui — e o conserto e o de-para,
+      // nao pedir o dado de novo na origem.
+      colunas_com_letra_nas_descartadas: d?.colunasComLetra ?? {},
       brutas_na_janela: d?.brutasJanela ?? 0,
       descartadas_na_janela: d?.descartadasJanela ?? 0,
       linha_do_cabecalho: d?.linhaCabecalho ?? 1,
