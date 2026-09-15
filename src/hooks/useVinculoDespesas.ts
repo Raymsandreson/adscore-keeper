@@ -154,8 +154,13 @@ export function useVinculoDespesas(overrides: OverrideParaLimite[]) {
         // jids em 11/09/2026, contra 1.986 do `whatsapp_groups_cache`). Ver
         // skill `db-tables-map`. Uma jid aparece uma vez por instancia: o
         // primeiro nome basta, todos nomeiam o mesmo grupo.
+        // `as any` pelo mesmo motivo de sempre: `whatsapp_groups_index` tem
+        // 30.688 linhas no Externo e nao esta no `types.ts`. Sem o cast, a
+        // chamada gera TS2769 e TS2589 (a uniao de 190 tabelas estoura a
+        // profundidade de inferencia). `LinhaGrupoIndex` continua tipando o que
+        // sai daqui.
         const indice = await buscarEmLotes<LinhaGrupoIndex>(semNome, lote =>
-          db
+          (db as any)
             .from('whatsapp_groups_index')
             .select('group_jid, contact_name')
             .in('group_jid', lote)

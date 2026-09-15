@@ -117,6 +117,19 @@ export interface ChaveNaoResolvida {
 
 export type ResultadoResolucao = ChaveResolvida | ChaveNaoResolvida;
 
+/**
+ * Estreita a uniao. `if (resolucao.chave === null)` NAO estreita sozinho: para o
+ * TS separar os dois lados, a propriedade tem que ser discriminante — tipo unit
+ * em todos os membros — e `chave: string` nao e. O resultado era o pior dos dois
+ * mundos: dentro do `if` o TS ainda via `ChaveResolvida` (e recusava `.motivo`),
+ * e depois dele ainda via `ChaveNaoResolvida` (e recusava `.rotulo` e `.origem`).
+ * Tres erros de compilacao num codigo que sempre rodou certo, porque o build e
+ * vite e nao passa pelo `tsc`.
+ */
+export function foiResolvida(r: ResultadoResolucao): r is ChaveResolvida {
+  return r.chave !== null;
+}
+
 function grupoDoLead(leadId: string, mapa: MapaDeVinculos): GrupoDoLead[] {
   const grupos = mapa.gruposPorLead.get(leadId) || [];
   // Dedup por jid: o mesmo grupo aparece em `leads.whatsapp_group_id` e em
@@ -289,7 +302,7 @@ export function calcularLimitesPorVinculo(
           ? resolverGrupo(override, mapa)
           : resolverCliente(override, mapa);
 
-      if (resolucao.chave === null) {
+      if (!foiResolvida(resolucao)) {
         pendencias.push({
           categoryId: categoria.id,
           categoryName: categoria.name,
