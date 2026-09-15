@@ -60,10 +60,13 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { comAcessoCloudPadrao, ehRegistroCloud } from '@/lib/cloudApiInstances';
 
 interface WhatsAppInstanceOption {
   id: string;
   instance_name: string;
+  /** `cloud_api_meta` marca as linhas da WhatsApp API (Meta). */
+  instance_token?: string | null;
 }
 
 interface TeamMember {
@@ -115,7 +118,7 @@ export function TeamManagement() {
 
   useEffect(() => {
     Promise.all([
-      db.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+      db.from('whatsapp_instances').select('id, instance_name, instance_token').eq('is_active', true).order('instance_name'),
       supabase.from('access_profiles').select('id, name, description, module_permissions, whatsapp_instance_ids, is_system').eq('is_active', true).order('name'),
     ]).then(([instRes, profRes]) => {
       setWhatsappInstances((instRes.data || []) as WhatsAppInstanceOption[]);
@@ -142,7 +145,9 @@ export function TeamManagement() {
         mods[p.module_key] = p.access_level as AccessLevel;
       });
       setSelectedModules(mods);
-      setSelectedInstances(profile.whatsapp_instance_ids || []);
+      // Mesma regra de `applyAccessProfile`: sem nenhuma linha da WhatsApp API
+      // marcada, entra a Abraci — e a tela mostra isso antes de convidar.
+      setSelectedInstances(comAcessoCloudPadrao(profile.whatsapp_instance_ids || [], whatsappInstances));
       setShowPermissions(!profile.is_system); // Don't show permissions for Admin (system)
     }
   };
@@ -206,7 +211,7 @@ export function TeamManagement() {
         .filter(([, level]) => level !== 'none')
         .map(([module_key, access_level]) => ({ module_key, access_level }));
 
-      const instanceIds = role === 'admin' ? [] : selectedInstances;
+      const instanceIds = role === 'admin' ? [] : comAcessoCloudPadrao(selectedInstances, whatsappInstances);
 
       const invitedEmail = email.toLowerCase().trim();
       const { emailSent, emailError } = await inviteMember(
@@ -502,7 +507,12 @@ export function TeamManagement() {
                             );
                           }}
                         />
-                        <span className="text-sm">{inst.instance_name}</span>
+                        <span className="text-sm">
+                          {inst.instance_name}
+                          {ehRegistroCloud(inst) && (
+                            <span className="ml-1 text-[10px] text-sky-700 dark:text-sky-400">API</span>
+                          )}
+                        </span>
                       </label>
                     ))}
                   </div>

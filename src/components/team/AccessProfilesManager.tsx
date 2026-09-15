@@ -14,6 +14,7 @@ import { MODULE_DEFINITIONS, AccessLevel } from '@/hooks/useModulePermissions';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Shield, Loader2, Sparkles } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import { comAcessoCloudPadrao, ehRegistroCloud, rotuloDaLinha } from '@/lib/cloudApiInstances';
 import { supabase as supabaseClient } from '@/integrations/supabase/client';
 
 interface AccessProfile {
@@ -28,6 +29,8 @@ interface AccessProfile {
 interface WhatsAppInstance {
   id: string;
   instance_name: string;
+  /** `cloud_api_meta` marca as linhas da WhatsApp API (Meta). */
+  instance_token?: string | null;
 }
 
 export function AccessProfilesManager() {
@@ -53,7 +56,7 @@ export function AccessProfilesManager() {
     setLoading(true);
     const [profilesRes, instancesRes] = await Promise.all([
       supabase.from('access_profiles').select('*').eq('is_active', true).order('name'),
-      db.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+      db.from('whatsapp_instances').select('id, instance_name, instance_token').eq('is_active', true).order('instance_name'),
     ]);
     setProfiles((profilesRes.data || []) as unknown as AccessProfile[]);
     setInstances((instancesRes.data || []) as WhatsAppInstance[]);
@@ -68,7 +71,9 @@ export function AccessProfilesManager() {
     const init: Record<string, AccessLevel> = {};
     MODULE_DEFINITIONS.forEach(m => { init[m.key] = 'none'; });
     setModules(init);
-    setSelectedInstances([]);
+    // Perfil novo já nasce com a linha padrão do canal WhatsApp API marcada —
+    // é o acesso que `applyAccessProfile` concede de qualquer forma.
+    setSelectedInstances(comAcessoCloudPadrao([], instances));
     setEditing(null);
     setAiPrompt('');
   };
@@ -287,7 +292,11 @@ export function AccessProfilesManager() {
 
               {instances.length > 0 && (
                 <div>
-                  <Label className="text-sm font-semibold mb-3 block">Instâncias WhatsApp</Label>
+                  <Label className="text-sm font-semibold mb-1 block">Instâncias WhatsApp</Label>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Sem nenhuma linha da WhatsApp API marcada, quem receber este perfil ganha a Abraci —
+                    o padrão do canal.
+                  </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {instances.map(inst => (
                       <label key={inst.id} className="flex items-center gap-2 rounded-md border px-3 py-2 bg-background cursor-pointer hover:bg-muted/50">
@@ -299,7 +308,12 @@ export function AccessProfilesManager() {
                             );
                           }}
                         />
-                        <span className="text-sm">{inst.instance_name}</span>
+                        <span className="text-sm">
+                          {ehRegistroCloud(inst) ? rotuloDaLinha(inst.instance_name) : inst.instance_name}
+                          {ehRegistroCloud(inst) && (
+                            <span className="ml-1 text-[10px] text-sky-700 dark:text-sky-400">API</span>
+                          )}
+                        </span>
                       </label>
                     ))}
                   </div>

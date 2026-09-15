@@ -7,17 +7,34 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { MessageSquare, Smartphone, Search, X, Loader2 } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { MessageSquare, Smartphone, Search, X, Loader2, Cloud, ShieldCheck } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { useUserRole } from '@/hooks/useUserRole';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import {
+  ehRegistroCloud, idDaLinhaCloudPadrao, membrosSemLinhaPadrao, operacoesDoPadraoApi, rotuloDaLinha,
+} from '@/lib/cloudApiInstances';
 
 interface Instance {
   id: string;
   instance_name: string;
+  /** `cloud_api_meta` = linha da WhatsApp API (Meta); qualquer outro = sessão UazAPI. */
+  instance_token: string | null;
 }
+
+/** Linha da WhatsApp API (Meta)? Vale o token, que é o dado; o nome é só apoio. */
+const ehLinhaApi = (i: Instance) => ehRegistroCloud(i);
+
+/** Nome como a equipe lê: `prudencio_advogados` vira "Prudencio Advogados". */
+const rotuloDaInstancia = (i: Instance) =>
+  ehLinhaApi(i) ? rotuloDaLinha(i.instance_name) : i.instance_name;
 
 interface InstanceUser {
   id: string;
@@ -32,6 +49,10 @@ interface MemberDefaultInstance {
 
 export function WhatsAppInstancePermissions() {
   const { members, loading: membersLoading } = useTeamMembers();
+  // A aba não é `adminOnly` (nenhuma é), então membro comum chega aqui. O edge
+  // recusa a escrita com "forbidden", mas ação em lote não deve nem aparecer
+  // para quem não pode executá-la.
+  const { isAdmin } = useUserRole();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [instanceUsers, setInstanceUsers] = useState<InstanceUser[]>([]);
   const [memberDefaults, setMemberDefaults] = useState<MemberDefaultInstance[]>([]);
@@ -45,7 +66,7 @@ export function WhatsAppInstancePermissions() {
   const fetchData = useCallback(async () => {
     try {
       const [instRes, accessRes, profilesRes] = await Promise.all([
-        db.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+        db.from('whatsapp_instances').select('id, instance_name, instance_token').eq('is_active', true).order('instance_name'),
         supabase.functions.invoke('admin-whatsapp-instance', { body: { action: 'list_instance_accesses' } }),
         supabase.from('profiles').select('user_id, default_instance_id'),
       ]);
@@ -92,8 +113,27 @@ export function WhatsAppInstancePermissions() {
   const filteredInstances = useMemo(() => {
     const q = instanceSearch.trim().toLowerCase();
     if (!q) return instances;
-    return instances.filter(i => i.instance_name.toLowerCase().includes(q));
+    // Casa pelo nome interno E pelo rótulo: quem digita "prudencio advogados"
+    // (como a coluna mostra) não achava nada, porque no banco é `prudencio_advogados`.
+    return instances.filter(i =>
+      i.instance_name.toLowerCase().includes(q) || rotuloDaInstancia(i).toLowerCase().includes(q)
+    );
   }, [instances, instanceSearch]);
+
+  // Colunas em duas famílias, a WhatsApp API primeiro — é o canal com acesso
+  // padrão. Antes as 3 linhas da API caíam no meio das 25 sessões UazAPI, em
+  // ordem alfabética e com o nome interno cru (`prudencio_advogados`): dava para
+  // associar, mas não dava para saber que aquilo era a API.
+  const linhasApi = useMemo(() => instances.filter(ehLinhaApi), [instances]);
+  const gruposDeColuna = useMemo(() => {
+    const api = filteredInstances.filter(ehLinhaApi);
+    const uaz = filteredInstances.filter(i => !ehLinhaApi(i));
+    return [
+      { chave: 'api', titulo: 'WhatsApp API (Meta)', itens: api },
+      { chave: 'uaz', titulo: 'Instâncias UazAPI (celular)', itens: uaz },
+    ].filter(g => g.itens.length > 0);
+  }, [filteredInstances]);
+  const colunas = useMemo(() => gruposDeColuna.flatMap(g => g.itens), [gruposDeColuna]);
 
   const countByMember = useMemo(() => {
     const map = new Map<string, number>();
@@ -203,6 +243,63 @@ export function WhatsAppInstancePermissions() {
     }
   };
 
+  // -------------------------------------------------------------------------
+  // Padrão do canal WhatsApp API: todo membro enxerga a Abraci, e só ela.
+  // Prudencio Advogados e Quitepay seguem sendo marcação um a um. Admin fica de
+  // fora — enxerga todas as linhas por definição do papel, não por vínculo.
+  // -------------------------------------------------------------------------
+  const [padraoOpen, setPadraoOpen] = useState(false);
+  const idLinhaPadrao = useMemo(() => idDaLinhaCloudPadrao(linhasApi), [linhasApi]);
+  const linhaPadrao = useMemo(
+    () => linhasApi.find(l => l.id === idLinhaPadrao) || null,
+    [linhasApi, idLinhaPadrao],
+  );
+  // Quem entra na conta e o que muda: regra em `cloudApiInstances.ts`, testada
+  // lá — é ela que decide revogar linha da API sem tocar em instância UazAPI.
+  const membrosDoPadrao = useMemo(() => filteredMembers.filter(m => m.role !== 'admin'), [filteredMembers]);
+  const opsDoPadrao = useMemo(
+    () => operacoesDoPadraoApi(filteredMembers, linhasApi, instanceUsers),
+    [filteredMembers, linhasApi, instanceUsers],
+  );
+  const concessoesDoPadrao = useMemo(
+    () => membrosSemLinhaPadrao(filteredMembers, linhasApi, instanceUsers).length,
+    [filteredMembers, linhasApi, instanceUsers],
+  );
+  const revogacoesDoPadrao = opsDoPadrao.filter(o => !o.grant).length;
+
+  const aplicarPadraoApi = async () => {
+    if (!idLinhaPadrao) {
+      toast.error('A linha Abraci não está entre as instâncias ativas');
+      return;
+    }
+    setSaving('padrao-api');
+    try {
+      // O edge aceita 500 operações por chamada; 200 mantém folga com margem.
+      for (let i = 0; i < opsDoPadrao.length; i += 200) {
+        await saveAccessOperations(opsDoPadrao.slice(i, i + 200));
+      }
+      // Instância principal apontando para linha da API recém-revogada vira
+      // acesso fantasma: `get-my-instance-accesses` soma o default à lista de
+      // permitidas, então a linha voltaria pela porta dos fundos.
+      const paraLimpar = membrosDoPadrao.filter(m => {
+        const atual = getDefaultInstance(m.user_id);
+        return !!atual && atual !== idLinhaPadrao && linhasApi.some(l => l.id === atual);
+      });
+      for (const m of paraLimpar) {
+        await supabase.from('profiles').update({ default_instance_id: null } as any).eq('user_id', m.user_id);
+      }
+      await fetchData();
+      toast.success(
+        `Padrão aplicado a ${membrosDoPadrao.length} membro(s): ${concessoesDoPadrao} acesso(s) novo(s), ${revogacoesDoPadrao} revogação(ões)`,
+      );
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao aplicar o padrão');
+    } finally {
+      setSaving(null);
+      setPadraoOpen(false);
+    }
+  };
+
   if (loading || membersLoading) {
     return <div className="space-y-4"><Skeleton className="h-12 w-full" /><Skeleton className="h-64 w-full" /></div>;
   }
@@ -220,6 +317,7 @@ export function WhatsAppInstancePermissions() {
 
   const COL_W = 88; // px per instance column
   const ROW_H = 56;
+  const GRUPO_H = 26; // faixa que separa WhatsApp API das sessões UazAPI
 
   return (
     <div className="space-y-6">
@@ -232,7 +330,8 @@ export function WhatsAppInstancePermissions() {
                 Acesso às Instâncias WhatsApp
               </CardTitle>
               <CardDescription>
-                Clique para conceder/revogar. Use os botões "Tudo / Nada" para ações em lote nos resultados filtrados.
+                Clique para conceder/revogar — vale tanto para as linhas da WhatsApp API (Meta) quanto para as
+                sessões UazAPI. Use os botões "Tudo / Nada" para ações em lote nos resultados filtrados.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -264,12 +363,34 @@ export function WhatsAppInstancePermissions() {
                   </button>
                 )}
               </div>
+              {linhaPadrao && isAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={() => setPadraoOpen(true)}
+                  disabled={saving === 'padrao-api' || membrosDoPadrao.length === 0}
+                  title={`Aplicar o padrão da WhatsApp API a ${membrosDoPadrao.length} membro(s) — ${concessoesDoPadrao} sem a linha hoje`}
+                >
+                  {saving === 'padrao-api'
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <ShieldCheck className="h-3.5 w-3.5" />}
+                  Padrão da API: só {rotuloDaInstancia(linhaPadrao)}
+                  {concessoesDoPadrao + revogacoesDoPadrao > 0 && (
+                    <Badge variant="secondary" className="h-4 px-1 text-[9px]">
+                      {concessoesDoPadrao + revogacoesDoPadrao}
+                    </Badge>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
             <span>{filteredMembers.length} membro(s)</span>
             <span>•</span>
-            <span>{filteredInstances.length} instância(s)</span>
+            <span>{colunas.length} instância(s)</span>
+            <span>•</span>
+            <span>{linhasApi.length} linha(s) da WhatsApp API</span>
             <span>•</span>
             <span>{instanceUsers.length} acessos totais</span>
           </div>
@@ -279,16 +400,44 @@ export function WhatsAppInstancePermissions() {
             className="overflow-auto max-h-[70vh] relative border rounded-md"
             style={{ scrollBehavior: 'smooth' }}
           >
-            <table className="border-collapse" style={{ minWidth: 280 + filteredInstances.length * COL_W }}>
+            <table className="border-collapse" style={{ minWidth: 280 + colunas.length * COL_W }}>
               <thead>
+                {/* Faixa de canal: sem ela, as 3 linhas da WhatsApp API somem no
+                    meio das 25 sessões UazAPI e ninguém sabe o que está marcando. */}
                 <tr>
                   <th
-                    className="sticky top-0 left-0 z-40 bg-card border-b border-r text-left px-3 py-2 text-xs font-medium"
-                    style={{ width: 280, minWidth: 280 }}
+                    className="sticky top-0 left-0 z-40 bg-card border-b border-r text-left px-3 py-1 text-[11px] font-medium text-muted-foreground"
+                    style={{ width: 280, minWidth: 280, height: GRUPO_H }}
+                  >
+                    Canal
+                  </th>
+                  {gruposDeColuna.map(grupo => (
+                    <th
+                      key={grupo.chave}
+                      colSpan={grupo.itens.length}
+                      className={cn(
+                        'sticky top-0 z-30 border-b border-r bg-card px-2 py-1 text-[11px] font-semibold',
+                        grupo.chave === 'api' ? 'text-sky-700 dark:text-sky-400' : 'text-muted-foreground',
+                      )}
+                      style={{ height: GRUPO_H }}
+                    >
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                        {grupo.chave === 'api'
+                          ? <Cloud className="h-3 w-3" />
+                          : <Smartphone className="h-3 w-3" />}
+                        {grupo.titulo}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  <th
+                    className="sticky left-0 z-40 bg-card border-b border-r text-left px-3 py-2 text-xs font-medium"
+                    style={{ width: 280, minWidth: 280, top: GRUPO_H }}
                   >
                     Membro
                   </th>
-                  {filteredInstances.map(inst => {
+                  {colunas.map(inst => {
                     const isHover = hoverCol === inst.id;
                     return (
                       <th
@@ -296,17 +445,18 @@ export function WhatsAppInstancePermissions() {
                         onMouseEnter={() => setHoverCol(inst.id)}
                         onMouseLeave={() => setHoverCol(null)}
                         className={cn(
-                          'sticky top-0 z-30 border-b border-r bg-card px-1 py-2 align-bottom',
+                          'sticky z-30 border-b border-r bg-card px-1 py-2 align-bottom',
+                          ehLinhaApi(inst) && 'bg-sky-50/70 dark:bg-sky-950/20',
                           isHover && 'bg-accent'
                         )}
-                        style={{ width: COL_W, minWidth: COL_W, height: 120 }}
+                        style={{ width: COL_W, minWidth: COL_W, height: 120, top: GRUPO_H }}
                       >
                         <div className="flex flex-col items-center gap-1">
                           <div
                             className="text-[11px] font-medium leading-tight text-center break-words max-w-[80px]"
-                            title={inst.instance_name}
+                            title={ehLinhaApi(inst) ? `${inst.instance_name} — WhatsApp API (Meta)` : inst.instance_name}
                           >
-                            {inst.instance_name}
+                            {rotuloDaInstancia(inst)}
                           </div>
                           <Badge variant="secondary" className="h-4 px-1 text-[9px]">
                             {countByInstance.get(inst.id) || 0}
@@ -380,7 +530,7 @@ export function WhatsAppInstancePermissions() {
                           </div>
                         </div>
                       </td>
-                      {filteredInstances.map(inst => {
+                      {colunas.map(inst => {
                         const checked = hasAccess(member.user_id, inst.id);
                         const isSaving = saving === `${member.user_id}-${inst.id}`;
                         const isColHover = hoverCol === inst.id;
@@ -390,6 +540,7 @@ export function WhatsAppInstancePermissions() {
                             onClick={() => !isSaving && toggleAccess(member.user_id, inst.id)}
                             className={cn(
                               'border-b border-r text-center cursor-pointer transition-colors',
+                              ehLinhaApi(inst) && 'bg-sky-50/40 dark:bg-sky-950/10',
                               (isColHover || isRowHover) && 'bg-accent/40',
                               isColHover && isRowHover && 'bg-accent',
                               checked && 'bg-emerald-50 dark:bg-emerald-950/20',
@@ -453,7 +604,9 @@ export function WhatsAppInstancePermissions() {
                     <SelectContent>
                       <SelectItem value="none">Sem instância principal</SelectItem>
                       {memberInstances.map(inst => (
-                        <SelectItem key={inst.id} value={inst.id}>{inst.instance_name}</SelectItem>
+                        <SelectItem key={inst.id} value={inst.id}>
+                          {ehLinhaApi(inst) ? `API · ${rotuloDaInstancia(inst)}` : inst.instance_name}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -463,6 +616,37 @@ export function WhatsAppInstancePermissions() {
           </div>
         </CardContent>
       </Card>
+
+      <AlertDialog open={padraoOpen} onOpenChange={setPadraoOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Aplicar o padrão da WhatsApp API
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p>
+                  {membrosDoPadrao.length} membro(s) dos filtrados ficam com acesso
+                  {linhaPadrao ? ` só à linha ${rotuloDaInstancia(linhaPadrao)}` : ''} entre as linhas da API.
+                  Administradores não entram na conta: eles enxergam todas as linhas pelo papel.
+                </p>
+                <p>
+                  <strong>{concessoesDoPadrao}</strong> acesso(s) novo(s) e{' '}
+                  <strong>{revogacoesDoPadrao}</strong> revogação(ões) de outras linhas da API
+                  (Prudencio Advogados, Quitepay). As instâncias UazAPI não são tocadas.
+                </p>
+                <p className="text-muted-foreground">
+                  Reversível pela própria matriz: cada quadradinho volta a ser clicável depois.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={aplicarPadraoApi}>Aplicar padrão</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
