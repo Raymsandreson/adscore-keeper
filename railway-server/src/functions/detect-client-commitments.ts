@@ -39,6 +39,14 @@ interface DetectedCommitment {
   done: boolean;
 }
 
+/** Baixa numa pendência que JÁ estava registrada, citada pelo número (#R). */
+interface DetectedDone {
+  /** Número da pendência registrada no prompt (#R3), sem o "#R". */
+  ref: string;
+  /** Trecho da conversa que mostra o cumprimento. */
+  quote: string;
+}
+
 interface MessageRow {
   id: string;
   message_text: string | null;
@@ -145,17 +153,46 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     // ---- 3. o que já está registrado (a IA não pode repetir nem ressuscitar) -------
-    const targetFilter = lead_id
-      ? `lead_id.eq.${lead_id},and(phone.eq.${phone},instance_name.eq.${instance})`
-      : `and(phone.eq.${phone},instance_name.eq.${instance})`;
-
+    // O escopo é a CONVERSA, não o lead. Dois grupos de clientes DIFERENTES
+    // podem carregar o mesmo `lead_id` (visto em produção em 15/09/2026: o
+    // grupo da Nilzete e o da Monique dividiam o lead 3babfcdd, e a perícia de
+    // uma era listada como pendência da outra — 379 pendências em 76 leads no
+    // mesmo estado). Pendência de lead só entra quando NÃO tem telefone: essa
+    // nasceu em captação, antes de existir grupo, e não tem conversa própria.
+    //
+    // O telefone entra SOZINHO, sem a instância: ele é o JID do grupo, e o
+    // mesmo grupo é visto por várias instâncias (o da Monique tem pendência
+    // gravada por "João Manoel- Acolhedor" e por "Raym"). Com a instância no
+    // filtro, a varredura não enxergava o que as outras instâncias já tinham
+    // registrado — e recriava a mesma pendência, uma cópia por instância.
     const { data: existingData } = await supabase
       .from('lead_client_commitments')
       .select('id, title, status')
-      .or(targetFilter);
+      .or(
+        lead_id
+          ? `phone.eq.${phone},and(lead_id.eq.${lead_id},phone.is.null)`
+          : `phone.eq.${phone}`
+      );
 
-    const existing = (existingData as Array<{ title: string; status: string }>) || [];
+    type ExistingRow = { id: string; title: string; status: string };
+    const existing = (existingData as ExistingRow[]) || [];
     const existingTitles = existing.map((e) => e.title);
+
+    // Cada pendência AINDA ABERTA ganha um número (#R1, #R2…) para a IA poder
+    // dar baixa nela citando o número.
+    //
+    // Sem isso não havia como fechar o que já existia: o prompt manda não
+    // repetir as já registradas, e o fechamento dependia justamente de a IA
+    // repetir o título com done=true. A IA obedecia, omitia a pendência, e ela
+    // ficava aberta para sempre. Foi o que aconteceu com a Monique: em
+    // 11/09/2026 ela escreveu "Perícia e avaliação feitas", a varredura de
+    // 15/09 registrou "Comparecer à avaliação social" já concluída (era nova,
+    // então não estava proibida) e deixou "Comparecer à perícia médica"
+    // — registrada desde 04/09 — em aberto.
+    const abertas = existing.filter((e) => e.status === 'combinado' || e.status === 'cobrado');
+    const encerradas = existing.filter((e) => e.status !== 'combinado' && e.status !== 'cobrado');
+    const byExistingRef = new Map<string, ExistingRow>();
+    abertas.forEach((e, i) => byExistingRef.set(String(i + 1), e));
 
     // ---- 4. transcript ------------------------------------------------------------
     const clientLabel = client_name || 'CLIENTE';
@@ -213,11 +250,24 @@ REGRAS DE ESCRITA:
 - NÃO invente. Sem promessa clara na conversa, devolva lista vazia.
 
 ${existingTitles.length > 0
-  ? `JÁ REGISTRADAS (não repita, nem com outras palavras): ${existing.map((e) => `"${e.title}"`).join(', ')}`
+  ? `JÁ REGISTRADAS — não crie nenhuma delas de novo, nem com outras palavras.
+${abertas.length > 0
+    ? `Em aberto, cada uma com o número dela:
+${abertas.map((e, i) => `#R${i + 1} "${e.title}"`).join('\n')}`
+    : 'Nenhuma em aberto.'}${encerradas.length > 0
+    ? `\nJá encerradas: ${encerradas.map((e) => `"${e.title}"`).join(', ')}`
+    : ''}
+
+DAR BAIXA (campo concluidas): se a conversa mostrar que uma das JÁ REGISTRADAS EM ABERTO acima foi cumprida, devolva o NÚMERO dela em \`concluidas\`.
+- Esta é a ÚNICA forma de encerrar uma pendência que já existe. Como você está proibido de repetir o título dela em \`commitments\`, omitir não encerra nada: a pendência continua aberta na tela do escritório e o cliente é cobrado de novo por algo que já fez.
+- Uma frase pode encerrar várias: "Perícia e avaliação feitas" dá baixa na perícia E na avaliação social. "Já mandei tudo" dá baixa nos documentos pedidos.
+- Vale também o que o ESCRITÓRIO confirma ("recebemos seu documento", "vimos que você compareceu").
+- Só liste o que a conversa mostra cumprido. Na dúvida, não liste.`
   : 'Nada registrado ainda nesta conversa.'}`;
 
     // ---- 5. IA --------------------------------------------------------------------
     let detected: DetectedCommitment[] = [];
+    let concluidas: DetectedDone[] = [];
     let summary = '';
     let aiError: string | null = null;
 
@@ -254,12 +304,26 @@ ${existingTitles.length > 0
                     additionalProperties: false,
                   },
                 },
+                concluidas: {
+                  type: 'array',
+                  description:
+                    'Pendências JÁ REGISTRADAS em aberto que a conversa mostra cumpridas, pelo número (#R). Lista vazia se nenhuma foi cumprida.',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      ref: { type: 'string', description: 'Número da pendência registrada, sem o "#R". Ex.: "3".' },
+                      quote: { type: 'string', description: 'Trecho da conversa que mostra que foi cumprida.' },
+                    },
+                    required: ['ref', 'quote'],
+                    additionalProperties: false,
+                  },
+                },
                 summary: {
                   type: 'string',
                   description: 'Resumo do contexto da conversa em 3 a 5 frases. Vazio se não der para resumir.',
                 },
               },
-              required: ['commitments', 'summary'],
+              required: ['commitments', 'concluidas', 'summary'],
               additionalProperties: false,
             },
           },
@@ -271,6 +335,7 @@ ${existingTitles.length > 0
       if (toolCall?.function?.arguments) {
         const parsed = JSON.parse(toolCall.function.arguments);
         detected = Array.isArray(parsed?.commitments) ? parsed.commitments : [];
+        concluidas = Array.isArray(parsed?.concluidas) ? parsed.concluidas : [];
         summary = String(parsed?.summary || '').trim().slice(0, 2000);
       } else {
         aiError = 'A IA respondeu sem retornar a lista.';
@@ -373,9 +438,25 @@ ${existingTitles.length > 0
       .filter((c) => c?.done === true && String(c?.title || '').trim())
       .map((c) => String(c.title));
 
-    for (const e of (existingData as Array<{ id: string; title: string; status: string }>) || []) {
-      if (e.status !== 'combinado' && e.status !== 'cobrado') continue;
-      if (!doneTitles.some((t) => isSameCommitment(t, e.title))) continue;
+    // Duas portas de entrada para a baixa, e as duas precisam existir:
+    //  1. o número devolvido em `concluidas` — a via principal, porque o prompt
+    //     proíbe a IA de repetir o título de uma pendência já registrada;
+    //  2. o título vindo em `commitments` com done=true — acontece quando ela
+    //     reescreve a promessa em vez de citar o número.
+    // O Map garante que a mesma pendência não seja atualizada duas vezes.
+    const paraFechar = new Map<string, ExistingRow>();
+
+    for (const c of concluidas) {
+      const ref = String(c?.ref ?? '').trim().replace(/^#/, '').replace(/^R/i, '');
+      const alvo = byExistingRef.get(ref);
+      if (alvo) paraFechar.set(alvo.id, alvo);
+    }
+
+    for (const e of abertas) {
+      if (doneTitles.some((t) => isSameCommitment(t, e.title))) paraFechar.set(e.id, e);
+    }
+
+    for (const e of paraFechar.values()) {
       const { error: closeError } = await supabase
         .from('lead_client_commitments')
         .update({
@@ -416,7 +497,7 @@ ${existingTitles.length > 0
     // mensagem de origem a pendência nasce com a data da varredura.
     const comOrigem = rows.filter((r) => r.source_message_id).length;
     const comPrazo = rows.filter((r) => r.due_date).length;
-    console.log(`[detect-client-commitments] ok — msgs=${messages.length}, detectadas=${detected.length}, novas=${created}, com_origem=${comOrigem}/${rows.length}, com_prazo=${comPrazo}/${rows.length}, duplicadas=${duplicates}, fechadas=${closed}, resumo=${summary ? 'sim' : 'nao'}`);
+    console.log(`[detect-client-commitments] ok — msgs=${messages.length}, detectadas=${detected.length}, novas=${created}, com_origem=${comOrigem}/${rows.length}, com_prazo=${comPrazo}/${rows.length}, duplicadas=${duplicates}, abertas_antes=${abertas.length}, baixas_apontadas=${concluidas.length}, fechadas=${closed}, resumo=${summary ? 'sim' : 'nao'}`);
 
     return ok({
       success: true,

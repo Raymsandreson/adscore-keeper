@@ -7,7 +7,7 @@
  * 131 linhas gravadas com prefixo antes de alguém olhar o dado no banco.
  */
 import { describe, it, expect } from 'vitest';
-import { normalizaLeadIdMeta, normalizePhone, phoneKey, isJunkName, casaOperador, achaCabecalho, celulaDeTelefone } from '../leadAdsSheet';
+import { normalizaLeadIdMeta, normalizePhone, phoneKey, isJunkName, casaOperador, achaCabecalho, celulaDeTelefone, celulaDeStatusDaEquipe } from '../leadAdsSheet';
 
 describe('normalizaLeadIdMeta', () => {
   it('tira o prefixo l: da exportação da Meta', () => {
@@ -156,5 +156,31 @@ describe('celulaDeTelefone', () => {
 
   it('devolve vazio quando não há telefone nenhum', () => {
     expect(celulaDeTelefone({ full_name: 'Ana', cidade: 'Belém' })).toBe('');
+  });
+});
+
+describe('celulaDeStatusDaEquipe', () => {
+  it('lê a coluna do BPC', () => {
+    expect(celulaDeStatusDaEquipe({ 'status da lead': 'Fechado', lead_status: 'created' })).toBe('fechado');
+  });
+
+  it('lê a coluna do Auxílio Acidente, que tem outro nome', () => {
+    // O defeito real: o leitor procurava `status da lead` e a planilha do
+    // Auxílio Acidente usa `status lead`. Aquele funil aplicava ZERO status, e
+    // parecia que a equipe não preenchia.
+    expect(celulaDeStatusDaEquipe({ 'status lead': 'Em andamento', lead_status: 'created' })).toBe('em andamento');
+  });
+
+  it('nunca devolve `lead_status`, que é coluna da Meta', () => {
+    // Com `||`, era ela que curto-circuitava a leitura da coluna de verdade.
+    expect(celulaDeStatusDaEquipe({ lead_status: 'created' })).toBe('');
+  });
+
+  it('acha coluna de status com nome inesperado', () => {
+    expect(celulaDeStatusDaEquipe({ 'status do atendimento': 'Inviável' })).toBe('inviável');
+  });
+
+  it('devolve vazio quando não há coluna de status', () => {
+    expect(celulaDeStatusDaEquipe({ full_name: 'Ana', telefone: '5511999990000' })).toBe('');
   });
 });

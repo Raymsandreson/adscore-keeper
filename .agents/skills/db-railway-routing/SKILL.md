@@ -74,7 +74,21 @@ Sempre HTTP 200 com `{ success, error? }` — nunca 4xx/5xx para regra de negóc
 `/functions/*` tem middleware de autenticação (`railway-server/src/lib/functionAuth.ts`).
 Hoje ele roda em **modo observação** — loga e deixa passar, com o placar em
 `/health.auth.observado`. Quando `RAILWAY_AUTH_ENFORCE=1` for ligado, quem
-chegar sem credencial toma 401. Só há duas formas certas de chamar:
+chegar sem credencial toma 401.
+
+**Por que `enforced: false` mesmo com a variável salva (15/09/2026).** Três
+defeitos distintos produzem exatamente o mesmo `auth.enforced: false`, calados:
+nome digitado diferente, valor que o regex `/^(1|true|on|yes)$/i` recusa, e
+variável salva em outro serviço/environment. Desde `f21b1b47a` o `/health`
+separa os três em `auth.flag` — o valor **cru** da flag, o veredito do regex,
+os NOMES (nunca os valores) das `RAILWAY_*` e das que contêm `ENFOR`, e o
+`servico`/`environment` que atendem a URL. Medido em 15/09: a flag nunca chegou
+ao processo, e nenhuma variável `RAILWAY_*` do painel chegou junto — enquanto
+`META_CAPI_DATASET_ID` chega. **O serviço se chama `WhatsJUD`, não
+`adscore-keeper`**: esse é só o domínio (`adscore-keeper-production.up.railway.app`),
+e procurar o serviço pelo nome do domínio leva ao painel errado.
+
+Só há duas formas certas de chamar:
 
 **Do front** — sempre `cloudFunctions.invoke`, nunca `fetch` cru:
 

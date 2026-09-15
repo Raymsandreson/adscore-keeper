@@ -6,7 +6,7 @@
  * escolhida vira o instante certo em horário de Brasília, e a fila da conversa
  * pode ser desfeita ali mesmo.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AgendarMensagemDialog } from '../AgendarMensagemDialog';
 
@@ -54,10 +54,31 @@ const abrir = (props: Partial<React.ComponentProps<typeof AgendarMensagemDialog>
     />,
   );
 
+/**
+ * O relogio fica parado em 09/09/2026, 09:00 (horario de Brasilia, que o
+ * `vitest.config` ja fixa).
+ *
+ * Sem isso o teste apodrece: `validarAgendamento` recusa `quando <= agora`
+ * comparando com o relogio REAL, entao as datas fixas daqui — 10, 11 e 12/09 —
+ * valiam enquanto fossem futuro e viraram passado em 14/09/2026. O sintoma foi
+ * `agendar` nao ser chamado nenhuma vez, que parece bug de componente e nao e:
+ * o componente estava certo, desabilitando o botao para uma data que ja passou.
+ *
+ * Teste de agendamento que depende do dia em que roda mente duas vezes: passa
+ * hoje por acaso e quebra depois sem ninguem ter mexido no codigo.
+ */
+const AGORA = new Date(2026, 8, 9, 9, 0);
+
 beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(AGORA);
   agendar.mockClear();
   cancelar.mockClear();
   pendentes.atual = [];
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('AgendarMensagemDialog', () => {

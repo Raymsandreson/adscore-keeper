@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildReminderText,
+  commitmentChargeDate,
+  isCommitmentDueToCharge,
   isCommitmentOpen,
   isCommitmentOverdue,
   isCommitmentDismissed,
@@ -123,5 +125,63 @@ describe('isSameCommitmentTitle', () => {
 
   it('título vazio nunca casa', () => {
     expect(isSameCommitmentTitle('', 'Gravar o vídeo')).toBe(false);
+  });
+});
+
+describe('commitmentChargeDate', () => {
+  const semPrazo = { due_date: null, promised_at: '2026-09-11T15:12:27.470Z' };
+
+  it('com prazo, cobra no próprio dia do prazo — é retorno, não "cadê?"', () => {
+    expect(commitmentChargeDate({ due_date: '2026-09-08', promised_at: '2026-09-04T18:39:10Z' }))
+      .toBe('2026-09-08');
+  });
+
+  it('sem prazo, cobra no dia seguinte ao da promessa', () => {
+    expect(commitmentChargeDate(semPrazo)).toBe('2026-09-12');
+  });
+
+  it('vira o mês sem escorregar', () => {
+    expect(commitmentChargeDate({ due_date: null, promised_at: '2026-08-31T20:47:54Z' }))
+      .toBe('2026-09-01');
+  });
+
+  it('promessa de madrugada não antecipa a cobrança um dia', () => {
+    expect(commitmentChargeDate({ due_date: null, promised_at: '2026-09-11T00:30:00Z' }))
+      .toBe('2026-09-12');
+  });
+
+  it('sem prazo e sem promessa válida não inventa data', () => {
+    expect(commitmentChargeDate({ due_date: null, promised_at: '' })).toBeNull();
+    expect(commitmentChargeDate({ due_date: null, promised_at: 'ontem' })).toBeNull();
+  });
+});
+
+describe('isCommitmentDueToCharge', () => {
+  const aberta = { status: 'combinado' as const, due_date: '2026-09-11', promised_at: '2026-09-04T18:00:00Z' };
+
+  it('no dia do prazo já pode cobrar', () => {
+    expect(isCommitmentDueToCharge(aberta, '2026-09-11')).toBe(true);
+  });
+
+  it('antes do prazo não cobra — atropelar o cliente estraga a confiança', () => {
+    expect(isCommitmentDueToCharge(aberta, '2026-09-10')).toBe(false);
+  });
+
+  it('prazo vencido continua cobrável', () => {
+    expect(isCommitmentDueToCharge(aberta, '2026-09-15')).toBe(true);
+  });
+
+  it('pendência já concluída nunca é cobrada', () => {
+    expect(isCommitmentDueToCharge({ ...aberta, status: 'feito' }, '2026-09-15')).toBe(false);
+  });
+
+  it('"cobrado" continua em aberto e pode voltar a ser cobrada', () => {
+    expect(isCommitmentDueToCharge({ ...aberta, status: 'cobrado' }, '2026-09-15')).toBe(true);
+  });
+
+  it('sem prazo, só a partir do dia seguinte à promessa', () => {
+    const semPrazo = { status: 'combinado' as const, due_date: null, promised_at: '2026-09-11T15:12:00Z' };
+    expect(isCommitmentDueToCharge(semPrazo, '2026-09-11')).toBe(false);
+    expect(isCommitmentDueToCharge(semPrazo, '2026-09-12')).toBe(true);
   });
 });

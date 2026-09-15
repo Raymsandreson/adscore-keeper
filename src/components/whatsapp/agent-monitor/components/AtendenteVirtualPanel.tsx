@@ -307,6 +307,16 @@ const OLHO_NELAS: Filtro[] = [
 
 const FILTROS: Filtro[] = [...FAMILIAS, ...OLHO_NELAS];
 
+/** As quatro abas que contam linha de banco. "Sem ficha" e "busca" não entram:
+ *  uma lista grupos, a outra é resultado de pesquisa. */
+type AbaContada = 'fila' | 'enviadas' | 'humano' | 'silencio';
+
+/** Teto da consulta de contagem. Ela traz uma coluna só (`intencao`), então
+ *  5.000 linhas custam alguns KB — mas o teto existe para o dia em que a fila
+ *  crescer: passando disso, o total da aba continua exato (vem do `count` do
+ *  Postgres) e só a divisão por intenção fica sendo de amostra. */
+const TETO_CONTAGEM = 5000;
+
 /**
  * Abre a conversa do grupo no painel de baixo pra cima — o mesmo drawer do
  * resto do sistema, com histórico ao vivo, mídia e resposta. Nunca redireciona.
@@ -417,6 +427,24 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
   const [enviadas, setEnviadas] = useState<Pendente[]>([]);
   const [comHumano, setComHumano] = useState<Pendente[]>([]);
   const [silenciadas, setSilenciadas] = useState<Decisao[]>([]);
+  /**
+   * O que EXISTE no banco, separado do que coube na tela.
+   *
+   * As quatro listas param nas 100 mais recentes porque desenhar centenas de
+   * cartões de conversa de uma vez trava a tela. O número da aba, porém, não é
+   * do desenho — é do banco: aba escrita "100" quando há 449 na fila não está
+   * abreviando uma lista, está dizendo um número errado, e quem lê decide em
+   * cima dele.
+   *
+   * `totais` sai do `count: 'exact'` da própria consulta leve, sem viagem
+   * extra ao banco. `intencoes` traz SÓ a coluna `intencao` de todas as
+   * linhas — o suficiente para os chips contarem certo sem arrastar pergunta e
+   * resposta de cada uma.
+   */
+  const [totais, setTotais] = useState<Record<AbaContada, number>>(
+    { fila: 0, enviadas: 0, humano: 0, silencio: 0 });
+  const [intencoes, setIntencoes] = useState<Record<AbaContada, (string | null)[]>>(
+    { fila: [], enviadas: [], humano: [], silencio: [] });
   const [grupos, setGrupos] = useState<GrupoPiloto[]>([]);
   const [semFicha, setSemFicha] = useState<SemFicha[]>([]);
   const [vinculando, setVinculando] = useState<GrupoSemFicha | null>(null);
@@ -625,6 +653,8 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
     if (noLead && jidsDoLead.length === 0) {
       setFila([]); setEnviadas([]); setComHumano([]);
       setSilenciadas([]); setGrupos([]); setSemFicha([]); setSaiEm({});
+      setTotais({ fila: 0, enviadas: 0, humano: 0, silencio: 0 });
+      setIntencoes({ fila: [], enviadas: [], humano: [], silencio: [] });
       return;
     }
     setCarregando(true);
@@ -681,6 +711,39 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
               .order('rascunhos_no_escuro', { ascending: false })
               .order('group_name'),
       ]);
+
+      /**
+       * Contar é outra consulta, não a mesma.
+       *
+       * A lista de cima traz 100 linhas inteiras — pergunta, resposta, contexto,
+       * atendente. Contar em cima dela dava o número do `limit`, não o do banco:
+       * 449 na fila apareciam como 100, e o painel dizia que o dia estava sob
+       * controle. Estas quatro consultas repetem exatamente os mesmos filtros e
+       * o mesmo recorte de ficha, mas pedem só `intencao` — o bastante para os
+       * chips — e o `count: 'exact'`, que é o número de verdade.
+       */
+      const contar = (q: any) => escopo(q).limit(TETO_CONTAGEM);
+      const [cf, ce, ch, cs] = await Promise.all([
+        contar(dbAny.from('dom_respostas_pendentes').select('intencao', { count: 'exact' })
+          .in('status', ['pendente', 'aprovada', 'editada']).is('atendente_id', null)),
+        contar(dbAny.from('dom_respostas_pendentes').select('intencao', { count: 'exact' })
+          .eq('status', 'enviada')),
+        contar(dbAny.from('dom_respostas_pendentes').select('intencao', { count: 'exact' })
+          .not('atendente_id', 'is', null)),
+        contar(dbAny.from('dom_decisoes').select('intencao', { count: 'exact' })
+          .eq('decisao', 'silencio')),
+      ]);
+      const soIntencao = (r: { data: unknown }) =>
+        ((r.data as { intencao: string | null }[] | null) || []).map(x => x.intencao);
+      setTotais({
+        fila: cf.count ?? 0, enviadas: ce.count ?? 0,
+        humano: ch.count ?? 0, silencio: cs.count ?? 0,
+      });
+      setIntencoes({
+        fila: soIntencao(cf), enviadas: soIntencao(ce),
+        humano: soIntencao(ch), silencio: soIntencao(cs),
+      });
+
       setFila((f.data as unknown as Pendente[]) || []);
       setEnviadas((e.data as unknown as Pendente[]) || []);
       setComHumano((h.data as unknown as Pendente[]) || []);
@@ -1206,23 +1269,56 @@ ${corpo}`,
   const silenciadasF = silenciadas.filter(d => casa.casa(d.intencao));
 
   /**
-   * Quanto cada chip tem, somando as quatro listas que carregam intenção.
+   * Quanto cada chip tem, somando as quatro abas — contando o BANCO.
    *
    * Sem o número, chip zerado e chip cheio são idênticos até você clicar — e a
    * pergunta "cadê a desistência?" não tem resposta na tela. Com o número, zero
-   * é uma resposta: ninguém falou nisso no que está carregado aqui.
+   * é uma resposta: ninguém falou nisso.
+   *
+   * Conta `intencoes` e não as listas desenhadas: as listas param nas 100 mais
+   * recentes, e um chip que só enxerga essas 100 esconde justamente a
+   * desistência de três semanas atrás que ninguém tratou.
    */
   const contagens = useMemo(() => {
+    const todas = [
+      ...intencoes.fila, ...intencoes.enviadas,
+      ...intencoes.humano, ...intencoes.silencio,
+    ];
+    const tudo = totais.fila + totais.enviadas + totais.humano + totais.silencio;
     const mapa: Record<string, number> = {};
     for (const f of FILTROS) {
-      mapa[f.chave] =
-        fila.filter(p => f.casa(p.intencao)).length +
-        enviadas.filter(p => f.casa(p.intencao)).length +
-        comHumano.filter(p => f.casa(p.intencao)).length +
-        silenciadas.filter(d => f.casa(d.intencao)).length;
+      mapa[f.chave] = f.chave === 'todas' ? tudo : todas.filter(i => f.casa(i)).length;
     }
     return mapa;
-  }, [fila, enviadas, comHumano, silenciadas]);
+  }, [intencoes, totais]);
+
+  /**
+   * O número de cada aba: quantas existem no banco com o filtro de intenção
+   * aplicado. Sem filtro é o `count` exato do Postgres; com filtro, a conta
+   * sobre a coluna `intencao` de todas as linhas.
+   */
+  const contagemDaAba = useMemo(() => {
+    const chaves: AbaContada[] = ['fila', 'enviadas', 'humano', 'silencio'];
+    const mapa = {} as Record<AbaContada, number>;
+    for (const k of chaves) {
+      mapa[k] = familia === 'todas'
+        ? totais[k]
+        : intencoes[k].filter(i => casa.casa(i)).length;
+    }
+    return mapa;
+  }, [familia, totais, intencoes, casa]);
+
+  /** "Mostrando as 100 mais recentes de 449." Só aparece quando sobrou coisa
+   *  fora da tela — dizer 449 na aba e desenhar 100 sem avisar é trocar um
+   *  número errado por uma lista que parece completa. */
+  const rodapeDaLista = (desenhadas: number, noBanco: number) => (
+    desenhadas > 0 && noBanco > desenhadas ? (
+      <p className="text-[10px] text-muted-foreground text-center py-2">
+        Mostrando as {desenhadas} mais recentes de {noBanco}. Use a busca acima
+        para achar uma conversa específica.
+      </p>
+    ) : null
+  );
 
   const vazio = (txt: string) => <p className="text-xs text-muted-foreground py-6 text-center">{txt}</p>;
 
@@ -1358,7 +1454,7 @@ ${corpo}`,
         <p className="text-[10px] text-muted-foreground">
           As de cima são as cinco famílias — a letra que decide o que o Dom faz. As de
           baixo são falas específicas que não podem passar batido, e o número diz quantas
-          existem no que está carregado nas quatro abas.
+          existem no banco, somando as quatro abas — não só as que couberam na tela.
         </p>
       </div>
 
@@ -1370,19 +1466,19 @@ ${corpo}`,
         <TabsList className={`grid w-full ${noLead ? 'grid-cols-4' : 'grid-cols-5'}`}>
           <TabsTrigger value="fila" className="text-xs gap-1">
             <Inbox className="h-3.5 w-3.5" />Na fila
-            {filaF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filaF.length}</Badge>}
+            {contagemDaAba.fila > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{contagemDaAba.fila}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="enviadas" className="text-xs gap-1">
             <Send className="h-3.5 w-3.5" />Enviadas
-            {enviadasF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{enviadasF.length}</Badge>}
+            {contagemDaAba.enviadas > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{contagemDaAba.enviadas}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="humano" className="text-xs gap-1">
             <UserCheck className="h-3.5 w-3.5" />Com humano
-            {comHumanoF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{comHumanoF.length}</Badge>}
+            {contagemDaAba.humano > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{contagemDaAba.humano}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="silencio" className="text-xs gap-1">
             <VolumeX className="h-3.5 w-3.5" />Silenciadas
-            {silenciadasF.length > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{silenciadasF.length}</Badge>}
+            {contagemDaAba.silencio > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{contagemDaAba.silencio}</Badge>}
           </TabsTrigger>
           {/* A sexta é a que dói: grupos que ele atende sem saber de quem são. */}
           {!noLead && (
@@ -1487,6 +1583,7 @@ ${corpo}`,
                 ) : null
               } />
           ))}
+          {rodapeDaLista(filaF.length, contagemDaAba.fila)}
         </TabsContent>
 
         {!noLead && <TabsContent value="busca" className="space-y-2 pt-3">
@@ -1556,6 +1653,7 @@ ${corpo}`,
                 Enviada em {p.enviado_em ? quando(p.enviado_em) : '—'}
               </p>} />
           ))}
+          {rodapeDaLista(enviadasF.length, contagemDaAba.enviadas)}
         </TabsContent>
 
         <TabsContent value="humano" className="space-y-2 pt-3">
@@ -1567,6 +1665,7 @@ ${corpo}`,
                 Para {nomeDoAtendente(p) || 'atendente'} · {p.motivo_revisao}
               </p>} />
           ))}
+          {rodapeDaLista(comHumanoF.length, contagemDaAba.humano)}
         </TabsContent>
 
         <TabsContent value="silencio" className="space-y-2 pt-3">
@@ -1593,6 +1692,7 @@ ${corpo}`,
               </CardContent>
             </Card>
           ))}
+          {rodapeDaLista(silenciadasF.length, contagemDaAba.silencio)}
         </TabsContent>
 
         {/* ── Sem ficha ──────────────────────────────────────────────────

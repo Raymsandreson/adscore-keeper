@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { currentExtUserId } from '@/lib/currentExtUser';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import {
   Settings2, RotateCcw, Save, Plus, Trash2, X, Pencil, AlertTriangle,
   Sparkles, Loader2, Wand2, GripVertical, CheckCircle2, Circle,
+  Paperclip, FileText, Replace, ListPlus, HelpCircle,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -24,6 +25,7 @@ import { useRoutineProcessGoals } from '@/hooks/useRoutineProcessGoals';
 import { useUserTeams } from '@/hooks/useUserTeams';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { RoutineCalendarGrid } from './RoutineCalendarGrid';
+import { VoiceDictateButton } from '@/components/ui/voice-dictate-button';
 
 /** One time-slot block (a type can have multiple) */
 export interface TimeBlockConfig {
@@ -87,6 +89,73 @@ export const loadTimeBlockConfigs = (): TimeBlockConfig[] => [];
 export const saveTimeBlockConfigs = (_: TimeBlockConfig[]) => {};
 
 const newBlockId = () => (crypto as any).randomUUID?.() || `block_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+// ------------------------------------------------------------------
+// Assistente de rotina (texto / voz / PDF)
+// ------------------------------------------------------------------
+
+/** Tira acento, caixa e pontuação — para casar "Audiências" com "audiencia". */
+const norm = (v: string) =>
+  (v || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+/**
+ * Casa o que a IA devolveu com um tipo que EXISTE. A função do Railway já devolve
+ * a key certa (o enum não deixa inventar); esta camada existe para o caminho de
+ * fallback (edge antiga do Cloud, que inventava tipo) não voltar de mãos vazias.
+ * Ordem: key exata → nome igual → um nome contido no outro.
+ */
+function matchType(
+  suggested: { activityType?: string; label?: string },
+  types: ActivityType[],
+): ActivityType | null {
+  const key = String(suggested.activityType || '').trim();
+  const byKey = types.find(t => t.key === key);
+  if (byKey) return byKey;
+
+  const alvos = [suggested.label, suggested.activityType].map(v => norm(String(v || ''))).filter(Boolean);
+  for (const alvo of alvos) {
+    const exato = types.find(t => norm(t.label) === alvo);
+    if (exato) return exato;
+  }
+  for (const alvo of alvos) {
+    if (alvo.length < 4) continue; // "ok", "ata" casariam com meio mundo
+    const parcial = types.find(t => {
+      const l = norm(t.label);
+      return l.includes(alvo) || alvo.includes(l);
+    });
+    if (parcial) return parcial;
+  }
+  return null;
+}
+
+/** Dias 0–4, sem repetição e em ordem. Lista inválida vira a semana toda. */
+function diasValidos(raw: unknown): number[] {
+  const dias = Array.isArray(raw)
+    ? Array.from(new Set(raw.map(d => Math.floor(Number(d))).filter(d => Number.isFinite(d) && d >= 0 && d <= 4))).sort((a, b) => a - b)
+    : [];
+  return dias.length > 0 ? dias : [0, 1, 2, 3, 4];
+}
+
+/** Bloco já mapeado, pronto para a prévia. */
+interface SuggestedBlock extends TimeBlockConfig {
+  motivo?: string;
+}
+
+/** Bloco CRU vindo da IA — tudo opcional e sem garantia de tipo: veio de fora. */
+interface RawSuggestedBlock {
+  activityType?: string;
+  label?: string;
+  days?: unknown;
+  startHour?: unknown;
+  startMinute?: unknown;
+  endHour?: unknown;
+  endMinute?: unknown;
+  motivo?: unknown;
+}
+
+const ROUTINE_FILE_ACCEPT = '.pdf,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.heic,.heif,application/pdf,text/plain,text/markdown,image/png,image/jpeg,image/webp';
+const ROUTINE_MAX_MB = 15;
+const ROUTINE_MAX_FILES = 4;
 
 interface Props {
   open: boolean;
@@ -169,10 +238,20 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
   const [migrateToKey, setMigrateToKey] = useState('');
   const [deletingType, setDeletingType] = useState(false);
 
-  // AI assistant
+  // AI assistant — descrição digitada OU ditada, com anexos (PDF/print/TXT) opcionais
   const [showAI, setShowAI] = useState(false);
   const [aiDescription, setAiDescription] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiFiles, setAiFiles] = useState<File[]>([]);
+  const [aiPhase, setAiPhase] = useState<'idle' | 'gravando' | 'transcrevendo' | 'enviando' | 'pensando'>('idle');
+  /** Prévia: nada é aplicado na rotina sem a pessoa mandar aplicar. */
+  const [aiPreview, setAiPreview] = useState<{
+    blocks: SuggestedBlock[];
+    unmatched: string[];
+    summary: string;
+    question?: string;
+  } | null>(null);
+  const aiFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Drag & drop for global types reorder (admin only)
   const dragItem = useRef<number | null>(null);
@@ -213,9 +292,24 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
     
     setShowAI(false);
     setAiDescription('');
+    setAiFiles([]);
+    setAiPreview(null);
+    setAiPhase('idle');
     setShowAddType(false);
     setNewLabel('');
   }, [open, configs, savedProcessGoals]);
+
+  // Tipos que a pessoa pode usar (filtrados pelo time). Sai daqui tanto a grade
+  // quanto a lista que vai para a IA — é o mesmo universo, não dá para divergir.
+  const visibleTypes = useMemo(() => {
+    const userTeamIds = new Set(userTeams.map(t => t.id));
+    return globalTypes.filter(t => {
+      const tIds = t.team_ids || [];
+      if (userTeamIds.size === 0) return true;
+      if (selectedTeamId !== 'all') return tIds.includes(selectedTeamId);
+      return tIds.some(id => userTeamIds.has(id));
+    });
+  }, [globalTypes, userTeams, selectedTeamId]);
 
   // Types that have at least one block
   const activeTypeKeys = new Set(blocks.map(b => b.activityType));
@@ -400,54 +494,175 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
     }
   };
 
+  // ---------------------------------------------------------------
+  // Assistente de rotina: descrição digitada, ditada por voz e/ou
+  // anexo (PDF, print, TXT). Nada é aplicado sem prévia e confirmação.
+  // ---------------------------------------------------------------
+
+  const addAiFiles = (incoming: File[]) => {
+    const aceitos: File[] = [];
+    let grandes = 0;
+    for (const f of incoming) {
+      if (f.size > ROUTINE_MAX_MB * 1024 * 1024) { grandes++; continue; }
+      aceitos.push(f);
+    }
+    if (grandes > 0) toast.error(`${grandes} arquivo(s) acima de ${ROUTINE_MAX_MB}MB foram ignorados.`);
+    if (aceitos.length === 0) return;
+    setAiFiles(prev => {
+      const juntos = [...prev, ...aceitos];
+      if (juntos.length > ROUTINE_MAX_FILES) toast.error(`Máximo de ${ROUTINE_MAX_FILES} arquivos por envio.`);
+      return juntos.slice(0, ROUTINE_MAX_FILES);
+    });
+  };
+
+  const resetAI = () => {
+    setAiDescription('');
+    setAiFiles([]);
+    setAiPreview(null);
+    setAiPhase('idle');
+    if (aiFileInputRef.current) aiFileInputRef.current.value = '';
+  };
+
   const handleAISuggest = async () => {
-    if (!aiDescription.trim()) {
-      toast.error('Descreva sua semana antes de gerar a rotina');
+    const descricao = aiDescription.trim();
+    if (!descricao && aiFiles.length === 0) {
+      toast.error('Descreva a semana (digitando ou ditando) ou anexe um arquivo');
+      return;
+    }
+    if (visibleTypes.length === 0) {
+      toast.error('Nenhum tipo de atividade disponível para montar a rotina.');
       return;
     }
     setAiLoading(true);
+    setAiPreview(null);
     try {
+      // 1) Anexos sobem para o mesmo bucket público que o preenchimento por documento
+      //    das atividades usa — a IA lê pela URL, sem base64 trafegando pelo navegador.
+      const fileUrls: string[] = [];
+      if (aiFiles.length > 0) {
+        setAiPhase('enviando');
+        const stamp = Date.now();
+        for (let i = 0; i < aiFiles.length; i++) {
+          const f = aiFiles[i];
+          const ext = (f.name.split('.').pop() || 'bin').toLowerCase();
+          const path = `routine-documents/rotina_${stamp}_${i}.${ext}`;
+          const { error: upErr } = await supabase.storage
+            .from('activity-chat')
+            .upload(path, f, { contentType: f.type || undefined });
+          if (upErr) throw new Error(`Falha ao subir "${f.name}": ${upErr.message}`);
+          fileUrls.push(supabase.storage.from('activity-chat').getPublicUrl(path).data.publicUrl);
+        }
+      }
+
+      setAiPhase('pensando');
       const { data, error } = await cloudFunctions.invoke('suggest-routine', {
-        body: { description: aiDescription },
+        body: {
+          description: descricao,
+          file_urls: fileUrls.length > 0 ? fileUrls : undefined,
+          // Os tipos REAIS vão junto: sem isso a IA inventa key e nada casa
+          // (era exatamente o erro "não conseguiu mapear sugestões").
+          available_types: visibleTypes.map(t => ({ key: t.key, label: t.label, description: t.description })),
+          // A rotina atual permite PEDIR AJUSTE ("tira a reunião de sexta"),
+          // não só recomeçar do zero.
+          current_blocks: blocks.map(b => ({
+            activityType: b.activityType,
+            label: b.label,
+            days: b.days,
+            startHour: b.startHour,
+            startMinute: b.startMinute || 0,
+            endHour: b.endHour,
+            endMinute: b.endMinute || 0,
+          })),
+        },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
+      if (data?.success === false) throw new Error(data?.error || 'Não consegui montar a rotina');
 
-      const suggested: Array<{ activityType: string; days: number[]; startHour: number; endHour: number }> =
-        (data?.configs || []);
+      // `blocks` é o formato novo; `configs` é o da edge antiga (fallback do router).
+      const sugeridos: RawSuggestedBlock[] = Array.isArray(data?.blocks) ? data.blocks
+        : Array.isArray(data?.configs) ? data.configs
+        : [];
 
-      const newBlocks: TimeBlockConfig[] = [];
-      suggested.forEach((s: any) => {
-        const globalMatch = globalTypes.find(
-          t => t.key === s.activityType || t.label.toLowerCase() === (s.label || '').toLowerCase()
-        );
-        if (globalMatch) {
-          newBlocks.push({
-            blockId: newBlockId(),
-            activityType: globalMatch.key,
-            label: globalMatch.label,
-            color: globalMatch.color,
-            days: Array.isArray(s.days) ? s.days : [0, 1, 2, 3, 4],
-            startHour: Number(s.startHour) || 9,
-            endHour: Number(s.endHour) || 11,
-            isCustom: false,
-          });
+      const mapeados: SuggestedBlock[] = [];
+      const naoCasaram: string[] = [];
+      sugeridos.forEach((sug) => {
+        const tipo = matchType(sug, visibleTypes);
+        if (!tipo) {
+          const nome = String(sug?.label || sug?.activityType || '').trim();
+          if (nome) naoCasaram.push(nome);
+          return;
         }
+        const startHour = Math.min(23, Math.max(0, Number(sug.startHour) || 9));
+        const startMinute = [0, 15, 30, 45].includes(Number(sug.startMinute)) ? Number(sug.startMinute) : 0;
+        let endHour = Math.min(23, Math.max(0, Number(sug.endHour) || startHour + 1));
+        let endMinute = [0, 15, 30, 45].includes(Number(sug.endMinute)) ? Number(sug.endMinute) : 0;
+        if (endHour * 60 + endMinute <= startHour * 60 + startMinute) {
+          endHour = Math.min(23, startHour + 1);
+          endMinute = startMinute;
+        }
+        mapeados.push({
+          blockId: newBlockId(),
+          activityType: tipo.key,
+          label: tipo.label,
+          color: tipo.color,
+          days: diasValidos(sug.days),
+          startHour,
+          startMinute,
+          endHour,
+          endMinute,
+          isCustom: false,
+          motivo: sug.motivo ? String(sug.motivo) : undefined,
+        });
       });
 
-      if (newBlocks.length === 0) {
-        toast.warning('A IA não conseguiu mapear sugestões aos tipos globais existentes.');
-      } else {
-        setBlocks(newBlocks);
-        toast.success(`✨ ${newBlocks.length} bloco${newBlocks.length !== 1 ? 's' : ''} configurados pela IA!`);
+      const unmatched = [
+        ...(Array.isArray(data?.unmatched) ? (data.unmatched as unknown[]).map(u => String(u)) : []),
+        ...naoCasaram,
+      ].filter(Boolean);
+
+      if (mapeados.length === 0) {
+        // Erro honesto: diz o que a IA propôs e o que existe, em vez do antigo
+        // "não conseguiu mapear" que não dava pista nenhuma de como resolver.
+        const proposto = unmatched.length > 0 ? ` Ela propôs: ${unmatched.slice(0, 5).join(', ')}.` : '';
+        toast.error(
+          `Nenhum bloco pôde ser criado.${proposto} Crie o tipo de atividade correspondente na lista abaixo e tente de novo.`,
+          { duration: 9000 },
+        );
+        return;
       }
-      setShowAI(false);
-      setAiDescription('');
+
+      setAiPreview({
+        blocks: mapeados,
+        unmatched,
+        summary: String(data?.summary || ''),
+        question: data?.clarifying_question ? String(data.clarifying_question) : undefined,
+      });
+      toast.success(`${mapeados.length} bloco${mapeados.length !== 1 ? 's' : ''} sugerido${mapeados.length !== 1 ? 's' : ''} — confira antes de aplicar.`);
     } catch (e: any) {
       toast.error(e.message || 'Erro ao gerar rotina com IA');
     } finally {
+      setAiPhase('idle');
       setAiLoading(false);
     }
+  };
+
+  /**
+   * Aplica a prévia. 'substituir' troca a rotina inteira; 'somar' mantém o que já
+   * existe e acrescenta. A versão anterior SEMPRE substituía sem avisar — quem
+   * tinha a semana montada perdia tudo num clique.
+   */
+  const applyAIPreview = (modo: 'substituir' | 'somar') => {
+    if (!aiPreview) return;
+    const novos = aiPreview.blocks.map(({ motivo: _motivo, ...b }) => b as TimeBlockConfig);
+    setBlocks(prev => (modo === 'substituir' ? novos : [...prev, ...novos]));
+    toast.success(
+      modo === 'substituir'
+        ? 'Rotina substituída — revise os blocos e clique em Salvar.'
+        : 'Blocos adicionados — revise e clique em Salvar.',
+    );
+    setShowAI(false);
+    resetAI();
   };
 
   // Drag handlers for global type reorder (admin)
@@ -496,7 +711,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-primary">✨ Organizar rotina com IA</p>
-              <p className="text-xs text-muted-foreground">Descreva sua semana e a IA configura os blocos automaticamente</p>
+              <p className="text-xs text-muted-foreground">Fale, escreva ou anexe um PDF/print — a IA monta os blocos</p>
             </div>
           </button>
         ) : (
@@ -506,25 +721,140 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
                 <Sparkles className="h-4 w-4 text-primary" />
                 <span className="text-sm font-semibold text-primary">Assistente de Rotina IA</span>
               </div>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowAI(false)}>
+              <Button
+                variant="ghost" size="icon" className="h-6 w-6"
+                onClick={() => { setShowAI(false); resetAI(); }}
+              >
                 <X className="h-3.5 w-3.5" />
               </Button>
             </div>
-            <Textarea
-              placeholder="Exemplo: Faço audiências nas terças e quintas de manhã, reuniões toda segunda, prazos nas quartas, atendimento nas sextas à tarde..."
-              value={aiDescription}
-              onChange={e => setAiDescription(e.target.value)}
-              className="min-h-[90px] text-sm resize-none"
-              autoFocus
-            />
-            <div className="flex gap-2">
-              <Button size="sm" onClick={handleAISuggest} disabled={aiLoading || !aiDescription.trim()} className="gap-1.5 flex-1">
-                {aiLoading
-                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Gerando...</>
-                  : <><Wand2 className="h-3.5 w-3.5" />Gerar Rotina</>}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setShowAI(false)}>Cancelar</Button>
-            </div>
+
+            {/* Prévia: o que a IA propôs. Nada entra na rotina sem passar por aqui. */}
+            {aiPreview ? (
+              <div className="space-y-3">
+                {aiPreview.summary && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">{aiPreview.summary}</p>
+                )}
+                {aiPreview.question && (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                    <HelpCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                    <span>{aiPreview.question} — responda no campo de descrição e gere de novo.</span>
+                  </div>
+                )}
+                <ScrollArea className="max-h-52 rounded-md border bg-background">
+                  <div className="divide-y">
+                    {aiPreview.blocks.map(b => (
+                      <div key={b.blockId} className="flex items-center gap-2 p-2 text-xs">
+                        <span className={cn('h-2.5 w-2.5 rounded-full flex-shrink-0', b.color)} />
+                        <span className="font-medium truncate flex-1 min-w-0">{b.label}</span>
+                        <span className="text-muted-foreground whitespace-nowrap">
+                          {b.days.map(d => WEEK_DAYS[d]?.label).filter(Boolean).join(' ')}
+                        </span>
+                        <span className="font-mono text-muted-foreground whitespace-nowrap">
+                          {fmtTime(b.startHour, b.startMinute)}–{fmtTime(b.endHour, b.endMinute)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+                {aiPreview.unmatched.length > 0 && (
+                  <div className="flex items-start gap-2 rounded-md border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">
+                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                    <span>
+                      Sem tipo de atividade correspondente (ficou de fora):{' '}
+                      <strong>{aiPreview.unmatched.join(', ')}</strong>. Crie o tipo na lista abaixo e gere de novo.
+                    </span>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => applyAIPreview('substituir')} className="gap-1.5 flex-1 min-w-[10rem]">
+                    <Replace className="h-3.5 w-3.5" />
+                    Substituir rotina ({aiPreview.blocks.length})
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => applyAIPreview('somar')} className="gap-1.5 flex-1 min-w-[10rem]">
+                    <ListPlus className="h-3.5 w-3.5" />
+                    Somar à rotina atual
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setAiPreview(null)}>Descartar</Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Textarea
+                  placeholder={
+                    aiPhase === 'gravando' ? 'Gravando… fale sua semana e clique em Parar.'
+                    : aiPhase === 'transcrevendo' ? 'Transcrevendo o áudio…'
+                    : 'Fale, escreva ou cole aqui. Ex.: Faço audiências nas terças e quintas de manhã, reuniões toda segunda, prazos nas quartas, atendimento nas sextas à tarde…'
+                  }
+                  value={aiDescription}
+                  onChange={e => setAiDescription(e.target.value)}
+                  className="min-h-[90px] text-sm resize-none"
+                  autoFocus
+                />
+
+                {/* Anexos: PDF, print ou TXT com a escala/horários */}
+                <input
+                  ref={aiFileInputRef}
+                  type="file"
+                  multiple
+                  accept={ROUTINE_FILE_ACCEPT}
+                  className="hidden"
+                  onChange={e => { addAiFiles(Array.from(e.target.files || [])); e.target.value = ''; }}
+                />
+                {aiFiles.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {aiFiles.map((f, i) => (
+                      <Badge key={`${f.name}_${i}`} variant="secondary" className="gap-1 max-w-[14rem]">
+                        <FileText className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate text-[11px]">{f.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setAiFiles(prev => prev.filter((_, idx) => idx !== i))}
+                          className="ml-0.5 hover:text-destructive"
+                          aria-label={`Remover ${f.name}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <VoiceDictateButton
+                    contexto="A pessoa está descrevendo a rotina semanal de trabalho dela (dias da semana, horários e que tipo de atividade faz em cada bloco)."
+                    onResult={texto => setAiDescription(prev => (prev.trim() ? `${prev.trim()} ${texto}` : texto))}
+                    onPhaseChange={fase => setAiPhase(fase)}
+                    disabled={aiLoading}
+                  />
+                  <Button
+                    type="button" size="sm" variant="outline" className="gap-1.5"
+                    onClick={() => aiFileInputRef.current?.click()}
+                    disabled={aiLoading}
+                  >
+                    <Paperclip className="h-3.5 w-3.5" />
+                    <span className="text-xs">Anexar PDF/print</span>
+                  </Button>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleAISuggest}
+                    disabled={aiLoading || aiPhase === 'gravando' || aiPhase === 'transcrevendo' || (!aiDescription.trim() && aiFiles.length === 0)}
+                    className="gap-1.5 flex-1"
+                  >
+                    {aiLoading
+                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />{aiPhase === 'enviando' ? 'Enviando arquivos…' : 'Gerando...'}</>
+                      : <><Wand2 className="h-3.5 w-3.5" />Gerar Rotina</>}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setShowAI(false); resetAI(); }}>Cancelar</Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  A IA só usa os tipos de atividade que já existem aqui embaixo — e mostra uma prévia antes de mexer na sua rotina.
+                </p>
+              </>
+            )}
           </div>
         )}
 
@@ -566,14 +896,6 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
 
         {/* Compute visible types (filtered by team) */}
         {(() => {
-          const userTeamIds = new Set(userTeams.map(t => t.id));
-          const visibleTypes = globalTypes.filter(t => {
-            const tIds = t.team_ids || [];
-            if (userTeamIds.size === 0) return true;
-            if (selectedTeamId !== 'all') return tIds.includes(selectedTeamId);
-            return tIds.some(id => userTeamIds.has(id));
-          });
-
           return (
             <>
               {/* Visual Calendar Grid (Google Calendar-like) */}

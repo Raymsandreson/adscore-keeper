@@ -135,13 +135,31 @@ async function downloadFromMetaCloud(mediaId: string): Promise<{ bytes: Buffer; 
 }
 
 
-export const handler: RequestHandler = async (req, res) => {
-  const ok = (body: Record<string, unknown>) => res.status(200).json(body);
-  try {
-    const authed = await verifyCloudJwt(req.headers.authorization as string | undefined);
-    if (!authed) return ok({ success: false, error: 'Sessão inválida para sincronizar mídia.' });
+export type ResultadoMidia = {
+  success: boolean;
+  error?: string;
+  media_url?: string | null;
+  media_type?: string | null;
+  already_synced?: boolean;
+  id_used?: string | null;
+  replicated?: number;
+  steps?: string[];
+};
 
-    const rowId = String(req.body?.message_row_id || req.body?.message_id || '').trim();
+/**
+ * Baixa, decifra e publica no Storage a mídia de UMA linha de `whatsapp_messages`.
+ *
+ * Era só o miolo do handler HTTP — quem quisesse a mídia tinha que ser o
+ * navegador, com sessão de usuário. Virou função exportada porque a INGESTÃO
+ * precisa dela: mídia da Cloud API chega como `media_id` e some em 30 dias, e
+ * esperar alguém clicar "Sincronizar" é esperar tarde demais.
+ *
+ * Nunca lança: devolve `{ success: false, error }` — quem chama na ingestão não
+ * pode quebrar o resto do webhook por causa de uma foto.
+ */
+export async function sincronizarMidiaDaMensagem(rowId: string): Promise<ResultadoMidia> {
+  const ok = (body: ResultadoMidia): ResultadoMidia => body;
+  try {
     if (!rowId) return ok({ success: false, error: 'message_row_id é obrigatório.' });
 
     const { data: msg, error: msgErr } = await ext
@@ -323,4 +341,14 @@ export const handler: RequestHandler = async (req, res) => {
     const msg = e instanceof Error ? e.message : String(e);
     return ok({ success: false, error: msg });
   }
+}
+
+export const handler: RequestHandler = async (req, res) => {
+  const authed = await verifyCloudJwt(req.headers.authorization as string | undefined);
+  if (!authed) {
+    res.status(200).json({ success: false, error: 'Sessão inválida para sincronizar mídia.' });
+    return;
+  }
+  const rowId = String(req.body?.message_row_id || req.body?.message_id || '').trim();
+  res.status(200).json(await sincronizarMidiaDaMensagem(rowId));
 };

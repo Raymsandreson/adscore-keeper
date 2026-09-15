@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { supabase } from '../lib/supabase';
+import { sincronizarMidiaDaMensagem } from './whatsapp-download-media';
 
 /**
  * WhatsApp Cloud API (Meta oficial) — webhook único de gerência.
@@ -119,6 +120,10 @@ interface NormalizedMessage {
     filename?: string | null;
     voice?: boolean | null;
   } | null;
+  /** `errors[]` que a Meta manda junto de `type: unsupported`. */
+  errors?: unknown[] | null;
+  /** Nó `interactive` cru, quando o subtipo não rendeu título. */
+  interactive_raw?: Record<string, unknown> | null;
 }
 
 interface NormalizedStatus {
@@ -167,11 +172,28 @@ function extractMessages(body: any): NormalizedMessage[] {
       for (const m of messages) {
         if (!m?.from || !m?.id) continue;
         const type = m.type || 'text';
+        // `errors[]` acompanha `type: unsupported` e é a ÚNICA explicação que a
+        // Meta dá. Sem guardar, a bolha vira "(unsupported)" e ninguém descobre
+        // o que o cliente mandou.
+        const errors: unknown[] | null = Array.isArray(m.errors) && m.errors.length ? m.errors : null;
+        const interactiveRaw =
+          type === 'interactive' && m.interactive && typeof m.interactive === 'object' ? m.interactive : null;
+
         let text = '';
         if (type === 'text') text = m.text?.body || '';
         else if (type === 'button') text = m.button?.text || '';
         else if (type === 'interactive') {
           text = m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || '';
+          if (!text) {
+            // Subtipo que não é button/list (Flow `nfm_reply`, por exemplo).
+            // Sem este rótulo a bolha nasce VAZIA: o operador vê só o horário e
+            // não sabe que o cliente respondeu alguma coisa.
+            const sub = typeof m.interactive?.type === 'string' ? m.interactive.type : '';
+            text = sub ? `(resposta interativa: ${sub})` : '(resposta interativa)';
+          }
+        } else if (type === 'unsupported') {
+          const titulo = (errors?.[0] as any)?.title || (errors?.[0] as any)?.message || '';
+          text = titulo ? `(não suportado pela API: ${titulo})` : '(não suportado pela API)';
         } else text = `(${type})`;
 
         // Captura media id (Cloud API) — necessário pra baixar via Graph API depois.
@@ -207,6 +229,8 @@ function extractMessages(body: any): NormalizedMessage[] {
           ctwa_clid: m.referral?.ctwa_clid || null,
           referral_source_url: m.referral?.source_url || null,
           media,
+          errors,
+          interactive_raw: interactiveRaw,
         });
       }
     }
@@ -300,33 +324,70 @@ export async function handler(req: Request, res: Response): Promise<void> {
       // Qual das nossas linhas recebeu. Sem match, cai no nome histórico.
       const instanceName = await instanceNamePorPhoneNumberId(msg.phone_number_id);
       // Insere no whatsapp_messages (mesma tabela do resto do sistema).
-      // Para mídias da Cloud API, guarda media_id no metadata pra permitir
-      // download posterior via Graph API (/{media_id} → url → bytes).
-      const metadata: Record<string, unknown> | null = msg.media
-        ? {
-            cloud_media: {
-              id: msg.media.id,
-              mime_type: msg.media.mime_type,
-              sha256: msg.media.sha256,
-              filename: msg.media.filename,
-              voice: msg.media.voice,
-              captured_at: new Date().toISOString(),
-            },
+      // O `media_id` fica no metadata como rastro/segunda chance; o arquivo em
+      // si é baixado logo abaixo, ainda nesta passagem.
+      const metadata: Record<string, unknown> = {};
+      if (msg.media) {
+        metadata.cloud_media = {
+          id: msg.media.id,
+          mime_type: msg.media.mime_type,
+          sha256: msg.media.sha256,
+          filename: msg.media.filename,
+          voice: msg.media.voice,
+          captured_at: new Date().toISOString(),
+        };
+      }
+      if (msg.errors) metadata.cloud_errors = msg.errors;
+      if (msg.interactive_raw) metadata.cloud_interactive = msg.interactive_raw;
+
+      const { data: linhaInserida, error: insertErr } = await supabase
+        .from('whatsapp_messages')
+        .insert({
+          phone: msg.phone,
+          instance_name: instanceName,
+          message_text: msg.message_text,
+          message_type: msg.message_type,
+          direction: 'inbound',
+          external_message_id: msg.external_message_id,
+          contact_name: msg.contact_name,
+          action_source: 'cloud_api',
+          action_source_detail: msg.ctwa_clid ? `ctwa:${msg.ctwa_clid}` : 'inbound',
+          media_type: msg.media?.mime_type || null,
+          metadata: Object.keys(metadata).length ? metadata : null,
+        } as any)
+        .select('id')
+        .maybeSingle();
+      if (insertErr) console.error('[wa-cloud] insert da mensagem falhou', insertErr);
+
+      // Foto/áudio/PDF da Cloud API NÃO vêm com arquivo: o webhook recebe um
+      // `media_id` e mais nada. Sem baixar aqui, a bolha nasce sem `media_url`,
+      // a tela mostra "clique para sincronizar" e a mídia só existe se alguém
+      // clicar — e o `media_id` da Meta caduca em 30 dias, então um clique
+      // tardio não recupera nada. Roda fora do await do loop para não segurar o
+      // roteamento do lead; o webhook já respondeu 200 à Meta bem antes disto.
+      const rowId = (linhaInserida as any)?.id;
+      if (msg.media?.id && rowId) {
+        void (async () => {
+          for (let tentativa = 1; tentativa <= 2; tentativa++) {
+            const r = await sincronizarMidiaDaMensagem(String(rowId));
+            if (r.success) {
+              console.log(`[wa-cloud] mídia baixada msg=${msg.external_message_id} tipo=${msg.message_type}`);
+              return;
+            }
+            if (tentativa === 2) {
+              console.error(
+                `[wa-cloud] mídia NÃO baixada msg=${msg.external_message_id} tipo=${msg.message_type}: ${r.error}`,
+              );
+              return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 3000));
           }
-        : null;
-      await supabase.from('whatsapp_messages').insert({
-        phone: msg.phone,
-        instance_name: instanceName,
-        message_text: msg.message_text,
-        message_type: msg.message_type,
-        direction: 'inbound',
-        external_message_id: msg.external_message_id,
-        contact_name: msg.contact_name,
-        action_source: 'cloud_api',
-        action_source_detail: msg.ctwa_clid ? `ctwa:${msg.ctwa_clid}` : 'inbound',
-        media_type: msg.media?.mime_type || null,
-        metadata,
-      } as any);
+        })().catch((e) => {
+          // Rejeição solta aqui derruba o processo inteiro no Node 18+ — e com
+          // ele o webhook que recebe TODOS os leads da Cloud API.
+          console.error('[wa-cloud] download de mídia estourou', e);
+        });
+      }
 
       // Discadora automática: se há permissão pendente pra esse telefone,
       // qualquer resposta inbound conta como aceite (granted) e a fila avança.

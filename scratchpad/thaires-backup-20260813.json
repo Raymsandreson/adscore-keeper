@@ -1,0 +1,328 @@
+{
+ "user_roles": [
+  {
+   "id": "b183e993-f3fe-4534-9348-e9e20c5c7ff2",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "role": "member",
+   "created_at": "2026-06-11T11:41:46.359838+00:00",
+   "access_profile_id": null
+  }
+ ],
+ "whatsapp_instance_users": [
+  {
+   "id": "6a455775-93de-486a-8913-568b411932c6",
+   "instance_id": "4ac12887-9bbf-44dc-92bc-48a6b6e50806",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "created_at": "2026-06-11T11:49:10.942045+00:00"
+  },
+  {
+   "id": "6345ed3b-4ed9-4bfe-ab73-4d44208eac41",
+   "instance_id": "f62106c6-ab35-41d2-b994-9cb5088a4edf",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "created_at": "2026-06-11T11:49:14.062888+00:00"
+  }
+ ],
+ "push_subscriptions": [
+  {
+   "id": "1d4b6895-27cb-4752-86dd-48e8b324997a",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "endpoint": "[REDIGIDO — credencial de Web Push; valor original só no arquivo local, fora do git]",
+   "p256dh": "[REDIGIDO — credencial de Web Push; valor original só no arquivo local, fora do git]",
+   "auth": "[REDIGIDO — credencial de Web Push; valor original só no arquivo local, fora do git]",
+   "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+   "created_at": "2026-07-17T11:15:37.893845+00:00",
+   "updated_at": "2026-08-05T19:44:17.171+00:00"
+  }
+ ],
+ "team_members": [
+  {
+   "id": "ca1e1629-b601-4f15-8a33-9f0e9b11e2d6",
+   "team_id": "b6608407-3b16-4acf-932b-9f5267d870a8",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "created_at": "2026-08-13T18:53:43.884289+00:00",
+   "evaluated_metrics": []
+  }
+ ],
+ "team_conversation_members": [
+  {
+   "id": "053be7c5-8dc2-467f-998e-52bfce4f94f2",
+   "conversation_id": "848e45e3-d7a3-455e-9ca0-39995b26918c",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "last_read_at": "2026-07-24T12:29:52.641+00:00",
+   "created_at": "2026-07-13T19:33:56.086874+00:00",
+   "pending_dismissed_at": null
+  },
+  {
+   "id": "fd70e2a3-29e5-48a1-bd17-ced0d506690b",
+   "conversation_id": "e748ad46-06c3-4a50-92b7-f6c01b4ea0e5",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "last_read_at": "2026-07-24T12:29:23.036+00:00",
+   "created_at": "2026-07-17T14:56:12.538025+00:00",
+   "pending_dismissed_at": null
+  },
+  {
+   "id": "54f2ec24-3d98-4fd1-bdd4-500c30c82e4d",
+   "conversation_id": "9d44cb1f-9dfc-4a9b-8529-a6c128e8858b",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "last_read_at": "2026-07-23T18:21:53.723+00:00",
+   "created_at": "2026-07-23T17:43:48.581343+00:00",
+   "pending_dismissed_at": null
+  },
+  {
+   "id": "460803b8-b333-4780-a238-2b0aee45a39e",
+   "conversation_id": "1279bc1a-f13d-4bd5-9f28-0857c71af9aa",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "last_read_at": "2026-08-12T13:04:25.332011+00:00",
+   "created_at": "2026-08-12T13:04:25.332011+00:00",
+   "pending_dismissed_at": null
+  }
+ ],
+ "org_user_status": [],
+ "work_shifts_abertos": [
+  {
+   "id": "07a31ac5-26f7-4117-ba5a-c60738a85821",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-20T11:07:01.601+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-20T11:06:58.838219+00:00"
+  },
+  {
+   "id": "f0831dba-e4a9-43ed-843b-cf9a950f28fb",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-20T19:26:17.934+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-20T19:26:15.992817+00:00"
+  },
+  {
+   "id": "9c41f337-bc1a-4109-933e-0529fc946005",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-21T11:16:16.904+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-21T11:16:15.526159+00:00"
+  },
+  {
+   "id": "ab3b5d1f-8a9c-4c78-b8e1-fd096780fc75",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-21T11:17:04.016+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-21T11:17:00.307053+00:00"
+  },
+  {
+   "id": "7d727e77-f3bc-406e-bff3-419c832715ad",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-21T11:19:32.861+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-21T11:19:29.212604+00:00"
+  },
+  {
+   "id": "02a76713-05e5-41b5-a2e5-53f1c2196cad",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-21T12:57:57.415+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-21T12:57:53.803078+00:00"
+  },
+  {
+   "id": "8df89ea7-772e-47db-9b8d-f2308f1ac465",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-21T12:58:42.547+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-21T12:58:39.030126+00:00"
+  },
+  {
+   "id": "f48940da-82a8-418e-b890-60b5a73a2469",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-21T18:09:46.981+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-21T18:09:43.497653+00:00"
+  },
+  {
+   "id": "5680b209-b7d3-4276-83de-1fb6fa813400",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-22T11:23:48.875+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-22T11:23:44.919545+00:00"
+  },
+  {
+   "id": "1287ef2f-fc93-4225-9aa4-b90b1b28c222",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-22T11:59:19.5+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-22T11:59:16.579465+00:00"
+  },
+  {
+   "id": "3b88a1d5-9e87-4213-b538-28dd5b60b2f7",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-23T11:35:37.811+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-23T11:35:33.148703+00:00"
+  },
+  {
+   "id": "16f680b9-23dd-48c1-9fc4-4a0e56b464cb",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-23T14:50:41.919+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-23T14:50:38.466569+00:00"
+  },
+  {
+   "id": "7a15edf5-fe4c-4d10-9ef5-e0550226ef65",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-24T11:17:14.725+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-24T11:17:10.193028+00:00"
+  },
+  {
+   "id": "be6ff3a3-9102-4f17-ba3a-7e6c06c18a46",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-24T12:23:00.64+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-24T12:23:01.498862+00:00"
+  },
+  {
+   "id": "538f52f2-c2d9-4e48-9fc1-72f527b1fcd9",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-24T13:51:04.978+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-24T13:50:59.853979+00:00"
+  },
+  {
+   "id": "ff9bbb83-cfc9-434c-8a82-3ff0be03d681",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-27T01:53:48.998+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-27T01:53:41.764821+00:00"
+  },
+  {
+   "id": "83e0421a-3e41-4bbd-8237-431b1b9a0462",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-27T11:12:20.057+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-27T11:12:13.649109+00:00"
+  },
+  {
+   "id": "837f79d7-e986-4433-8484-cc5b56565262",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-27T16:31:09.143+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-27T16:31:03.699588+00:00"
+  },
+  {
+   "id": "e3e7d149-42d5-4b12-8e2b-5be6d590fe30",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-28T09:55:12.987+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-28T09:55:06.078815+00:00"
+  },
+  {
+   "id": "844287e1-fe48-4a57-b455-0391fc7eb97a",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-28T12:15:52.099+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-28T12:15:44.715115+00:00"
+  },
+  {
+   "id": "4ee08e6b-b285-4ee7-a980-6c10cb413327",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-28T18:02:53.409+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-28T18:02:46.551918+00:00"
+  },
+  {
+   "id": "e64907ed-4c49-4d30-adc6-26bf1a11d870",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-29T17:44:53.387+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-29T17:44:45.631055+00:00"
+  },
+  {
+   "id": "df3bb55d-aa64-4a3f-a829-99f10a70e4a3",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-07-31T20:01:01.657+00:00",
+   "ended_at": null,
+   "created_at": "2026-07-31T20:00:51.452268+00:00"
+  },
+  {
+   "id": "e4ab24b2-d4d0-4cb7-a9be-9a96535b0643",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-08-03T11:22:00.607+00:00",
+   "ended_at": null,
+   "created_at": "2026-08-03T11:21:49.901828+00:00"
+  },
+  {
+   "id": "2e056e02-2f7c-4c38-86c0-55fb9ec67535",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-08-03T12:04:13.717+00:00",
+   "ended_at": null,
+   "created_at": "2026-08-03T12:04:02.710349+00:00"
+  },
+  {
+   "id": "a08d7142-8450-4f00-b882-395f28697e15",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-08-03T12:28:47.77+00:00",
+   "ended_at": null,
+   "created_at": "2026-08-03T12:28:37.274469+00:00"
+  },
+  {
+   "id": "db5e00ce-d25b-4909-9174-ac0a41bf153d",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-08-04T11:23:37.339+00:00",
+   "ended_at": null,
+   "created_at": "2026-08-04T11:23:24.438815+00:00"
+  },
+  {
+   "id": "80e3c31f-33e3-4cbe-b43b-65bd526981ec",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-08-04T11:29:48.038+00:00",
+   "ended_at": null,
+   "created_at": "2026-08-04T11:29:36.863409+00:00"
+  },
+  {
+   "id": "f53ce8bc-b3a4-471d-ab81-ac09b88520f5",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-08-04T16:30:13.308+00:00",
+   "ended_at": null,
+   "created_at": "2026-08-04T16:30:00.521124+00:00"
+  },
+  {
+   "id": "a83f4b3a-d874-4bd4-b019-54a9f9c41bf8",
+   "user_id": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+   "user_name": "Thaíres Luana Leal Mendes ",
+   "started_at": "2026-08-10T13:05:44.389+00:00",
+   "ended_at": null,
+   "created_at": "2026-08-10T13:05:44.399064+00:00"
+  }
+ ],
+ "_meta": {
+  "uuid": "3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8",
+  "gerado": "2026-08-13"
+ },
+ "_redacao": "push_subscriptions teve endpoint/p256dh/auth redigidos: sao credencial de envio de push, e CLAUDE.md proibe secret no repo. Nao custa nada: a linha ja foi apagada do banco e o navegador refaz a inscricao no proximo login (ver rollback-maria-clara-mendes-20260811.sql). O resto do arquivo esta integro."
+}

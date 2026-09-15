@@ -91,6 +91,53 @@ export function isCommitmentOverdue(
 }
 
 /**
+ * Dia em que a pendência deve ser cobrada.
+ *
+ * COM PRAZO: o próprio dia do prazo. A cobrança de uma pendência com data não
+ * é "cadê?", é o retorno — "deu tudo certo na perícia?". Cobrar antes é
+ * atropelar o cliente; cobrar depois é descobrir tarde que ele não foi.
+ *
+ * SEM PRAZO: o dia seguinte ao da promessa. "Te mando depois" sem data vira
+ * silêncio permanente se ninguém voltar — em 15/09/2026, 1.401 das 2.485
+ * pendências abertas não tinham prazo nenhum, e nenhuma delas jamais foi
+ * cobrada.
+ *
+ * Devolve `null` quando não dá para saber o dia (pendência sem prazo e sem
+ * data de promessa válida): sem data, não se inventa cobrança.
+ */
+export function commitmentChargeDate(
+  item: Pick<ClientCommitment, 'due_date' | 'promised_at'>
+): string | null {
+  if (item.due_date) return item.due_date;
+
+  const promised = (item.promised_at || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(promised)) return null;
+
+  // Meio-dia UTC: somar 1 dia sobre meia-noite escorrega de mês/fuso e a
+  // cobrança sai um dia antes.
+  const d = new Date(`${promised}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Chegou o dia de cobrar — e a pendência ainda está em aberto.
+ *
+ * Quem decide o TEXTO e se vale a pena cobrar continua sendo a IA da
+ * `dom-cobranca` (perícia que já passou é pergunta, não cobrança). Isto aqui
+ * só responde "já é dia?", que é mecânico.
+ */
+export function isCommitmentDueToCharge(
+  item: Pick<ClientCommitment, 'status' | 'due_date' | 'promised_at'>,
+  today = new Date().toISOString().slice(0, 10)
+): boolean {
+  if (!isCommitmentOpen(item.status)) return false;
+  const date = commitmentChargeDate(item);
+  return date !== null && date <= today;
+}
+
+/**
  * Texto de cobrança sugerido — vai para o campo de mensagem da conversa,
  * NUNCA é enviado sozinho. O assessor revisa e envia.
  */

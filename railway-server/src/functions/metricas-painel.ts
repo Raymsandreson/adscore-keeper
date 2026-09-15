@@ -17,7 +17,7 @@ import { supabase } from '../lib/supabase';
 import { CAPI_TOKEN, GRAPH_VERSION, CAPI_DATASET_ID } from '../lib/metaCapi';
 import { hojeISO, diasAtras, corteDeDias, diaDoInstante, diaDaColuna } from '../lib/diasSaoPaulo';
 import { rotinasParaOPainel } from '../lib/estadoDosCrons';
-import { ACOLHEDORES, FUNIS, acolhedorDoConjunto, funilDoNome } from '../lib/recortesDoPainel';
+import { ACOLHEDORES, FUNIS, acolhedorDoConjunto, funilDoNome, ehBoardDeCaptacao } from '../lib/recortesDoPainel';
 import { authorizeFunctionRequest } from '../lib/functionAuth';
 
 // PostgREST corta em 1000. Não é teoria: o dedup da planilha leu 1000 de 7.255
@@ -247,11 +247,11 @@ export const handler: RequestHandler = async (req, res) => {
       nomePorBoard[b.id] = b.name;
       funilPorBoard[b.id] = funilDoNome(b.name);
     }
-    // Board marcado como desativado no proprio nome fica de fora: ele nao recebe
-    // lead novo, e so polui o rotulo do escopo na tela.
-    const desativado = (nome: string) => /desativad|descontinuad|\bantig/i.test(nome || '');
+    // Casar o nome do funil nao basta: board desativado e board de POP tambem
+    // casam, e nenhum dos dois capta lead. Ver `ehBoardDeCaptacao` — e pura, tem
+    // teste, e explica por que o "POP - BPC" saiu daqui em 15/09/2026.
     const idsPrev = Object.keys(funilPorBoard).filter(
-      (id) => funilPorBoard[id] !== null && !desativado(nomePorBoard[id]),
+      (id) => funilPorBoard[id] !== null && ehBoardDeCaptacao(nomePorBoard[id]),
     );
     if (!idsPrev.length) throw new Error('nenhum board de PREV encontrado — o painel ficaria vazio sem dizer por que');
 
@@ -313,15 +313,59 @@ export const handler: RequestHandler = async (req, res) => {
     };
     const leads = leadsBrutos.filter(passaNoRecorte);
     const fechados = fechadosBrutos.filter(passaNoRecorte);
-    const linhasDeGasto = gasto.linhas.filter((g) => {
+    const linhasDoRecorte = gasto.linhas.filter((g) => {
       if (funilPedido && g.funil !== funilPedido) return false;
       if (acolhedorPedido && g.acolhedor !== acolhedorPedido) return false;
       return true;
     });
 
+    // O ESCOPO DO DINHEIRO E O MESMO ESCOPO DO LEAD.
+    //
+    // Desde 14/09/2026 o lado do CRM le so PREV, mas o lado do gasto continuava
+    // somando as contas inteiras. A tela dizia "esta aba cobre so PREV" no
+    // cabecalho e, tres centimetros abaixo, exibia um investimento que incluia
+    // Trabalhista e venda de curso. Medido em 15/09/2026, janela de 30 dias:
+    //
+    //   contas inteiras .................. R$ 25.604,91
+    //   campanha de PREV ................. R$ 21.539,97
+    //   outro negocio .................... R$  4.064,94  (15,9%)
+    //   custo por lead publicado ......... R$ 9,13
+    //   custo por lead do mesmo escopo ... R$ 7,68
+    //
+    // Numerador de um universo dividido por denominador de outro nao e um numero
+    // conservador: e um numero que nao existe. Entao o gasto de fora sai da
+    // conta — e NAO some da tela: vai inteiro para `fora_do_escopo`, agrupado
+    // por campanha, porque continua sendo dinheiro saindo da mesma carteira
+    // (CLAUDE.md, principios de processo, item 8).
+    const linhasDeGasto = linhasDoRecorte.filter((g) => g.funil !== null);
+    const linhasForaDoEscopo = linhasDoRecorte.filter((g) => g.funil === null);
+
     const somaGasto = (linhas: LinhaDeGasto[]) => Number(linhas.reduce((t, g) => t + g.gasto, 0).toFixed(2));
     const investidoJanela = somaGasto(linhasDeGasto);
+    const investidoForaDoEscopo = somaGasto(linhasForaDoEscopo);
+    const investidoNasContas = Number((investidoJanela + investidoForaDoEscopo).toFixed(2));
     const investidoHoje = janelaInclutHoje ? somaGasto(linhasDeGasto.filter((g) => g.dia === hoje)) : null;
+
+    /** Linhas de gasto agrupadas por campanha — conjunto a conjunto seriam dezenas de linhas e nenhuma decisao. */
+    const porCampanha = (linhas: LinhaDeGasto[]) =>
+      Object.values(
+        linhas.reduce((acc: Record<string, any>, g) => {
+          const k = g.campanha || '(sem campanha)';
+          acc[k] = acc[k] || { campanha: k, gasto: 0, leads_meta: 0, conjuntos: new Set<string>() };
+          acc[k].gasto += g.gasto;
+          acc[k].leads_meta += g.leads_meta;
+          acc[k].conjuntos.add(g.conjunto);
+          return acc;
+        }, {}),
+      )
+        .map((c: any) => ({
+          campanha: c.campanha,
+          gasto: Number(c.gasto.toFixed(2)),
+          leads_meta: c.leads_meta,
+          conjuntos: c.conjuntos.size,
+        }))
+        .sort((x, y) => y.gasto - x.gasto);
+    const campanhas_fora_do_escopo = porCampanha(linhasForaDoEscopo);
 
     // Lead pago = veio de formulário de anúncio. Duas provas independentes: o
     // `source` que a planilha de Lead Ads carimba, ou o id do lead na Meta.
@@ -363,17 +407,25 @@ export const handler: RequestHandler = async (req, res) => {
     // perguntas diferentes. Contagem propria: lead que entrou hoje com
     // formulario de 45 dias atras esta fora da janela e sumiria.
     const contaEntradas = async (desde: string, ateDia: string) => {
+      // O ESCOPO VALE AQUI TAMBEM. Ate 15/09/2026 esta contagem varria o banco
+      // inteiro: publicava "7.305 entraram no funil" ao lado de "3.018 leads",
+      // porque os 7.305 incluiam Trabalhista e todo board que nao e desta aba.
+      // Dois numeros do mesmo card medindo universos diferentes fazem a pessoa
+      // duvidar dos dois.
       let q = supabase
         .from('leads')
         .select('id', { count: 'exact', head: true })
         .is('deleted_at', null)
+        .in('board_id', idsPrev)
         .gte('entrou_no_crm_em', `${desde}T00:00:00-03:00`)
         .lte('entrou_no_crm_em', `${ateDia}T23:59:59-03:00`);
       // O acolhedor não é filtrável aqui (é derivado de texto, não coluna), então
       // esta contagem só honra o funil. A tela diz isso na legenda em vez de
       // deixar o número parecer filtrado.
       if (funilPedido) {
-        const ids = Object.keys(funilDoBoard).filter((id) => funilDoBoard[id] === funilPedido);
+        // Interseccao com o escopo, nao substituicao: `idsPrev` ja tirou POP e
+        // desativado, e um `in` novo por cima devolveria esses de volta.
+        const ids = idsPrev.filter((id) => funilDoBoard[id] === funilPedido);
         if (ids.length) q = q.in('board_id', ids);
       }
       const { count } = await q;
@@ -386,22 +438,6 @@ export const handler: RequestHandler = async (req, res) => {
     // A junção é pelo NOME do conjunto (`leads.adset_name`), único campo comum:
     // a Meta sabe o gasto e quantos formulários preencheu; só o CRM sabe quantos
     // viraram contrato. Nenhum dos dois responde "quanto custa um cliente".
-    // Janela de 7 dias: só existe para os apelidos do bundle antigo (ver o bloco
-    // COMPATIBILIDADE). Precisa ser calculada aqui, junto com os totais da
-    // janela, para que "Gasto 7d" seja gasto de 7 dias de verdade.
-    const corte7 = corteDeDias(7);
-    const janelaEhPadrao = de <= corte7 && ate === hoje;
-    const gasto7PorConjunto: Record<string, number> = {};
-    const leads7PorConjunto: Record<string, number> = {};
-    if (janelaEhPadrao) {
-      for (const g of linhasDeGasto.filter((x) => x.dia >= corte7)) {
-        gasto7PorConjunto[g.conjunto] = (gasto7PorConjunto[g.conjunto] || 0) + g.gasto;
-      }
-      for (const l of leadsPagos) {
-        const n = String(l.adset_name || '').trim();
-        if (n && diaDoInstante(l.created_at) >= corte7) leads7PorConjunto[n] = (leads7PorConjunto[n] || 0) + 1;
-      }
-    }
     const metaPorConjunto: Record<string, { gasto: number; leads_meta: number; campanha: string | null; conta: string }> = {};
     for (const g of linhasDeGasto) {
       const e = metaPorConjunto[g.conjunto] || { gasto: 0, leads_meta: 0, campanha: g.campanha, conta: g.conta };
@@ -432,8 +468,6 @@ export const handler: RequestHandler = async (req, res) => {
         const crm = crmPorConjunto[nome] || { leads: 0, fechados: 0 };
         const cfg = conjuntosConhecidos.find((c) => c.nome === nome) || null;
         const g = m ? Number(m.gasto.toFixed(2)) : null;
-        const g7 = janelaEhPadrao ? Number((gasto7PorConjunto[nome] || 0).toFixed(2)) : null;
-        const l7 = janelaEhPadrao ? (leads7PorConjunto[nome] || 0) : null;
         return {
           nome,
           nome_invalido: nomeInvalido(nome),
@@ -454,18 +488,6 @@ export const handler: RequestHandler = async (req, res) => {
           // tanto quanto esconder o número.
           custo_por_fechamento: g && g > 0 && crm.fechados > 0 ? Number((g / crm.fechados).toFixed(2)) : null,
           taxa_fechamento: crm.leads > 0 ? Number(((crm.fechados / crm.leads) * 100).toFixed(2)) : null,
-          // Apelidos do bundle antigo — ver o bloco COMPATIBILIDADE mais abaixo.
-          // Estes são 7 dias DE VERDADE: a coluna da tela antiga diz "Gasto 7d",
-          // e devolver o total de 30 dias com esse nome seria pôr número de um
-          // recorte sob o rótulo de outro — exatamente o que os apelidos
-          // existem para evitar. Fora da janela padrão vão nulos.
-          gasto_7d: g7,
-          leads_meta_7d: null,
-          leads_crm_7d: l7,
-          leads_crm_30d: crm.leads,
-          fechados_30d: crm.fechados,
-          custo_por_lead_7d: g7 && g7 > 0 && l7 ? Number((g7 / l7).toFixed(2)) : null,
-          taxa_fechamento_30d: crm.leads > 0 ? Number(((crm.fechados / crm.leads) * 100).toFixed(2)) : null,
         };
       })
       .sort((a, b) => (b.gasto ?? -1) - (a.gasto ?? -1) || b.leads_crm - a.leads_crm);
@@ -490,6 +512,43 @@ export const handler: RequestHandler = async (req, res) => {
       };
     }).filter((a) => a.conjuntos > 0);
 
+    // O QUE NAO CAIU EM NINGUEM.
+    //
+    // `ACOLHEDORES` e uma lista fixa de propósito: comparar token inteiro contra
+    // uma lista conhecida impede que "KAROLINA" entre calada no numero da
+    // Karolyne. O preco e que conjunto com nome novo nao casa ninguem — e, ate
+    // 15/09/2026, simplesmente sumia da tabela.
+    //
+    // Medido nesse dia: `CONJUNTO 7 - TAFFAREL` nasceu em 11/09 e ja trazia 61
+    // leads e R$ 383,23 que nao apareciam em linha nenhuma. A soma da coluna
+    // "leads" dava 2.745 contra 2.806 pagos, e nada na tela dizia onde estavam
+    // os 61 que faltavam.
+    //
+    // A linha residual resolve a classe inteira do problema: conjunto novo passa
+    // a aparecer no dia em que gasta o primeiro real, nomeado, pedindo cadastro
+    // — em vez de sumir e voltar como diferenca inexplicada na soma.
+    const orfaos = desempenho_por_conjunto.filter(
+      (c) => !c.acolhedor && ((c.gasto ?? 0) > 0 || c.leads_crm > 0),
+    );
+    const gastoOrfao = Number(orfaos.reduce((t, c) => t + (c.gasto ?? 0), 0).toFixed(2));
+    const leadsOrfaos = orfaos.reduce((t, c) => t + c.leads_crm, 0);
+    const fechadosOrfaos = orfaos.reduce((t, c) => t + c.fechados, 0);
+    const sem_acolhedor = orfaos.length
+      ? {
+          conjuntos: orfaos.length,
+          gasto: gastoOrfao,
+          leads: leadsOrfaos,
+          fechados: fechadosOrfaos,
+          custo_por_lead: gastoOrfao > 0 && leadsOrfaos > 0 ? Number((gastoOrfao / leadsOrfaos).toFixed(2)) : null,
+          // Os nomes vao junto: sem eles a linha diria "tem dinheiro em algum
+          // lugar" e ninguem saberia onde procurar.
+          nomes: orfaos
+            .map((c) => ({ nome: c.nome, gasto: c.gasto, leads: c.leads_crm, fechados: c.fechados }))
+            .sort((x, y) => (y.gasto ?? 0) - (x.gasto ?? 0) || y.leads - x.leads)
+            .slice(0, 12),
+        }
+      : null;
+
     // FUNIL DO LEAD DE ANUNCIO. `lead_status` e a coluna que a equipe move (e
     // que a planilha escreve de volta); `status` guarda a etapa do kanban e,
     // medido em 10/09/2026, 100% dos 3.290 leads pagos estavam em "Recepcao" —
@@ -505,18 +564,17 @@ export const handler: RequestHandler = async (req, res) => {
       recusados: contaStatus('refused') + contaStatus('cancelled'),
     };
 
-    // GASTO QUE NÃO ALIMENTA O CRM. Medido em 10/09/2026: R$ 4.300 em 30 dias,
-    // 16% do investimento, em 34 conjuntos de campanhas que vendem outra coisa
-    // ([CBO][VENDAS][MÃES-ATÍPICAS], [VENDAS][GUIA E KIT], seguro de vida) ou
-    // que simplesmente não entregam formulário.
+    // GASTO DE CAMPANHA DESTA ABA QUE NAO TROUXE LEAD.
     //
-    // Isto DISTORCE o custo por lead da visão "todos": o numerador carrega gasto
-    // de curso e o denominador só conta lead jurídico. R$ 8,29 contra R$ 7,07.
+    // Desde 15/09/2026 este bloco conta so campanha de PREV — o gasto de outro
+    // negocio virou `investimento.fora_do_escopo`, que e outra conversa e tem
+    // outro dono. Misturar os dois era o que fazia o card somar R$ 4.166 e
+    // mandar o gestor de trafego procurar roteamento quebrado em campanha de
+    // venda de curso, que nunca teve roteamento para o CRM.
     //
-    // A regra da casa proíbe esconder ou filtrar o número na tela — filtrar
-    // trocaria um número errado por outro e ainda apagaria o processo que
-    // precisa de conserto. Então os DOIS aparecem, com a diferença nomeada, e a
-    // lista de campanhas vai junto para virar conversa com o gestor de tráfego.
+    // O que sobra aqui e a lista de conserto de verdade: conjunto do proprio
+    // funil que consumiu verba e nao entregou lead ao funil. Nada e escondido —
+    // o gasto de fora continua na tela, no seu proprio card.
     const semLeadNoCrm = desempenho_por_conjunto.filter((c) => (c.gasto ?? 0) > 0 && c.leads_crm === 0);
     const gastoSemLead = Number(semLeadNoCrm.reduce((t, c) => t + (c.gasto ?? 0), 0).toFixed(2));
     const gastoComLead = Number((investidoJanela - gastoSemLead).toFixed(2));
@@ -578,53 +636,6 @@ export const handler: RequestHandler = async (req, res) => {
     const primeiroDiaPago = diasPagos[0] || null;
     const cobertura_completa = Boolean(primeiroDiaPago && primeiroDiaPago <= de);
     const avisoDeCobertura = `lead pago só existe no CRM desde ${primeiroDiaPago || 'nunca'}; a janela começa antes disso, então o custo por lead divide gasto inteiro por lead incompleto.`;
-
-    // COMPATIBILIDADE COM O BUNDLE ANTIGO DA ABA.
-    //
-    // Os filtros trocaram os nomes dos campos (`total_7d` virou `na_janela`, e
-    // por aí vai). Numa SPA isso não é um problema de deploy que passa em
-    // minutos: quem está com a aba aberta continua rodando o bundle velho até
-    // recarregar, o que dura horas. Sem estes apelidos, essa pessoa veria meia
-    // tela de "—" e concluiria que o painel quebrou.
-    //
-    // A janela padrão (sem corpo na requisição) é a que o bundle velho pede, e é
-    // exatamente para ela que estes campos são corretos. Fora dela vão nulos, em
-    // vez de números de outro recorte com nome antigo.
-    const em7 = <T,>(linhas: T[], dia: (l: T) => string) =>
-      janelaEhPadrao ? linhas.filter((l) => dia(l) >= corte7).length : null;
-    const leads7 = em7(leads, (l: any) => diaDoInstante(l.created_at));
-    const pagos7 = em7(leadsPagos, (l: any) => diaDoInstante(l.created_at));
-    const fech7 = em7(fechados, (f: any) => diaDaColuna(f.became_client_date));
-    const gasto7 = janelaEhPadrao
-      ? somaGasto(linhasDeGasto.filter((g) => g.dia >= corte7))
-      : null;
-    const compat = {
-      investimento_antigo: {
-        total_hoje: investidoHoje ?? 0,
-        total_7d: gasto7 ?? 0,
-        total_30d: investidoJanela,
-      },
-      leads_antigo: {
-        hoje: leadsPorDia[hoje] || 0,
-        pagos_hoje: pagosPorDia[hoje] || 0,
-        ultimos_7d: leads7,
-        pagos_7d: pagos7,
-        ultimos_30d: leads.length,
-        pagos_30d: leadsPagos.length,
-        entraram_no_funil_hoje: entraramHoje,
-        entraram_no_funil_7d: janelaEhPadrao ? entraramNaJanela : null,
-      },
-      fechamentos_antigo: { hoje: fechPorDia[hoje] || 0, ultimos_7d: fech7, ultimos_30d: fechados.length },
-      custo_antigo: {
-        leads_pagos_7d: pagos7,
-        leads_pagos_30d: leadsPagos.length,
-        por_lead_pago_7d: gasto7 && gasto7 > 0 && pagos7 ? Number((gasto7 / pagos7).toFixed(2)) : null,
-        por_lead_pago_30d: cobertura_completa ? cpl : null,
-        por_fechamento_pago_30d: cobertura_completa ? cpf_ : null,
-        cobertura_completa_30d: cobertura_completa,
-        aviso_30d: cobertura_completa ? null : avisoDeCobertura,
-      },
-    };
 
     // ============================================================
     // DETALHE NOMINAL — atras de login, e so quando pedido
@@ -717,11 +728,17 @@ export const handler: RequestHandler = async (req, res) => {
         max_dias: MAX_DIAS_JANELA,
       },
       investimento: {
-        ...compat.investimento_antigo,
         disponivel: !gasto.erro,
         erro: gasto.erro,
+        // `na_janela` e o gasto DESTA ABA (campanha de PREV) — e o unico que pode
+        // dividir o lead desta aba. `nas_contas` e tudo que saiu da carteira no
+        // periodo, para a tela poder mostrar a diferenca em vez de fingir que
+        // ela nao existe.
         na_janela: investidoJanela,
         hoje: investidoHoje,
+        nas_contas: investidoNasContas,
+        fora_do_escopo: investidoForaDoEscopo,
+        campanhas_fora_do_escopo,
         contas: Object.entries(
           linhasDeGasto.reduce((acc: Record<string, number>, g) => {
             acc[g.conta] = (acc[g.conta] || 0) + g.gasto;
@@ -734,7 +751,6 @@ export const handler: RequestHandler = async (req, res) => {
       // custou anuncio nenhum). Total ao lado do investimento convida a leitura
       // errada, e o custo por lead ja usava so os pagos.
       leads: {
-        ...compat.leads_antigo,
         na_janela: leads.length,
         pagos_na_janela: leadsPagos.length,
         hoje: janelaInclutHoje ? (leadsPorDia[hoje] || 0) : null,
@@ -745,7 +761,6 @@ export const handler: RequestHandler = async (req, res) => {
         por_board: contaPor(leads, (l) => nomeBoard[l.board_id] || null).slice(0, 15),
       },
       fechamentos: {
-        ...compat.fechamentos_antigo,
         // Detector, não filtro: ver o bloco acima.
         concentracao,
         na_janela: fechados.length,
@@ -764,6 +779,7 @@ export const handler: RequestHandler = async (req, res) => {
       desempenho_por_conjunto,
       detalhe,
       por_acolhedor,
+      sem_acolhedor,
       funil_pago,
       capi: {
         ...Object.fromEntries(filaCapi),
@@ -809,7 +825,6 @@ export const handler: RequestHandler = async (req, res) => {
       // Rotinas: contador zera a cada deploy, entao quem responde e `ultima_em`.
       rotinas: rotinasParaOPainel(),
       custo: {
-        ...compat.custo_antigo,
         leads_pagos: leadsPagos.length,
         // Os dois lados do mesmo investimento, nomeados. Ver o comentário acima.
         gasto_sem_lead_no_crm: gastoSemLead,

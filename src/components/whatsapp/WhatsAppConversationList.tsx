@@ -89,6 +89,9 @@ interface Props {
   cloudAssignees?: Map<string, string>;
   currentUserId?: string | null;
   canSeeAllAssignments?: boolean;
+  /** Caixa travada num canal (menu WhatsApp API): sem conversa compartilhada na
+   *  lista, o chip "Compartilhadas" só marcaria zero — some com ele. */
+  hideSharedFilter?: boolean;
   /** Busca server-side: mescla no estado conversas fora do top-N carregado. */
   onServerSearch?: (term: string) => Promise<void>;
   /** Carrega a próxima página de conversas (scroll no fim da lista). Retorna se pode haver mais. */
@@ -101,7 +104,7 @@ type SortMode = 'alpha' | 'last_activity';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 
-export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones, cloudAssignees, currentUserId, canSeeAllAssignments, onServerSearch, onLoadMore, hasMore }: Props) {
+export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones, cloudAssignees, currentUserId, canSeeAllAssignments, hideSharedFilter, onServerSearch, onLoadMore, hasMore }: Props) {
   const [search, setSearch] = useState('');
   const [loadingMore, setLoadingMore] = useState(false);
   const loadingMoreRef = useRef(false);
@@ -189,6 +192,10 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     fetchProfileNames(ownerIds);
   }, [cloudAssignees, fetchProfileNames]);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+  // Filtro por dono da conversa (WhatsApp API). 'all' = qualquer um. Quem pode
+  // ver a atribuição alheia usa isto para abrir a fila de um atendente sem ter
+  // que olhar conversa por conversa — "Meus" só responde pelo próprio usuário.
+  const [assigneeFilter, setAssigneeFilter] = useState<string>('all');
   // Conversas cuja mensagem virou atividade ainda em aberto (filtro "Atividade pendente").
   // Uma carga por montagem + recarga quando um vínculo novo é criado no chat.
   const [phonesWithPendingActivity, setPhonesWithPendingActivity] = useState<Set<string>>(new Set());
@@ -491,6 +498,10 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
       const owner = cloudAssignees?.get(c.phone);
       if (owner) return false;
     }
+    if (assigneeFilter !== 'all') {
+      if (!ehInstanciaCloud(c.instance_name)) return false;
+      if (cloudAssignees?.get(c.phone) !== assigneeFilter) return false;
+    }
     if (quickFilter === 'lead_active') {
       const status = c.lead_id ? leadInfoMap.get(c.lead_id)?.lead_status : null;
       if (!c.lead_id || !isOpenLeadStatus(status)) return false;
@@ -538,7 +549,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     }
 
     return true;
-  }), [conversations, search, quickFilter, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls, marksByKey, sharedDirection, sharedPerson, phonesWithPendingActivity]);
+  }), [conversations, search, quickFilter, assigneeFilter, cloudAssignees, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls, marksByKey, sharedDirection, sharedPerson, phonesWithPendingActivity]);
 
   // Sort conversations based on mode
   const sortedFiltered = useMemo(() => {
@@ -603,6 +614,29 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     [conversations]
   );
 
+  // Atendentes que aparecem na lista, com quantas conversas cada um tem. Sai das
+  // conversas carregadas, não de um cadastro: quem saiu do rodízio mas ainda tem
+  // fila continua aparecendo, e quem entrou hoje aparece sem release nenhum.
+  const assigneePeople = useMemo(() => {
+    if (!cloudAssignees || cloudAssignees.size === 0) return [] as { id: string; count: number }[];
+    const contagem = new Map<string, number>();
+    for (const c of conversations) {
+      if (!ehInstanciaCloud(c.instance_name)) continue;
+      const owner = cloudAssignees.get(c.phone);
+      if (owner) contagem.set(owner, (contagem.get(owner) || 0) + 1);
+    }
+    return Array.from(contagem.entries())
+      .map(([id, count]) => ({ id, count }))
+      .sort((a, b) => (getDisplayName(a.id) || a.id).localeCompare(getDisplayName(b.id) || b.id, 'pt-BR'));
+  }, [conversations, cloudAssignees, getDisplayName]);
+
+  // O dono selecionado pode sumir da lista (troca de linha, filtro de busca).
+  // Sem isto o filtro continuaria valendo contra uma lista que não o mostra mais.
+  useEffect(() => {
+    if (assigneeFilter === 'all') return;
+    if (!assigneePeople.some(p => p.id === assigneeFilter)) setAssigneeFilter('all');
+  }, [assigneePeople, assigneeFilter]);
+
   const quickFilters: { key: QuickFilter; label: string; icon: React.ReactNode }[] = [
     { key: 'all', label: 'Todas', icon: null },
     ...(hasCloudConvs ? [
@@ -618,7 +652,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     { key: 'activity_pending', label: 'Atividade pendente', icon: <ClipboardList className="h-3 w-3" /> },
     { key: 'calls', label: 'Ligações', icon: <PhoneCall className="h-3 w-3" /> },
     { key: 'groups', label: 'Grupos', icon: <Users className="h-3 w-3" /> },
-    { key: 'shared', label: 'Compartilhadas', icon: <Share2 className="h-3 w-3" /> },
+    ...(hideSharedFilter ? [] : [{ key: 'shared' as QuickFilter, label: 'Compartilhadas', icon: <Share2 className="h-3 w-3" /> }]),
   ];
 
   const counts: Record<QuickFilter, number> = {
@@ -681,6 +715,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
       {(() => {
         const activeFilterCount =
           (quickFilter !== 'all' ? 1 : 0) +
+          (assigneeFilter !== 'all' ? 1 : 0) +
           (directionFilter !== 'all' ? 1 : 0) +
           (selectedBoardId !== 'all' ? 1 : 0) +
           (selectedStageId !== 'all' ? 1 : 0) +
@@ -689,6 +724,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
         const showFilters = filtersOpen || search.length > 0 || activeFilterCount > 0;
         const clearAll = () => {
           setQuickFilter('all');
+          setAssigneeFilter('all');
           setDirectionFilter('all');
           setSelectedBoardId('all');
           setSelectedStageId('all');
@@ -790,7 +826,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
                 </div>
 
                 {/* Sub-filtros das compartilhadas: direção e contraparte */}
-                {quickFilter === 'shared' && (
+                {quickFilter === 'shared' && !hideSharedFilter && (
                   <div className="flex items-center gap-1 flex-wrap px-0.5">
                     {([
                       { key: 'all' as const, label: 'Todas' },
@@ -828,6 +864,35 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
 
                 {/* Advanced filters - compact horizontal row */}
                 <div className="px-2 py-1 border-b flex flex-wrap gap-1 items-center">
+                  {/* Atendente dono da conversa (WhatsApp API). Só para quem enxerga
+                      a fila alheia — para os demais a lista já vem restrita. */}
+                  {canSeeAllAssignments && assigneePeople.length > 0 && (
+                    <Select
+                      value={assigneeFilter}
+                      onValueChange={v => {
+                        setAssigneeFilter(v);
+                        // "Meus"/"Sem dono" contra um atendente escolhido devolve
+                        // lista vazia sem dizer por quê — some com a contradição.
+                        if (v !== 'all' && (quickFilter === 'mine' || quickFilter === 'unassigned')) {
+                          setQuickFilter('all');
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-6 text-[11px] w-auto min-w-0 max-w-[140px] px-1.5 gap-0.5">
+                        <UserCheck className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <SelectValue placeholder="Atendente" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos os atendentes</SelectItem>
+                        {assigneePeople.map(p => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {(getDisplayName(p.id) || `${p.id.slice(0, 8)}…`) + ` (${p.count})`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
                   <Select value={selectedBoardId} onValueChange={v => { setSelectedBoardId(v); setSelectedStageId('all'); }}>
                     <SelectTrigger className="h-6 text-[11px] w-auto min-w-0 max-w-[120px] px-1.5 gap-0.5">
                       <SelectValue placeholder="Funil" />

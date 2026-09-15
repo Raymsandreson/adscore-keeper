@@ -221,6 +221,34 @@ async function fetchAllOrderedIds(p: LeadListParams): Promise<Array<{ id: string
   return all;
 }
 
+/**
+ * Todas as linhas que casam com os filtros, na ordenação pedida, em lotes de
+ * 1000. Vive fora do hook porque o relatório em texto (aba de filtros) precisa
+ * do mesmo recorte sem montar a tela de lista — e a tradução dos filtros para
+ * PostgREST não pode existir em duas versões.
+ */
+export async function fetchLeadListRows(p: LeadListParams): Promise<LeadListRow[]> {
+  if (!p.boardId) return [];
+  if (p.checklistFilteredIds !== null && p.checklistFilteredIds.size === 0) return [];
+  const all: LeadListRow[] = [];
+  const CHUNK = 1000;
+  for (let from = 0; ; from += CHUNK) {
+    let q = view().select(ROW_COLUMNS);
+    q = applyFilters(q, p);
+    q = applyOrder(q, p.sort).range(from, from + CHUNK - 1);
+    const { data, error } = await q;
+    if (error) throw error;
+    const chunk = (data || []) as LeadListRow[];
+    all.push(...chunk);
+    if (chunk.length < CHUNK) break;
+  }
+  if (usesBigChecklistPath(p)) {
+    const wanted = p.checklistFilteredIds!;
+    return all.filter(r => wanted.has(r.id));
+  }
+  return all;
+}
+
 export interface LeadListResult {
   rows: LeadListRow[];
   totalCount: number;
@@ -382,27 +410,10 @@ export function useLeadListView(params: LeadListParams): LeadListResult {
     return ordered.map(r => r.id);
   }, []);
 
-  const fetchAllFilteredRows = useCallback(async (): Promise<LeadListRow[]> => {
-    const p = paramsRef.current;
-    if (!p.boardId) return [];
-    const all: LeadListRow[] = [];
-    const CHUNK = 1000;
-    for (let from = 0; ; from += CHUNK) {
-      let q = view().select(ROW_COLUMNS);
-      q = applyFilters(q, p);
-      q = applyOrder(q, p.sort).range(from, from + CHUNK - 1);
-      const { data, error: err } = await q;
-      if (err) throw err;
-      const chunk = (data || []) as LeadListRow[];
-      all.push(...chunk);
-      if (chunk.length < CHUNK) break;
-    }
-    if (usesBigChecklistPath(p)) {
-      const wanted = p.checklistFilteredIds!;
-      return all.filter(r => wanted.has(r.id));
-    }
-    return all;
-  }, []);
+  const fetchAllFilteredRows = useCallback(
+    (): Promise<LeadListRow[]> => fetchLeadListRows(paramsRef.current),
+    [],
+  );
 
   return {
     rows,

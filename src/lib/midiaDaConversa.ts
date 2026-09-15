@@ -86,6 +86,26 @@ export function midiasDaMensagem(
   return saida;
 }
 
+/**
+ * O que escrever numa bolha que não tem NADA para mostrar — sem texto, sem
+ * mídia exibível e fora do aviso de "mídia criptografada" (que só cobre
+ * image/video/audio/document).
+ *
+ * Existe porque a bolha muda some da conversa: quem olha vê um retângulo com o
+ * horário e não sabe que o cliente respondeu alguma coisa. Foi o caso da
+ * resposta `interactive` de 14/09/2026, que o webhook da Cloud API gravou com
+ * `message_text` vazio. O rótulo não inventa conteúdo: diz que chegou mensagem
+ * e de que tipo, que é o que sobrou.
+ */
+export function rotuloMensagemSemConteudo(msg: MensagemComMidia): string {
+  const tipo = (msg.message_type || '').trim();
+  const sufixo = tipo ? ` (tipo: ${tipo})` : '';
+  // Com `media_url` mas sem render possível, o que falta é o arquivo, não a
+  // mensagem — dizer "sem conteúdo" mandaria procurar no lugar errado.
+  if (msg.media_url) return `Anexo não exibível${sufixo}`;
+  return `Mensagem sem conteúdo registrado${sufixo}`;
+}
+
 /** Rótulo do anexo pra linha da conversa que a IA lê ("[PDF] intimação.pdf"). */
 export function rotuloDaMidia(msg: MensagemComMidia): string {
   const kind = tipoDaMidia(msg);
