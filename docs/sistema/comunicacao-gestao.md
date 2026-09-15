@@ -361,6 +361,19 @@ O PIN do `register` vem de `WHATSAPP_CLOUD_REGISTER_PIN` no Railway, nunca do co
 
 **Envio**: front → edge `send-whatsapp` (com `channel: 'cloud'` e `instance_name` da conversa) → Railway `send-whatsapp-cloud`. A edge repassa o corpo verbatim, então campo novo no envio **não exige deploy de edge**.
 
+### Mídia recebida — a Cloud API não manda o arquivo
+
+O webhook da Meta não traz a foto: traz um `media_id` que só vira arquivo com duas chamadas na Graph API (`GET /{media_id}` devolve uma URL de 5 min; baixar os bytes exige o mesmo Bearer). **Esse id caduca em 30 dias** — mídia não baixada a tempo está perdida, não existe segunda chance.
+
+Até 15/09/2026 o webhook guardava o id em `metadata.cloud_media` e não baixava nada. Resultado: **toda** foto, vídeo, PDF e áudio recebido na linha oficial nascia com `media_url` nulo, a bolha caía no aviso "criptografado — clique para sincronizar", e o arquivo só existia se alguém clicasse. Deu para datar o defeito pelo nome dos arquivos no Storage: mensagem das 18:28 com arquivo `repair_…` criado às 08:01 do dia seguinte.
+
+Hoje `whatsapp-cloud-webhook` chama `sincronizarMidiaDaMensagem(rowId, 'ingest')` assim que grava a linha — duas tentativas, 3s entre elas, depois do `200` que a Meta espera e fora do `await` do loop, então não atrasa roteamento nem recibo. Medido em produção: foto chegou 09:05:44, arquivo pronto 09:05:46.
+
+- **O prefixo do arquivo no Storage diz a origem** e é prova em auditoria: `ingest_` = veio junto da mensagem, `repair_` = veio depois, de clique ou backfill. Não troque por um nome só.
+- O botão "Sincronizar" e o auto-sync do `WhatsAppChat` continuam, agora como retry — e cobrindo os quatro tipos de mídia, não só áudio.
+- **A tela não vê o arquivo chegar.** A lista de mensagens vem de um Realtime que escuta só `INSERT` (`useWhatsAppMessages.ts`), então o `UPDATE` que grava `media_url` ~3s depois não atualiza a bolha; quem conserta é o auto-sync, que recebe `already_synced` com a URL pronta. Ouvir `UPDATE` no canal resolveria também, mas `whatsapp-leitura.ts` faz `UPDATE` de `read_at` em massa e o payload de `whatsapp_messages` é gordo de `metadata` — seria egress caro por conversa aberta.
+- `type: unsupported` vem com um `errors[]` que é a única explicação da Meta: fica em `metadata.cloud_errors` e vira o texto da bolha. Resposta interativa de subtipo novo (Flow/`nfm_reply`) guarda o nó cru em `metadata.cloud_interactive` em vez de virar bolha vazia com só o horário.
+
 ### Janela de 24h — a regra que faz a tela mentir se ignorada
 
 Fora de 24h desde a **última mensagem do cliente**, a Meta só entrega **template aprovado**. Texto livre é **aceito** pela Graph (devolve `wamid`, HTTP 200) e recusado ~1s depois, num webhook de `statuses` separado, com erro `131047`. Sem tratar isso, a bolha diz "enviada" para mensagem que ninguém recebeu.
