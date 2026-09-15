@@ -466,3 +466,53 @@ o primeiro real, pedindo cadastro, em vez de virar diferença inexplicada.
 **Taffarel não entrou na lista de acolhedores**: não existe perfil com esse nome
 no roster do Externo, e inventar o vínculo seria pior que mostrá-lo como
 pendente.
+
+## A porta, fechada em 15/09/2026
+
+O painel respondia a **qualquer um que soubesse a URL**. Não era teoria: um
+`curl` anônimo de fora devolvia 200 com o investimento do mês, o custo por
+contrato e o desempenho de cada acolhedor — e o `/health` registrou a chamada
+como `missing_por_funcao: {metricas-painel: 1}`, o que confirma que não havia
+porta, só a contagem.
+
+O agregado ser anônimo era o motivo pelo qual só a **lista nominal** exigia
+credencial. Agora a exigência é da função inteira: `authorizeFunctionRequest` na
+primeira linha do handler, 401 com o motivo quando falta. O bloco do detalhe
+deixou de reverificar — quem chega lá já apresentou credencial.
+
+### Por que não foi ligando o `RAILWAY_AUTH_ENFORCE`
+
+Porque ele é do **serviço inteiro**, não de uma função. Ligá-lo hoje derruba
+junto quem ainda chama sem credencial — o placar do `/health` mostra 13 chamadas
+de `meta-call-queue-processor` nessa situação. O gate local fecha esta porta sem
+esperar a limpeza das outras, e continua valendo depois que o enforce global for
+ligado.
+
+Fechar aqui é seguro porque a função tem **um chamador**: a aba, pelo
+`functionRouter`, que injeta o JWT da sessão do Cloud em `Authorization` sozinho
+(`invokeFunction` → `getSession()`). Nenhum cron, nenhuma edge, nenhum webhook —
+conferido no repo inteiro. Quem está logado não percebe diferença.
+
+Na tela, o 401 tem uma causa prática só: a sessão expirou com a aba aberta (o
+painel se recarrega a cada minuto, então ele aparece bem depois de a pessoa ter
+parado de mexer). A mensagem diz isso — "sua sessão expirou, entre de novo" — em
+vez do erro cru do Railway, que mandaria procurar defeito onde não há.
+
+### Quem pode abrir a tela
+
+`/metricas` estava só sob `ProtectedRoute` sem módulo: qualquer pessoa logada
+via investimento, custo por contrato e a carteira por acolhedor. Passou a exigir
+o módulo **`finance`**, o mesmo do menu onde a rota vive. Admin passa sempre.
+
+`MODULE_DEFINITIONS` não tem entrada para `/metricas`, então a detecção
+automática por rota não alcançava esta tela — o módulo vai explícito no
+`requiredModule`.
+
+Duas coisas que ficaram **de fora** de propósito, e continuam valendo:
+
+- **O menu não filtra.** O item "Métricas" aparece para todo mundo e quem não
+  tem `finance` recebe "Acesso Restrito" ao clicar. É o comportamento de todo o
+  resto do app (ver memória `dois-bloqueios-de-acesso-distintos`); consertar só
+  aqui criaria uma exceção sem consertar a classe.
+- **`/cost-organization` segue sem módulo**, na mesma seção do menu. Não foi
+  tocada porque não era o que se pediu — mas é o mesmo buraco.
