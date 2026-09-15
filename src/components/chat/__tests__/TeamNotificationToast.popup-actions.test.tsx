@@ -102,4 +102,17 @@ describe('TeamNotificationToast', () => {
     act(() => { vi.advanceTimersByTime(120_000); });
     expect(dismiss).not.toHaveBeenCalled();
   });
+
+  // O aviso cortava a mensagem em duas linhas e o que sobrava era "R$..." —
+  // quem recebia tinha que abrir o chat só pra saber de qual valor se tratava.
+  it('a mensagem aparece inteira, sem corte de duas linhas', () => {
+    const longo =
+      '2 mensagens novas — Quant. parcelas: 10 Valor da parcela: R$ 1.397,47 ' +
+      'Valor solicitado: R$ 10.000,00 Vencimento da primeira: 10/10/2026';
+    render(<TeamNotificationToast {...base} preview={longo} />);
+
+    const texto = screen.getByText(longo);
+    expect(texto.className).not.toMatch(/line-clamp/);
+    expect(texto.className).toMatch(/overflow-y-auto/);
+  });
 });

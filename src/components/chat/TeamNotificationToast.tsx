@@ -226,7 +226,14 @@ export function TeamNotificationToast({
           {context && (
             <p className="truncate text-xs text-muted-foreground">{context}</p>
           )}
-          <p className="mt-1 line-clamp-2 text-sm text-foreground/80">{preview}</p>
+          {/* A mensagem aparece inteira. Cortar em duas linhas escondia
+              justamente o que a pessoa precisa ler antes de decidir se abre o
+              chat (valor, parcela, data) — e o que sobrava era um "R$..." que
+              não informa nada. Texto muito longo rola aqui dentro: o cartão não
+              muda de tamanho com o mouse em cima e nada fica por cima de nada. */}
+          <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-sm text-foreground/80">
+            {preview}
+          </p>
         </div>
       </button>
 
