@@ -16,7 +16,15 @@
 // atendimento não causa.
 // `ignore_ritmo: true` no body pula o freio e deixa rastro no log, como o
 // `ignore_optout` da v26.
-// ROLLBACK: index.v29.rollback.ts (espelho fiel da v29 deployada).
+// ROLLBACK: index.v28.rollback.ts — e NÃO o v29.
+// Ao deployar a v30 (15/09/2026) descobrimos que produção estava na v28, não
+// na v29: a v29 (guarda de legenda em nota de voz) estava commitada aqui e
+// nunca havia subido. `get_edge_function` mostrou version 56 com o cabeçalho
+// v28 e a guarda antiga `sb.type !== 'audio'`. Então a v30 leva a v29 de
+// carona — delta de comportamento zero, porque nenhum caller manda caption
+// com ptt — e o alvo de volta é a v28, que é o que estava no ar.
+// Lição: espelho de rollback não é confiável por estar no repo. Confira com
+// `get_edge_function` antes de deployar.
 //
 // v29: NOTA DE VOZ NÃO LEVA LEGENDA. A guarda de caption em send_media era
 // `sb.type !== 'audio'` — mas nota de voz tem type 'ptt', então passava. Quem
@@ -135,14 +143,6 @@ function getTarget(p, c) {
   return typeof c === 'string' && c.trim() ? c.trim() : typeof p === 'string' && p.trim() ? p.trim() : '';
 }
 /**
- * v26: chave canônica do telefone para o gate de opt-out — 55 + DDD + 8 últimos
- * dígitos. Espelha `public.wa_optout_key(text)` e a edge whatsapp-optout;
- * mudar aqui exige mudar nos dois. Existe porque o mesmo número aparece nas
- * duas formas no banco (1.372 números com 12 dígitos e 729 com 13 nos últimos
- * 30 dias) — sem normalizar, quem pediu para sair por uma forma continuaria
- * recebendo pela outra.
- */
-/**
  * Freio de abordagem a número novo (v30).
  *
  * Pergunta ao banco se este envio pode sair. A conta toda mora em
@@ -172,6 +172,14 @@ async function gateDeRitmo(extClient, instanceName, target, texto) {
   }
 }
 
+/**
+ * v26: chave canônica do telefone para o gate de opt-out — 55 + DDD + 8 últimos
+ * dígitos. Espelha `public.wa_optout_key(text)` e a edge whatsapp-optout;
+ * mudar aqui exige mudar nos dois. Existe porque o mesmo número aparece nas
+ * duas formas no banco (1.372 números com 12 dígitos e 729 com 13 nos últimos
+ * 30 dias) — sem normalizar, quem pediu para sair por uma forma continuaria
+ * recebendo pela outra.
+ */
 function optoutKey(raw) {
   let v = String(raw ?? '').replace(/@.*$/, '').replace(/\D/g, '');
   if (!v) return null;

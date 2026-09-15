@@ -377,9 +377,17 @@ begin
                when c.novos_hoje   >= cfg.novos_por_dia_alerta then 12 else 0 end
         + case when c.pico         >= cfg.novos_por_dia_teto   then 20
                when c.pico         >= cfg.novos_por_dia_alerta then 10 else 0 end
-        + case when c.rajada > 5 then 15 when c.rajada > 0 then 8 else 0 end
-        + case when c.gap_min is not null and c.gap_min < 20 then 10
-               when c.gap_min is not null and c.gap_min < cfg.intervalo_min_novo_seg then 5
+        -- Rajada só pontua a partir de 4 no dia, e o intervalo mínimo só conta
+        -- quando há rajada. UMA abordagem rápida não é padrão: no primeiro tick
+        -- em produção o Raym marcou ATENÇÃO por "3 abordagens com 0,6s", e ao
+        -- conferir as linhas eram uma mídia sem texto e mensagens humanas
+        -- ("Indo", "Oi Isabela") — pessoa atendendo vários chats no mesmo
+        -- minuto, não disparo. As três mortas tinham 7, 9 e 24 rajadas num
+        -- único dia. O sinal é o VOLUME de rajadas, não a existência de uma.
+        + case when c.rajada > 5 then 15 when c.rajada >= 4 then 8 else 0 end
+        + case when c.rajada >= 4 and c.gap_min is not null and c.gap_min < 20 then 10
+               when c.rajada >= 4 and c.gap_min is not null
+                    and c.gap_min < cfg.intervalo_min_novo_seg then 5
                else 0 end
         + case when c.pct_fria     >= cfg.pct_fria_sem_resp_teto   then 15
                when c.pct_fria     >= cfg.pct_fria_sem_resp_alerta then 7 else 0 end
@@ -388,7 +396,11 @@ begin
         + case when c.razao        >= cfg.razao_env_rec_teto   then 5
                when c.razao        >= cfg.razao_env_rec_alvo   then 2 else 0 end
       )) as score_bruto
-    from calculado c cross join public.wa_risco_config cfg where cfg.id
+    -- Sem `cross join public.wa_risco_config cfg` aqui: `cfg` já é a variável
+    -- PL/pgSQL carregada no topo, e o alias da tabela com o mesmo nome fazia o
+    -- Postgres recusar a função inteira com "column reference cfg.x is
+    -- ambiguous". O join sempre foi redundante.
+    from calculado c
   )
   insert into public.wa_instancia_risco as t (
     instance_name, owner_name, enviadas_7d, recebidas_7d, razao_env_rec,
@@ -438,7 +450,7 @@ begin
            then format('sem nenhuma mensagem há %sh', p.horas_mudo) end
     ], null),
     now()
-  from pontuado p cross join public.wa_risco_config cfg where cfg.id
+  from pontuado p
   on conflict (instance_name) do update set
     owner_name = excluded.owner_name,
     enviadas_7d = excluded.enviadas_7d, recebidas_7d = excluded.recebidas_7d,

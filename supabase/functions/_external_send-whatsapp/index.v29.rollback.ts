@@ -1,5 +1,11 @@
 // send-whatsapp v29 (projeto externo kmedldlepwiityjsdahz)
 //
+// ATENÇÃO: este arquivo NÃO é espelho de versão deployada. A v29 nunca subiu.
+// Ele é o estado do repo imediatamente antes do freio de ritmo da v30, guardado
+// só para diferença. Para reverter a produção, use `index.v28.rollback.ts` —
+// era a v28 que estava no ar até 15/09/2026 (conferido com get_edge_function:
+// version 56, cabeçalho v28, guarda de caption sem 'ptt').
+//
 // v29: NOTA DE VOZ NÃO LEVA LEGENDA. A guarda de caption em send_media era
 // `sb.type !== 'audio'` — mas nota de voz tem type 'ptt', então passava. Quem
 // mandasse caption com ptt entregaria a voz E o texto, os dois. Nenhum caller
