@@ -137,6 +137,41 @@ Não execute até receber a confirmação literal.
 | Processo INSS admin | `inss_admin_processes` (`case_id` primário) |
 | Caso jurídico | `legal_cases` (`lead_id`, `case_number`, `title`) |
 
+## `lead_id` não identifica a conversa — o telefone identifica
+
+Verificado em produção em 15/09/2026. **76 leads carregam pendências de mais de
+um grupo de WhatsApp**: 382 pendências, 227 ainda em aberto, 131 grupos. Pelo
+outro lado dá o mesmo: **77 de 778 telefones aparecem com 2+ `lead_id`**.
+
+Caso concreto: o grupo da Nilzete (`PRE 2244`, telefone `120363428635762184`) e
+o da Monique (`PREV 2010`, telefone `120363430054264368`) estavam gravados com
+o mesmo `lead_id` `3babfcdd`. A perícia da Nilzete, marcada para 08/09 e com a
+data certa, era listada na tela da Monique como pendência vencida dela. Ninguém
+errou a data — errou o dono.
+
+Regra que vale para qualquer tela ou função que leia dado de conversa:
+
+- **Escopo é o telefone.** O telefone é o JID do grupo; ele identifica a
+  conversa.
+- **`lead_id` sozinho nunca escopa.** Ele só vale para registro que NÃO tem
+  telefone — nasceu em captação, antes de existir grupo.
+- **Telefone entra sem a instância.** O mesmo grupo é visto por várias
+  instâncias (o da Monique tem pendência gravada por `João Manoel- Acolhedor` e
+  por `Raym`). Filtrar por `phone + instance_name` esconde o que as outras
+  instâncias registraram — na prática sumiram 4 pendências legítimas da tela, e
+  a varredura recriava a mesma pendência uma vez por instância.
+
+Aplicado em `src/hooks/useClientCommitments.ts` e em
+`railway-server/src/functions/detect-client-commitments.ts`.
+
+🚫 **Recusar**: qualquer query de dado de conversa que case por `lead_id` solto
+quando existe telefone na mão.
+
+⚠️ **Ainda aberto**: a correção acima é de LEITURA. O `lead_id` errado continua
+gravado nas 382 linhas, então a caixa de pendências (que lista tudo e mostra
+`lead_name`) ainda rotula essas pendências com o nome do cliente errado. A
+origem — por que um grupo recebe o `lead_id` de outro — não foi investigada.
+
 ## Skills/memórias relacionadas
 
 - `funnel-case-numbering` — detalhe de como `case_number` é calculado
