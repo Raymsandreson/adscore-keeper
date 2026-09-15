@@ -18,6 +18,12 @@ import {
   achaCabecalho,
   celulaDeTelefone,
   celulaDeStatusDaEquipe,
+  celulaDeNome,
+  celulaDaMeta,
+  celulaDeIdDaMeta,
+  celulaDeDataDoFormulario,
+  celulaDeDataDeFechamento,
+  dataDaPlanilha,
   COLUNAS_DE_STATUS_PARA_DIAGNOSTICO,
 } from '../lib/leadAdsSheet';
 
@@ -92,6 +98,8 @@ interface ParsedRow {
   operator: string;
   /** O que a EQUIPE escreveu na coluna `status da lead`. */
   status_equipe: string;
+  /** Data do fechamento escrita pela equipe, em ISO. '' quando a planilha nao diz. */
+  fechou_em: string;
   campaign_id: string;
   campaign_name: string;
   adset_id: string;
@@ -118,6 +126,8 @@ function rowToObj(headers: string[], r: any[]): Record<string, string> {
 interface AbaLida {
   tab: string;
   headers: string[];
+  /** Linhas cuja coluna de data o leitor nao soube ler. */
+  datas_ilegiveis?: number;
   /** Linhas sem telefone usavel que seguiram vivas pelo id da Meta, so para status. */
   recuperadas_para_status?: number;
   /** Por que o telefone foi recusado: celula vazia, ou quantos digitos tinha. */
@@ -184,6 +194,7 @@ async function fetchTab(
   const preenchidas: Record<string, number> = {};
   const motivosSemTelefone: Record<string, number> = {};
   let recuperadasParaStatus = 0;
+  let datasIlegiveis = 0;
   // Distribuicao dos valores das colunas de status QUE A EQUIPE PREENCHE na
   // planilha. Se houver "fechado" marcado ali que o CRM nao conhece, cada um e
   // uma conversao real que nunca foi para a Meta.
@@ -202,9 +213,12 @@ async function fetchTab(
   // datar o descarte.
   let brutasNaJanela = 0;
   let descartadasNaJanela = 0;
+  // `new Date('15/09/2026')` e Invalid Date: enquanto a coluna se chamava
+  // `created_time` isso nao aparecia, porque a Meta exporta ISO. Ver `dataDaPlanilha`.
   const dentroDaJanela = (v: string) => {
-    const t = new Date(String(v || '')).getTime();
-    return !isNaN(t) && t >= sinceMs;
+    const iso = dataDaPlanilha(v);
+    if (!iso) return false;
+    return new Date(iso).getTime() >= sinceMs;
   };
   for (let i = 0; i < values.length; i++) {
     // Pula so o cabecalho. A linha ACIMA dele, quando existe, e um lead de
@@ -215,7 +229,12 @@ async function fetchTab(
     if (!r || !r.length) continue;
     brutas += 1;
     const o = rowToObj(headers, r);
-    const naJanela = dentroDaJanela(o['created_time']);
+    const dataDoFormulario = celulaDeDataDoFormulario(o);
+    // Data que o leitor nao entendeu. Sem este contador, formato novo na coluna
+    // de data e indistinguivel de "a planilha nao teve movimento no periodo":
+    // nos dois casos `recentes` da zero e nada reclama.
+    if (!dataDoFormulario) datasIlegiveis += 1;
+    const naJanela = dentroDaJanela(dataDoFormulario);
     let semTelefoneUsavel = false;
     if (naJanela) brutasNaJanela += 1;
     // NOME E TELEFONE TROCADOS DE COLUNA.
@@ -231,11 +250,12 @@ async function fetchTab(
     // e o candidato QUE TEM DIGITO SUFICIENTE. Se as duas celulas se
     // desmentirem, a troca e obvia; se nenhuma servir, a linha cai como antes.
     const temLetra = (v: string) => /[a-zà-ú]/i.test(String(v || ''));
-    const celulaNome = o['nome_completo'] || o['full_name'] || '';
+    const celulaNome = celulaDeNome(o);
     // Busca por pedaco do nome da coluna, e nao lista exata — ver
-    // `celulaDeTelefone`. O nome continua vindo so das colunas exatas: procurar
-    // "nome" por pedaco pegaria `qual_o_nome_da_criança_?` e cadastraria o
-    // dependente no lugar do titular.
+    // `celulaDeTelefone`. O nome continua vindo so das colunas exatas
+    // (`celulaDeNome`): a planilha traduzida tem `responsável` e `criança` lado
+    // a lado, e procurar "nome" por pedaco cadastraria o dependente no lugar de
+    // quem assina o contrato.
     const celulaTelefone = celulaDeTelefone(o);
     const trocado = !temLetra(celulaNome) && temLetra(celulaTelefone);
     if (trocado) trocaDeColuna += 1;
@@ -287,7 +307,7 @@ async function fetchTab(
       //
       // Com o id, ela segue viva e marcada. Sem o id, cai como antes: nao ha
       // por onde reconhece-la.
-      if (!normalizaLeadIdMeta(o['id'])) {
+      if (!celulaDeIdDaMeta(o)) {
         // Agora o contador de descarte so sobe quando a linha MORRE mesmo.
         descTelefone += 1;
         if (naJanela) descartadasNaJanela += 1;
@@ -306,27 +326,31 @@ async function fetchTab(
       if (!v) continue;
       const chave = `${col} = ${v.slice(0, 40)}`;
       statusPlanilha[chave] = (statusPlanilha[chave] || 0) + 1;
-      if (normalizaLeadIdMeta(o['id'])) statusComIdMeta[chave] = (statusComIdMeta[chave] || 0) + 1;
+      if (celulaDeIdDaMeta(o)) statusComIdMeta[chave] = (statusComIdMeta[chave] || 0) + 1;
     }
     out.push({
       // Nome exato envelhece: a planilha do Auxilio Acidente usa `status lead`,
       // sem o "da", e aquele funil aplicava ZERO status. Ver `celulaDeStatusDaEquipe`.
       status_equipe: celulaDeStatusDaEquipe(o),
-      facebook_lead_id: normalizaLeadIdMeta(o['id']),
-      created_at: o['created_time'] || '',
+      facebook_lead_id: celulaDeIdDaMeta(o),
+      created_at: dataDoFormulario,
+      // Data que a equipe escreveu para o fechamento. Vazia nas duas planilhas
+      // de hoje — existe para o dia em que a coluna for criada. Ver
+      // `celulaDeDataDeFechamento`.
+      fechou_em: celulaDeDataDeFechamento(o),
       name: name.trim(),
       phone: semTelefoneUsavel ? '' : phone,
       phone_key: semTelefoneUsavel ? '' : phoneKey(phone),
       sem_telefone_usavel: semTelefoneUsavel,
       operator: meta.operator,
       campaign_id: o['campaign_id'] || '',
-      campaign_name: o['campaign_name'] || '',
+      campaign_name: celulaDaMeta(o, 'campaign_name'),
       adset_id: o['adset_id'] || '',
-      adset_name: o['adset_name'] || '',
-      ad_name: o['ad_name'] || '',
-      form_name: o['form_name'] || '',
-      estado_civil: o['estado_civil'] || o['marital_status'] || '',
-      renda: o['qual_a_sua_renda_familiar_?'] || '',
+      adset_name: celulaDaMeta(o, 'adset_name'),
+      ad_name: celulaDaMeta(o, 'ad_name'),
+      form_name: celulaDaMeta(o, 'form_name'),
+      estado_civil: celulaDaMeta(o, 'estado_civil'),
+      renda: o['qual_a_sua_renda_familiar_?'] || o['renda familiar'] || '',
       laudo: o['possui_laudo_médico_ou_relatório_escolar_?'] || '',
       possui_advogado: o['possui_advogado_?'] || '',
       filho_autista: o['você_possui_filho_autista_ou_conhece_alguém_autista_?'] || '',
@@ -338,6 +362,7 @@ async function fetchTab(
     headers,
     motivos_sem_telefone: motivosSemTelefone,
     recuperadas_para_status: recuperadasParaStatus,
+    datas_ilegiveis: datasIlegiveis,
     brutas_na_janela: brutasNaJanela,
     descartadas_na_janela: descartadasNaJanela,
     linha_do_cabecalho: acho.linha + 1,
@@ -465,7 +490,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
   const cabecalhos = new Set<string>();
   const diagPorAba = new Map<
     string,
-    { cabecalho: string[]; motivosFone?: Record<string, number>; recupStatus?: number; brutasJanela?: number; descartadasJanela?: number; linhaCabecalho?: number; idRecuperado?: boolean; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
+    { cabecalho: string[]; motivosFone?: Record<string, number>; recupStatus?: number; datasIlegiveis?: number; brutasJanela?: number; descartadasJanela?: number; linhaCabecalho?: number; idRecuperado?: boolean; brutas: number; dn: number; dt: number; preenchidas: Record<string, number>; troca: number; status: Record<string, number>; statusId: Record<string, number> }
   >();
   for (let i = 0; i < SHEET_TABS.length; i += 3) {
     const chunk = SHEET_TABS.slice(i, i + 3);
@@ -479,6 +504,7 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
           cabecalho: r.value.headers,
           motivosFone: (r.value as any).motivos_sem_telefone,
           recupStatus: (r.value as any).recuperadas_para_status,
+          datasIlegiveis: (r.value as any).datas_ilegiveis,
           brutasJanela: (r.value as any).brutas_na_janela,
           descartadasJanela: (r.value as any).descartadas_na_janela,
           linhaCabecalho: (r.value as any).linha_do_cabecalho,
@@ -638,6 +664,9 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       motivos_sem_telefone: d?.motivosFone ?? {},
       // Linhas que so continuam vivas pelo id da Meta, para levar status ao CRM.
       recuperadas_para_status: d?.recupStatus ?? 0,
+      // Linhas cuja coluna de data o leitor nao soube ler. Se isto vier igual a
+      // `brutas`, a coluna mudou de formato e a janela esta cega.
+      datas_ilegiveis: d?.datasIlegiveis ?? 0,
       brutas_na_janela: d?.brutasJanela ?? 0,
       descartadas_na_janela: d?.descartadasJanela ?? 0,
       linha_do_cabecalho: d?.linhaCabecalho ?? 1,
@@ -730,17 +759,38 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
       // Agrupa por status alvo em vez de gravar linha a linha. Uma escrita por
       // lead eram 349 chamadas HTTP em sequencia: a requisicao passava de dez
       // minutos e morria pela metade. Agrupado, sao 4.
-      (porAlvo[alvo] ||= []).push(atualLead.id);
+      //
+      // A chave leva a data junto (`closed|2026-09-10`) para que dois fechamentos
+      // de dias diferentes nao sejam achatados no mesmo carimbo. Sem data escrita
+      // na planilha a chave fica `closed|`, que e o caso de hoje: um grupo so.
+      (porAlvo[`${alvo}|${alvo === 'closed' ? r.fechou_em.slice(0, 10) : ''}`] ||= []).push(atualLead.id);
       statusAplicado[`${r.status_equipe} -> ${alvo}`] = (statusAplicado[`${r.status_equipe} -> ${alvo}`] || 0) + 1;
     }
 
     const hojeISO2 = new Date().toISOString().slice(0, 10);
-    for (const [alvo, idsAlvo] of Object.entries(porAlvo)) {
+    for (const [chaveAlvo, idsAlvo] of Object.entries(porAlvo)) {
+      const [alvo, dataDoFechamento] = chaveAlvo.split('|');
       const patch: Record<string, unknown> = { lead_status: alvo };
-      // `became_client_date` = HOJE, e nao a data do formulario: a planilha nao
-      // guarda quando fechou, e a Meta descarta evento com mais de 7 dias. Com
-      // data antiga o Purchase seria recusado e a conversao se perderia.
-      if (alvo === 'closed') patch.became_client_date = hojeISO2;
+      // QUE DIA VAI PARA `became_client_date`.
+      //
+      // A data escrita pela equipe quando ela existe; o dia da leitura quando
+      // nao existe. Hoje e sempre o segundo caso — nenhuma das duas planilhas
+      // tem coluna de data de fechamento, e no CRM 27 dos 28 fechamentos pagos
+      // nao tem outra pista (zero assinatura de ZapSign, um grupo datado).
+      //
+      // Enquanto for o dia da leitura, o numero e uma aproximacao, e o painel
+      // AVISA: ele detecta lote (>=60% num unico dia) no card Fechamentos. Foi o
+      // que aconteceu em 09/09, quando 22 fechamentos de meses diferentes
+      // entraram todos com a data daquele dia — acervo lido de uma vez. Com o
+      // cron de status rodando de hora em hora, daqui pra frente a aproximacao
+      // erra por menos de uma hora.
+      //
+      // NAO existe mais o impedimento que esta linha alegava ate 15/09/2026 ("a
+      // Meta descarta evento com mais de 7 dias, o Purchase seria recusado"): o
+      // `eventTimeSeguro` do `meta-capi-dispatch` gruda o `event_time` no piso
+      // de 6 dias desde 02/09 justamente para nao perder evento antigo. Data
+      // real aqui nao custa conversao nenhuma.
+      if (alvo === 'closed') patch.became_client_date = dataDoFechamento || hojeISO2;
       // Lotes de 200: `in` com 300+ uuids estoura o tamanho da querystring.
       for (let i = 0; i < idsAlvo.length; i += 200) {
         const fatia = idsAlvo.slice(i, i + 200);
@@ -852,9 +902,14 @@ async function sincronizaBoard(board: BoardConfig, opts: OpcoesSync): Promise<Re
             .join('\n'),
           created_at: r.created_at || new Date().toISOString(),
           // Ja nasce fechado quando a planilha diz que fechou — senao o lead
-          // entra aberto e a conversao so sairia na proxima sincronizacao.
+          // entra aberto e a conversao so sairia na proxima sincronizacao. A
+          // data segue a mesma regra do bloco de status: a que a equipe
+          // escreveu, ou o dia da leitura quando a planilha nao diz.
           ...(r.status_equipe === 'fechado'
-            ? { lead_status: 'closed', became_client_date: new Date().toISOString().slice(0, 10) }
+            ? {
+                lead_status: 'closed',
+                became_client_date: r.fechou_em.slice(0, 10) || new Date().toISOString().slice(0, 10),
+              }
             : {}),
         })
         .select('id')

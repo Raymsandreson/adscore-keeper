@@ -104,6 +104,12 @@ const COLUNAS_DA_META = new Set([
   'campaign_id', 'campaign_name', 'form_id', 'form_name', 'is_organic', 'platform',
   'full_name', 'nome_completo', 'phone_number', 'telefone', 'celular',
   'lead_status', 'marital_status', 'estado_civil', 'cpf', 'job_title', 'cargo',
+  // Os mesmos nomes depois que a planilha foi traduzida (ver abaixo). Sem eles
+  // a linha de cabecalho da planilha nova ganhava 4 acertos de 26 — passava por
+  // pouco, e uma aba com um lead colado no topo teria empatado com ela.
+  'id do lead', 'data / hora', 'status do lead', 'responsavel', 'respons\u00e1vel',
+  'crian\u00e7a', 'whatsapp', 'campanha', 'conjunto de an\u00fancios', 'an\u00fancio',
+  'formul\u00e1rio', 'plataforma', 'observa\u00e7\u00f5es',
 ]);
 
 /** Valor com cara de id de lead da Meta: `l:1086829373844173` ou so os digitos. */
@@ -255,3 +261,192 @@ export function celulaDeStatusDaEquipe(o: Record<string, string>): string {
 export const COLUNAS_DE_STATUS_PARA_DIAGNOSTICO = [
   'lead_status', ...COLUNAS_DE_STATUS, 'observações', 'observacoes',
 ];
+
+
+// ============================================================
+// QUANDO A PLANILHA MUDA DE IDIOMA
+// ============================================================
+//
+// Medido em 15/09/2026: a planilha do BPC foi reformatada para portugues e o
+// leitor descartou **3.456 de 3.456 linhas** — 3.431 delas como "nome vazio".
+// Nao era nome vazio: `nome_completo` e `full_name` tinham virado `responsavel`,
+// `created_time` tinha virado `data / hora`, e `id` tinha virado `id do lead`.
+// O ultimo fechamento que chegou ao CRM por esse caminho e de 11/09.
+//
+// Sobreviveram exatamente as duas colunas que ja eram lidas por PEDACO do nome:
+// telefone (`whatsapp`) e status (`status do lead`). E a licao, de novo, a mesma
+// de `celulaDeTelefone` e `celulaDeStatusDaEquipe` — so que desta vez o nome da
+// coluna nao mudou por causa de um formulario reescrito a mao, mudou porque a
+// planilha inteira foi traduzida. Lista exata envelhece; o de-para abaixo da
+// para as duas grafias ao mesmo tempo.
+//
+// O NOME segue sem busca por pedaco, e agora por um motivo ainda mais concreto:
+// a planilha nova tem `responsavel` (o titular) E `crianca` (o dependente) lado
+// a lado. Procurar "nome" por pedaco cadastraria a crianca no lugar de quem
+// assina o contrato.
+
+/** Colunas de NOME do titular, sempre exatas. `crianca` jamais entra aqui. */
+const COLUNAS_DE_NOME = [
+  'nome_completo', 'full_name', 'responsável', 'responsavel',
+  'nome do responsável', 'nome do responsavel', 'titular', 'nome',
+];
+
+/** Nome do titular na linha. Vazio quando nenhuma das colunas conhecidas tem valor. */
+export function celulaDeNome(o: Record<string, string>): string {
+  for (const c of COLUNAS_DE_NOME) {
+    const v = String(o[c] ?? '').trim();
+    if (v) return v;
+  }
+  return '';
+}
+
+/**
+ * De-para das colunas da exportacao da Meta para os nomes que a planilha usa.
+ *
+ * A chave e o nome canonico (o que o resto do codigo ja conhece); a lista e a
+ * ordem de tentativa. Um lugar so: quando a proxima planilha for traduzida de
+ * outro jeito, muda aqui e vale para todos os campos de uma vez.
+ */
+const DE_PARA_DAS_COLUNAS: Record<string, string[]> = {
+  id: ['id', 'id do lead', 'id_do_lead', 'id da lead', 'lead id', 'lead_id'],
+  created_time: ['created_time', 'data / hora', 'data/hora', 'data e hora', 'data_hora', 'data'],
+  campaign_name: ['campaign_name', 'campanha', 'nome da campanha'],
+  adset_name: ['adset_name', 'conjunto de anúncios', 'conjunto de anuncios', 'conjunto'],
+  ad_name: ['ad_name', 'anúncio', 'anuncio', 'nome do anúncio', 'nome do anuncio'],
+  form_name: ['form_name', 'formulário', 'formulario'],
+  estado_civil: ['estado_civil', 'marital_status', 'estado civil'],
+  platform: ['platform', 'plataforma'],
+};
+
+/** Valor de um campo da Meta na linha, seja qual for a grafia da coluna. */
+export function celulaDaMeta(o: Record<string, string>, campo: keyof typeof DE_PARA_DAS_COLUNAS): string {
+  for (const c of DE_PARA_DAS_COLUNAS[campo] || []) {
+    const v = String(o[c] ?? '').trim();
+    if (v) return v;
+  }
+  return '';
+}
+
+/** Id do lead na Meta, ja limpo, venha a coluna com o nome que vier. */
+export function celulaDeIdDaMeta(o: Record<string, string>): string {
+  return normalizaLeadIdMeta(celulaDaMeta(o, 'id'));
+}
+
+
+// ============================================================
+// DATA ESCRITA NA PLANILHA
+// ============================================================
+//
+// `new Date('15/09/2026')` e `Invalid Date`. Enquanto a coluna se chamava
+// `created_time` isso nao aparecia — a Meta exporta ISO. A planilha traduzida
+// escreve no formato de quem preenche, e uma data ilegivel aqui nao estoura:
+// cai fora da janela e a linha some, calada.
+//
+// Fuso fixo em -03:00 de proposito: a planilha e preenchida no Brasil. Sem ele,
+// `15/09/2026 08:00` viraria 05:00 da manha em Brasilia, e uma linha da primeira
+// hora do dia cairia no dia anterior.
+
+/** Serial de data do Sheets: dias desde 30/12/1899. A faixa cobre 1955-2064. */
+const SERIAL_MIN = 20000;
+const SERIAL_MAX = 60000;
+
+/**
+ * Data da planilha em ISO, ou '' quando a celula nao e data.
+ *
+ * Aceita ISO (o que a Meta exporta), `dd/mm/aaaa [hh:mm[:ss]]` (o que gente
+ * escreve) e o serial do Sheets (o que aparece quando a coluna esta formatada
+ * como numero). Dia e mes sao lidos na ordem brasileira; `03/04` e 3 de abril.
+ */
+export function dataDaPlanilha(bruto: string | number | undefined | null): string {
+  const t = String(bruto ?? '').trim();
+  if (!t) return '';
+
+  // ISO — deixa o proprio Date resolver, que e o caminho da exportacao da Meta.
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
+    const d = new Date(t);
+    return isNaN(d.getTime()) ? '' : d.toISOString();
+  }
+
+  const br = t.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:[\s,]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (br) {
+    let ano = Number(br[3]);
+    if (ano < 100) ano += 2000;
+    return montaEmBrasilia(ano, Number(br[2]), Number(br[1]), Number(br[4] ?? 0), Number(br[5] ?? 0), Number(br[6] ?? 0));
+  }
+
+  // Serial do Sheets. So numero puro dentro da faixa — `2026` sozinho nao e data.
+  if (/^\d+([.,]\d+)?$/.test(t)) {
+    const n = Number(t.replace(',', '.'));
+    if (n >= SERIAL_MIN && n <= SERIAL_MAX) {
+      // O serial conta dia local da planilha, nao instante UTC: le-se em UTC so
+      // para separar os componentes, e remonta-se em Brasilia. Sem isso um
+      // serial inteiro vira 21h do dia anterior e cai no dia errado do grafico.
+      const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+      if (isNaN(d.getTime())) return '';
+      return montaEmBrasilia(
+        d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(),
+        d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(),
+      );
+    }
+  }
+
+  return '';
+}
+
+/**
+ * Componentes de data -> ISO, tratando a hora como de Brasilia.
+ *
+ * Recusa o que nao existe no calendario. `31/02/2026` monta uma string bem
+ * formada e o `Date` a ACEITA, rolando para 3 de marco — uma data plausivel,
+ * errada, e que nada denunciaria depois. A conferencia e o ultimo dia do mes,
+ * que ja cobre fevereiro e ano bissexto.
+ */
+function montaEmBrasilia(ano: number, mes: number, dia: number, hh: number, mm: number, ss: number): string {
+  if (mes < 1 || mes > 12 || dia < 1) return '';
+  if (hh > 23 || mm > 59 || ss > 59) return '';
+  const ultimoDiaDoMes = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  if (dia > ultimoDiaDoMes) return '';
+  const p = (n: number, c = 2) => String(n).padStart(c, '0');
+  const d = new Date(`${p(ano, 4)}-${p(mes)}-${p(dia)}T${p(hh)}:${p(mm)}:${p(ss)}-03:00`);
+  return isNaN(d.getTime()) ? '' : d.toISOString();
+}
+
+/** Data em que o formulario foi preenchido, seja qual for a grafia da coluna. */
+export function celulaDeDataDoFormulario(o: Record<string, string>): string {
+  return dataDaPlanilha(celulaDaMeta(o, 'created_time'));
+}
+
+
+// ============================================================
+// DATA DO FECHAMENTO — A COLUNA QUE AINDA NAO EXISTE
+// ============================================================
+//
+// Medido em 15/09/2026: NENHUMA das duas planilhas tem coluna de data de
+// fechamento, e no CRM 27 dos 28 fechamentos pagos nao tem pista nenhuma da data
+// real (zero assinatura de ZapSign, um grupo datado). Por isso `became_client_date`
+// hoje guarda o dia em que a planilha foi lida — 22 dos 28 caem em 09/09, o dia
+// da primeira leitura.
+//
+// Esta funcao existe para o dia em que alguem criar a coluna: a partir dai a
+// data verdadeira passa a valer sozinha, sem deploy novo. Enquanto a coluna nao
+// existir ela devolve '' e o sync segue carimbando o dia da leitura, que com o
+// cron de 60 em 60 minutos erra por menos de uma hora daqui para a frente.
+//
+// A coluna e reconhecida pelo nome E pelo valor: uma coluna "tem contrato?" com
+// "sim" dentro nao vira data, porque `dataDaPlanilha` recusa.
+
+const PEDACOS_DE_FECHAMENTO = [
+  'fechamento', 'fechou', 'fechada', 'fechado',
+  'contrato', 'assinatura', 'assinou', 'assinado',
+];
+
+/** Data em que a equipe diz que fechou, em ISO. '' quando a planilha nao diz. */
+export function celulaDeDataDeFechamento(o: Record<string, string>): string {
+  for (const [chave, valor] of Object.entries(o)) {
+    const k = String(chave).toLowerCase();
+    if (!PEDACOS_DE_FECHAMENTO.some((p) => k.includes(p))) continue;
+    const iso = dataDaPlanilha(valor);
+    if (iso) return iso;
+  }
+  return '';
+}

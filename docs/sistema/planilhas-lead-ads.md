@@ -439,3 +439,110 @@ versão.
 
 O diagnóstico passou a contar pela mesma lista que a leitura usa. Quando os dois
 divergem, a coluna some das duas pontas ao mesmo tempo e ninguém percebe.
+
+## A planilha foi traduzida e o leitor cegou (15/09/2026)
+
+Dry run das 6 abas do BPC, janela de 45 dias:
+
+| aba | linhas | aproveitadas |
+|---|---:|---:|
+| EDILAN | 248 | 0 |
+| ISRAEL | 951 | 0 |
+| EDILAN - 2 | 437 | 0 |
+| KAROL - 2 | 825 | 0 |
+| MATEUS - 2 | 960 | 0 |
+| KAROLYNE | 35 | 0 |
+| **total** | **3.456** | **0** |
+
+`preenchidas_nas_descartadas: {"celula vazia": 944}` na aba ISRAEL. Não era
+célula vazia: a planilha tinha sido reformatada para português.
+
+| o leitor procurava | a planilha passou a ter |
+|---|---|
+| `nome_completo` / `full_name` | `responsável` (titular) e `criança` (dependente) |
+| `created_time` | `data / hora` |
+| `id` | `id do lead` |
+| `campaign_name` / `adset_name` / `ad_name` / `form_name` | `campanha` / `conjunto de anúncios` / `anúncio` / `formulário` |
+
+Sobreviveram exatamente as duas colunas que já eram lidas por **pedaço** do nome:
+telefone (`whatsapp`) e status (`status do lead`) — mas nunca chegavam a ser
+lidas, porque a linha morria antes, no descarte por nome.
+
+**Efeito:** o último fechamento pago do BPC que chegou ao CRM é de **11/09**.
+Leads novos continuaram entrando porque o `meta-leads-sync` lê a API da Meta
+direto; o que morreu foi o status que a equipe escreve — inclusive "fechado". O
+Auxílio Acidente não foi afetado (continua no formato da Meta).
+
+### O de-para
+
+`DE_PARA_DAS_COLUNAS` em `lib/leadAdsSheet.ts` dá as duas grafias de cada campo
+num lugar só. Quando a próxima planilha for traduzida de outro jeito, muda ali e
+vale para todos os campos ao mesmo tempo.
+
+**O nome continua sem busca por pedaço**, e agora por um motivo mais concreto do
+que antes: a planilha nova tem `responsável` e `criança` lado a lado. Procurar
+"nome" por pedaço cadastraria o dependente no lugar de quem assina o contrato.
+Se o titular falta, a linha cai — cair é melhor que trocar a pessoa.
+
+### Data escrita por gente
+
+`new Date('15/09/2026')` é `Invalid Date`. Enquanto a coluna se chamava
+`created_time` isso não aparecia (a Meta exporta ISO); a planilha traduzida
+escreve no formato de quem preenche, e data ilegível não estoura — a linha cai
+fora da janela, calada.
+
+`dataDaPlanilha` aceita ISO, `dd/mm/aaaa [hh:mm[:ss]]` e o serial do Sheets, e
+**recusa o que não é data** em vez de devolver data errada: `31/02/2026` viraria
+3 de março sem a conferência do último dia do mês. O fuso é fixo em `-03:00` —
+sem ele, uma linha da primeira hora do dia cairia no dia anterior.
+
+### O alerta existia e não saía do lugar
+
+O payload por aba já trazia `ALERTA: "aba leu linhas e aproveitou ZERO"` desde
+sempre. Por quatro dias o `/health` respondeu `criados=0 boards=3 falhas=0` —
+sucesso, para quem olhava. O alerta morria dentro de uma resposta HTTP que
+ninguém lê.
+
+Agora `abasCegas()` (`index.ts`) leva isso para o `ultimo_resultado` dos dois
+crons, antes do resto da frase: é o que separa "a planilha não teve movimento" de
+"a planilha deixou de ser legível". Junto veio `datas_ilegiveis` por aba, pelo
+mesmo motivo — formato novo na coluna de data é indistinguível de período sem
+movimento, nos dois casos `recentes` dá zero.
+
+## A data de fechamento é a data da leitura (15/09/2026)
+
+`became_client_date` guarda o dia em que a planilha foi lida, não o dia em que o
+contrato fechou. Medido: **22 dos 28** fechamentos pagos caem em 09/09, o dia da
+primeira leitura da coluna de status.
+
+Duas coisas foram verificadas antes de mexer:
+
+**1. A trava que justificava isso não existia.** O comentário no código dizia que
+data antiga faria a Meta recusar o Purchase. Mas `eventTimeSeguro`
+(`meta-capi-dispatch.ts`, commit `17aebc6a1` de **02/09**) já gruda o `event_time`
+no piso de 6 dias justamente para não perder evento antigo. O comentário é de
+**09/09** — nasceu contradizendo o dispatcher. Data real aqui não custa conversão.
+
+**2. Não existe data real para gravar.** Nenhuma das duas planilhas tem coluna de
+data de fechamento. E no CRM, dos 28 fechamentos pagos: **0** com assinatura de
+ZapSign, **1** com grupo datado, **27 sem pista nenhuma**. Esses leads fecham
+fora do sistema — quem sabe a data é quem marcou na planilha.
+
+### O que passou a valer
+
+`celulaDeDataDeFechamento` lê a coluna **quando ela existir**, reconhecendo-a
+pelo nome (`data do fechamento`, `data da assinatura`, `fechou em`, `data
+contrato`) **e pelo valor** — uma coluna `tem contrato? sim` não vira data. No
+dia em que alguém criar a coluna na planilha, a data verdadeira passa a valer
+sozinha, sem deploy.
+
+Enquanto não existir, continua o dia da leitura, e o painel **avisa**: ele detecta
+lote (≥60% num único dia, com pelo menos 5) no card Fechamentos e na tabela Por
+acolhedor. Detector, nunca filtro.
+
+O agrupamento da escrita passou a ser por `alvo|data` em vez de só `alvo`, para
+que dois fechamentos de dias diferentes não sejam achatados no mesmo carimbo.
+
+**O acervo é irrecuperável.** Os 22 de 09/09 são meses de "fechado" lidos de uma
+vez; a data real nunca esteve em lugar nenhum. Daqui pra frente, com o cron de
+status de hora em hora, a aproximação erra por menos de uma hora.

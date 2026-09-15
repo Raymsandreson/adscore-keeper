@@ -1068,6 +1068,24 @@ const SHEET_SYNC_INTERVAL_MS = 10 * 60 * 1000;
 const SHEET_SYNC_DIAS = 7;
 const SHEET_SYNC_LIGADO = (process.env.SHEET_LEAD_SYNC || '').toLowerCase() === 'on';
 
+/**
+ * Abas que leram linha e aproveitaram ZERO.
+ *
+ * O payload por aba ja trazia esse ALERTA desde sempre; o que faltava era ele
+ * SAIR dali. Medido em 15/09/2026: a planilha do BPC foi traduzida para
+ * portugues, as 6 abas passaram a descartar 3.456 de 3.456 linhas, e por quatro
+ * dias o `/health` respondeu `criados=0 boards=3 falhas=0` — sucesso, do ponto
+ * de vista de quem olhava. O funil secou calado porque o alerta morria dentro
+ * de uma resposta HTTP que ninguem le.
+ */
+function abasCegas(json: any): string[] {
+  return (json?.resultados || []).flatMap((r: any) =>
+    (r?.linhas_por_aba || [])
+      .filter((a: any) => a?.ALERTA)
+      .map((a: any) => `${r.board}/${a.aba} (${a.brutas} linhas, 0 lidas)`),
+  );
+}
+
 // Estado do cron, exposto no /health. Sem isto, "ligado" e "morto" sao
 // indistinguiveis de fora: com a janela ja importada, uma rodada correta cria
 // zero leads e nao deixa rastro nenhum no banco. Foi assim que 4 jobs do
@@ -1103,8 +1121,16 @@ async function runSheetLeadSync() {
         `[cron:sheet-lead-sync] criados=${json.criados ?? 0} boards=${json.boards_com_planilha ?? 0} falhas=${falhas.length}`,
       );
     }
+    const cegas = abasCegas(json);
+    if (cegas.length) {
+      console.error(`[cron:sheet-lead-sync] ABA SEM NADA APROVEITADO: ${cegas.join(', ')}`);
+    }
     sheetSyncEstado.criados_acumulado += Number(json?.criados || 0);
-    sheetSyncEstado.ultimo_resultado = `criados=${json?.criados ?? 0} boards=${json?.boards_com_planilha ?? 0} falhas=${falhas.length}`;
+    // A contagem de abas cegas vem ANTES do resto: e ela que separa "a planilha
+    // nao teve movimento" de "a planilha deixou de ser legivel".
+    sheetSyncEstado.ultimo_resultado =
+      (cegas.length ? `ABAS CEGAS=${cegas.length} (${cegas.slice(0, 3).join('; ')}) ` : '') +
+      `criados=${json?.criados ?? 0} boards=${json?.boards_com_planilha ?? 0} falhas=${falhas.length}`;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[cron:sheet-lead-sync] failed:', msg);
@@ -1228,8 +1254,13 @@ async function runSheetStatusSync() {
       (t: number, r: any) => t + Number(r?.status_escritos || 0),
       0,
     );
+    const cegasStatus = abasCegas(json);
+    if (cegasStatus.length) {
+      console.error(`[cron:sheet-status] ABA SEM NADA APROVEITADO: ${cegasStatus.join(', ')}`);
+    }
     sheetStatusEstado.status_escritos_acumulado += escritos;
-    sheetStatusEstado.ultimo_resultado = `status_escritos=${escritos}`;
+    sheetStatusEstado.ultimo_resultado =
+      (cegasStatus.length ? `ABAS CEGAS=${cegasStatus.length} ` : '') + `status_escritos=${escritos}`;
     if (escritos > 0) console.log(`[cron:sheet-status] ${sheetStatusEstado.ultimo_resultado}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
