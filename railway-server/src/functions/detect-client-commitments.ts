@@ -98,6 +98,31 @@ function isSameCommitment(a: string, b: string): boolean {
   return union > 0 && inter / union >= 0.7;
 }
 
+/**
+ * O lead recebido é MESMO desta conversa?
+ *
+ * Espelho de `leadBelongsToConversation` em `src/lib/clientCommitments.ts` —
+ * aquele é a fonte da regra e tem os testes; este roda no Railway, que não
+ * importa `src`. Mudou lá, muda aqui.
+ */
+function leadPertenceAConversa(
+  phone: string | null | undefined,
+  leadGroupJids: Array<string | null | undefined>
+): boolean {
+  const digitos = (v: unknown) => String(v ?? '').replace(/\D/g, '');
+
+  const alvo = digitos(phone);
+  if (!alvo) return true;
+
+  const ehGrupo = String(phone ?? '').includes('@g.us') || alvo.length >= 17;
+  if (!ehGrupo) return true;
+
+  const grupos = leadGroupJids.map(digitos).filter(Boolean);
+  if (grupos.length === 0) return true;
+
+  return grupos.includes(alvo);
+}
+
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
 
@@ -152,6 +177,37 @@ export const handler: RequestHandler = async (req, res) => {
       return ok({ success: true, created: 0, cached: true, summary: scanRow?.summary || null });
     }
 
+    // ---- 2b. o lead recebido é MESMO desta conversa? -------------------------------
+    // O `lead_id` chega do front, e front com estado pela metade manda o lead da
+    // conversa ANTERIOR (15/09/2026: a perícia da Nilzete virou pendência da
+    // Monique; das 1.505 conversas varridas, 98 receberam mais de um lead).
+    // O front já foi corrigido — isto aqui é o cinto de segurança, para que
+    // nenhuma tela quebrada volte a carimbar cliente errado.
+    //
+    // Só REJEITA o que dá para PROVAR que é de outra conversa: se o lead tem
+    // grupo declarado e nenhum deles é este, ele é de outro lugar. Lead sem
+    // grupo nenhum passa — não dá para provar nada contra ele, e barrar aí
+    // desligaria o vínculo legítimo de quem ainda não tem grupo.
+    let leadIdValidado: string | null = lead_id || null;
+
+    if (leadIdValidado) {
+      const [leadRes, pontesRes] = await Promise.all([
+        supabase.from('leads').select('whatsapp_group_id').eq('id', leadIdValidado).maybeSingle(),
+        supabase.from('lead_whatsapp_groups').select('group_jid').eq('lead_id', leadIdValidado),
+      ]);
+
+      const gruposDoLead = [
+        ...(leadRes.data?.whatsapp_group_id ? [leadRes.data.whatsapp_group_id] : []),
+        ...(((pontesRes.data as Array<{ group_jid: string }> | null) || []).map((r) => r.group_jid)),
+      ];
+
+      if (!leadPertenceAConversa(phone, gruposDoLead)) {
+        // Sem nome de cliente no log (dado de cliente não vai para log).
+        console.warn(`[detect-client-commitments] lead ${leadIdValidado} tem ${gruposDoLead.length} grupo(s) declarado(s) e nenhum é esta conversa — gravando sem lead`);
+        leadIdValidado = null;
+      }
+    }
+
     // ---- 3. o que já está registrado (a IA não pode repetir nem ressuscitar) -------
     // O escopo é a CONVERSA, não o lead. Dois grupos de clientes DIFERENTES
     // podem carregar o mesmo `lead_id` (visto em produção em 15/09/2026: o
@@ -169,8 +225,8 @@ export const handler: RequestHandler = async (req, res) => {
       .from('lead_client_commitments')
       .select('id, title, status')
       .or(
-        lead_id
-          ? `phone.eq.${phone},and(lead_id.eq.${lead_id},phone.is.null)`
+        leadIdValidado
+          ? `phone.eq.${phone},and(lead_id.eq.${leadIdValidado},phone.is.null)`
           : `phone.eq.${phone}`
       );
 
@@ -347,7 +403,7 @@ DAR BAIXA (campo concluidas): se a conversa mostrar que uma das JÁ REGISTRADAS 
 
     if (aiError) {
       await supabase.from('lead_client_commitment_scans').upsert({
-        phone, instance_name: instance, lead_id: lead_id || null,
+        phone, instance_name: instance, lead_id: leadIdValidado,
         last_scanned_at: new Date().toISOString(), model: MODEL, last_error: aiError.slice(0, 300),
       }, { onConflict: 'phone,instance_name' });
       return ok({ success: false, error: aiError });
@@ -405,7 +461,7 @@ DAR BAIXA (campo concluidas): se a conversa mostrar que uma das JÁ REGISTRADAS 
         // do que o cliente entregou, sem ninguém precisar marcar nada.
         const alreadyDone = c.done === true;
         return {
-          lead_id: lead_id || null,
+          lead_id: leadIdValidado,
           contact_id: contact_id || null,
           phone,
           instance_name: instance || null,
@@ -480,7 +536,7 @@ DAR BAIXA (campo concluidas): se a conversa mostrar que uma das JÁ REGISTRADAS 
     await supabase.from('lead_client_commitment_scans').upsert({
       phone,
       instance_name: instance,
-      lead_id: lead_id || null,
+      lead_id: leadIdValidado,
       last_message_at: lastMessageAt,
       last_scanned_at: new Date().toISOString(),
       messages_analyzed: messages.length,

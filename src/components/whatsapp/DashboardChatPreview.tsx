@@ -294,14 +294,33 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [linkedLead, setLinkedLead] = useState<Lead | null>(null);
   const [linkedContact, setLinkedContact] = useState<Contact | null>(null);
+  /**
+   * Telefone cuja resolução de lead/contato JÁ TERMINOU.
+   *
+   * É um telefone, e não um booleano `resolvendo`, de propósito: booleano só
+   * muda depois que o efeito roda, e efeito roda tarde demais. Comparado com o
+   * `phone` atual durante o RENDER, este marcador acusa "ainda não resolvi"
+   * no mesmo instante em que a conversa troca — que é quando importa.
+   */
+  const [linkedFor, setLinkedFor] = useState<string | null>(null);
+  /** O lead/contato em mão são mesmo DESTA conversa? */
+  const linkResolved = !!phone && linkedFor === phone;
 
-  /** Pendências do cliente desta conversa — mesma fonte da conversa completa. */
+  /**
+   * Pendências do cliente desta conversa — mesma fonte da conversa completa.
+   *
+   * Lead e contato só passam DEPOIS de resolvidos para este telefone. Enquanto
+   * a resolução não volta, vão como `null` e a varredura fica desligada: lead
+   * da conversa anterior aqui grava pendência no cliente errado, e é
+   * irreversível — o dedup impede a segunda varredura de consertar.
+   */
   const commitments = useClientCommitments({
-    leadId: linkedLead?.id || null,
+    leadId: linkResolved ? (linkedLead?.id || null) : null,
     phone,
     instanceName,
-    contactId: linkedContact?.id || null,
-    clientName: contactName || linkedLead?.lead_name || null,
+    contactId: linkResolved ? (linkedContact?.id || null) : null,
+    clientName: contactName || (linkResolved ? linkedLead?.lead_name : null) || null,
+    autoAnalyze: linkResolved,
   });
   /** Pendência que está com o "quem cuida disto?" aberto. */
   const [trocandoDono, setTrocandoDono] = useState<CommitmentCardItem | null>(null);
@@ -645,7 +664,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
         if (contactData) setLinkedContact(contactData as any);
       }
     };
-    fetchLinkedData();
+    // `finally`: mesmo que a resolução falhe, a conversa precisa destravar —
+    // senão a varredura desta conversa nunca mais roda.
+    fetchLinkedData().finally(() => { if (!cancelled) setLinkedFor(phone); });
 
     // Fetch private/mute status
     const fetchConversationStatus = async () => {
