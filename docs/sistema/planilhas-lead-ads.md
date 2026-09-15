@@ -196,7 +196,7 @@ cabeçalho: índice 19 = `4299685755`, índice 20 = `evelin iasmin castilho`.
 inequívoca; se nenhuma servir, a linha cai como antes. `recuperadas_por_troca`
 por aba mostra quantas foram recuperadas.
 
-### 2. Aba sem linha de cabeçalho (802 linhas, AINDA ABERTO)
+### 2. Aba sem linha de cabeçalho (802 linhas — contornado pela API em 14/09)
 
 `MATEUS - 2` (766 linhas) e `KAROLYNE` (36) **não têm linha de cabeçalho**: a
 primeira linha já é dado, e vira "cabeçalho" com nomes como
@@ -206,6 +206,20 @@ Isso **não** se conserta por heurística: adivinhar qual coluna é o nome pode
 trazer `qual_o_nome_da_criança_?` no lugar do responsável. O conserto é inserir a
 linha de cabeçalho na planilha — ou ler esses formulários pela API da Meta
 (`meta-leads-sync`), que não depende de formatação nenhuma.
+
+**Foi o segundo caminho que resolveu.** Com o `meta-leads-sync` em cron (30 min,
+desde 09/09), esses formulários entram pela API. Conferido em 14/09, nas
+amostras mais recentes de cada um:
+
+| `source` | amostra | nome válido | telefone válido |
+|---|---:|---:|---:|
+| `Meta Lead Ads — Karolyne` | 200 | 200 | 200 |
+| `Meta Lead Ads — Mateus` | 200 | 200 | 200 |
+
+A aba continua sem cabeçalho e o leitor de planilha continua descartando essas
+linhas — **o que mudou é que não se perde mais lead por causa disso**. Inserir o
+cabeçalho deixou de ser urgente e virou higiene: enquanto não for feito, esses
+formulários dependem de um caminho só.
 
 ### O que impedia de ver isso
 
@@ -226,5 +240,202 @@ novo". Os dois números têm que ser mostrados juntos.
   silêncio.
 - **Linha sem telefone com 10+ dígitos ou com nome-lixo é descartada** sem
   aparecer em lugar nenhum da resposta.
-- A planilha é a única fonte: se a integração Meta→Sheets cair, o CRM seca e
-  nada aqui denuncia — só a comparação com o gasto no Gerenciador de Anúncios.
+- **A planilha deixou de ser a única fonte (09/09/2026).** Se a integração
+  Meta→Sheets cair de novo — foi o que houve em agosto, sem erro em lugar
+  nenhum —, o `meta-leads-sync` continua trazendo lead pela API. Os dois caminhos
+  convivem e o dedup por `phoneKey` impede a duplicata; ver
+  `docs/sistema/meta-leads-direto.md`. O que **ainda** não existe é alarme: nada
+  aqui avisa que um dos dois secou, e a comparação com o gasto no Gerenciador
+  segue sendo a forma de perceber.
+
+## O cabeçalho é procurado, não assumido (11/09/2026)
+
+A exportação da Meta para o Sheets não garante que a primeira linha seja o
+cabeçalho. Basta alguém inserir uma linha ou colar um registro no topo.
+
+Medido na planilha do BPC:
+
+| Aba | Defeito | Custo |
+|---|---|---|
+| `MATEUS - 2` | lead na linha 1, cabeçalho na linha 2 | 874 linhas descartadas |
+| `KAROLYNE` | mesmo defeito | 36 linhas |
+| `KAROL - 2` | cabeçalho na linha 1, mas célula A1 vazia | ids da Meta não carregavam, e o status escrito pela equipe não casava com lead nenhum |
+
+Comparado com o que a Meta tem em 30 dias, isso deixava o BPC **893 leads atrás**
+— 793 só do Mateus.
+
+### Por que não foi resolvido pedindo para editar a planilha
+
+Seria transferir para a pessoa um trabalho que o programa faz melhor, e falharia
+calado de novo no dia em que ninguém lembrasse. `achaCabecalho`
+(`lib/leadAdsSheet.ts`, puro e com teste) procura entre as primeiras linhas a que
+mais parece cabeçalho — a que traz mais nomes de coluna conhecidos da Meta. Se
+nenhuma parecer, cai na primeira linha, o comportamento antigo, para que aba com
+nomes inesperados não fique pior do que já era.
+
+**A linha acima do cabeçalho não é descartada.** Ela é um lead de verdade: o da
+`MATEUS - 2` já estava no CRM pela leitura direta da Meta, mas o da `KAROLYNE`
+(de 06/07) não estava em lugar nenhum — apagá-la para "consertar" a aba teria
+perdido o registro.
+
+**A primeira coluna sem rótulo vira `id`** quando as linhas de baixo guardam ids
+da Meta (`l:1086829373844173` ou só os dígitos). É evidência, não chute: coluna
+sem nome que guarda outra coisa continua sem nome.
+
+O diagnóstico por aba agora informa `linha_do_cabecalho` e `id_recuperado`, então
+dá para ver que alguém colou dado no topo sem abrir a planilha.
+
+## A conta fechada: planilha × Meta (11/09/2026)
+
+O diagnóstico por aba agora devolve `brutas_na_janela` — linhas cuja data cai no
+período, contadas **antes** de qualquer descarte. Com ela a diferença para a Meta
+se separa em duas causas que pedem conserto em lugares diferentes:
+
+```
+Meta − brutas_na_janela      = a planilha não recebeu   (conserto na Meta/export)
+brutas_na_janela − recentes  = este leitor recusou      (conserto aqui)
+```
+
+BPC, 30 dias:
+
+| | Meta | Planilha tem | Não recebeu | Leitor recusou | Entra |
+|---|---:|---:|---:|---:|---:|
+| Israel | 694 | 690 | 4 | 36 | 654 |
+| Mateus | 793 | 782 | 11 | 27 | 755 |
+| Karolyne | 619 | 616 | 3 | 28 | 588 |
+| Edilan | 516 | 512 | 4 | 23 | 489 |
+| **Total** | **2.623** | **2.600** | **23** | **114** | **2.486** |
+
+Auxílio Acidente: 592 → 588 → 4 recusadas → 584.
+
+**A planilha está de acordo com a Meta**: recebe 99,1% do que a Meta exporta. O
+resíduo é quase todo do lado de cá.
+
+### As 220 do Edilan eram antigas
+
+A aba EDILAN tem 226 linhas descartadas por nome vazio na vida inteira, mas só
+**8** caem na janela de 30 dias. Não é um problema corrente — é um lote velho.
+
+### O que o leitor recusa é quase tudo "sem telefone"
+
+E parte disso era nome de coluna. A planilha do Auxílio Acidente tem
+`qual_o_seu_número_para_contato_?` e o leitor procurava
+`qual_o_seu_número_de_contato_?`. Uma palavra, e a linha caía como sem telefone.
+
+`celulaDeTelefone` (`lib/leadAdsSheet.ts`, com teste) passa a procurar por
+**pedaço** do nome da coluna — `telefone`, `contato`, `whats`, `phone`,
+`celular` — aceitando só valor com 10+ dígitos, para que "melhor horário de
+contato" não entregue texto no lugar do número. É a mesma regra que o
+`meta-leads-sync` já usava, e por isso ele não sofria do problema.
+
+**O nome não ganhou busca por pedaço**, de propósito: o formulário do BPC
+pergunta `qual_o_nome_da_criança_?`, e procurar "nome" por pedaço cadastraria o
+dependente no lugar do titular. Trocar o cliente por outra pessoa é pior do que
+não achar o campo.
+
+## Telefone é exigência de criar, não de identificar (11/09/2026)
+
+As 114 linhas que o leitor recusava por mês não eram lead perdido. O
+`meta-leads-sync` lê as mesmas da Meta, onde o telefone pré-preenchido está
+completo, e cria o lead. O que se perdia era o **status que a equipe escreveu**:
+a linha morria no parse, antes da etapa que aplica status — carregando um
+`facebook_lead_id` que identifica o lead com exatidão.
+
+Agora a linha sem telefone usável **sobrevive marcada** (`sem_telefone_usavel`)
+quando tem id da Meta. Sem o id, cai como antes: não há por onde reconhecê-la.
+
+Três travas para que isso não vire outro problema:
+
+1. **Nunca vira lead novo.** Sem telefone não há como falar com a pessoa, e o
+   `phone_key` vazio não casa com nada em `existingKeys` — sem a trava explícita
+   elas seriam criadas como leads mudos, duplicando quem já está no CRM.
+2. **Dedup pelo id.** Com `phone_key` vazio, todas as linhas sem telefone
+   colidiriam numa só e 113 sumiriam de novo, desta vez sem aparecer em contador
+   nenhum.
+3. **DDD não se inventa.** Os 45 casos de 9 dígitos são celular sem código de
+   área; completar por conta própria mandaria mensagem de cliente para o número
+   de outra pessoa (ver a skill `grupo-incerto-nao-manda-avisa`).
+
+O diagnóstico por aba informa `recuperadas_para_status`, e o contador de descarte
+passou a subir só quando a linha morre de verdade.
+
+## Limpeza dos 289 duplicados (11/09/2026)
+
+289 leads existiam em duplicata — mesmo `facebook_lead_id`, uma linha da planilha
+e outra da leitura direta da Meta, com telefones diferentes em **289 de 289**
+pares (nem os 8 dígitos finais coincidiam).
+
+**A primeira regra que eu ia usar estava errada.** Ia manter o lado da API e
+descartar o da planilha. Medindo o que estava pendurado em cada linha:
+
+| | Sobrevive (regra antiga) | Morre (regra antiga) |
+|---|---:|---:|
+| Campos personalizados | 24 | **588** |
+| Followups | 13 | 26 |
+
+O lado da planilha carrega as respostas do formulário em campos estruturados; o
+da API grava como texto em `notes`. Descartá-lo teria escondido 588 campos.
+
+### Regra final e consolidação
+
+Sobrevive quem tem **status trabalhado**; empate, quem tem **mais campos
+preenchidos**; empate, o lado da API. Resultado: 255 sobreviventes da planilha,
+34 da API. O que estava no descartado mudou de dono antes:
+
+| Passo | Linhas |
+|---|---:|
+| Campos personalizados movidos | 66 |
+| Campos em conflito (fica o do sobrevivente) | 2 |
+| Followups movidos | 7 |
+| Vínculo de contato movido | 1 |
+| Notas substituídas pela versão maior | 255 |
+| Telefone descartado guardado em `lead_phone_raw` | 289 |
+| Soft delete | 289 |
+
+**Nenhum `UPDATE` de `lead_status`**: esse campo dispara etiqueta do WhatsApp,
+carimbo de `became_client_date` e classificação de contato. Não foi preciso —
+em nenhum par os dois lados tinham status trabalhado *diferentes*.
+
+Backups em `zz_dedup_meta_20260911` (o pareamento congelado),
+`zz_leads_dedup_bkp_20260911` (578 linhas completas),
+`zz_lcfv_dedup_bkp_20260911`, `zz_followups_dedup_bkp_20260911` e
+`zz_contactleads_dedup_bkp_20260911`. O rollback reverte **por id gravado**,
+nunca por regra: depois da mudança não há como distinguir o followup que era do
+descartado do que já era do sobrevivente.
+
+### O que já não dá para desfazer
+
+Os 2 pares fechados enviaram **4 conversões Purchase** à Meta — duas por cliente,
+todas aceitas em 10/09. Evento enviado não se retira.
+
+### Por que o `meta-leads-sync` não recria tudo
+
+Ele deduplicava **só por telefone**, e o sobrevivente ficou com apenas um dos dois
+números. Não recriou por acaso: a varredura não filtra `deleted_at`, então o
+telefone da linha removida ainda contava como conhecido — no dia em que alguém
+acrescentasse o filtro, o que parece uma correção óbvia, as 255 duplicatas
+voltariam em 30 minutos.
+
+Agora ele dedupa também pelo **id da Meta**, como o `bpc-sheet-sync` já faz.
+
+## O status do Auxílio Acidente nunca foi lido (14/09/2026)
+
+Medido no diagnóstico com `aplicar_status`: o funil de Auxílio Acidente tinha
+`status_aplicado: {}` **e** `status_ignorado: {}` — os dois vazios. Não era "a
+equipe não preenche": era o leitor não saber onde olhar.
+
+A planilha do BPC usa a coluna `status da lead`. A do Auxílio Acidente usa
+`status lead`, sem o "da". O leitor procurava o nome exato do BPC.
+
+Pior: a lista de contagem do diagnóstico tinha os mesmos nomes exatos, então a
+coluna **não aparecia nem como ausente**. O sintoma era invisível, e a conclusão
+natural — errada — seria sobre as pessoas, não sobre o código.
+
+`celulaDeStatusDaEquipe` (`lib/leadAdsSheet.ts`, com teste) procura por uma lista
+de nomes conhecidos e depois por qualquer coluna que contenha "status".
+**`lead_status` fica de fora sempre**: é coluna da exportação da Meta e vale
+sempre "created" — foi ela que, com `||`, curto-circuitava a leitura na primeira
+versão.
+
+O diagnóstico passou a contar pela mesma lista que a leitura usa. Quando os dois
+divergem, a coluna some das duas pontas ao mesmo tempo e ninguém percebe.

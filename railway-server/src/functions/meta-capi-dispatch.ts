@@ -15,6 +15,7 @@
 // com o erro da Meta preservado em `resposta`.
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
+import { semSegredo } from '../lib/semSegredo';
 import {
   enviaParaMeta,
   registraStatusCredencial,
@@ -171,6 +172,9 @@ async function inventario() {
  * preenchidos em 23.426). Ou alguem baixa CSV a mao, ou tem lead parado la que
  * nunca virou atendimento. Isto mede qual das duas.
  */
+/** Nome do CRM que a Meta exibe na configuracao de leads com conversao. */
+const LEAD_EVENT_SOURCE = process.env.META_CAPI_LEAD_SOURCE || 'WhatsJud';
+
 /**
  * Token de cada pagina, a partir do token do sistema.
  *
@@ -352,9 +356,22 @@ async function probe(datasetAlvo?: string) {
 }
 
 export const handler: RequestHandler = async (req, res) => {
+  // TODA saida deste handler passa por `semSegredo`, sem excecao.
+  //
+  // Varios modos daqui devolvem o JSON cru da Graph API, e a Meta embute o
+  // PROPRIO token nas URLs de paginacao que ela devolve (`paging.next`). Em
+  // 14/09/2026 `modo: 'dono_do_dataset'` entregava o token da CAPI de volta no
+  // corpo da resposta por causa disso.
+  //
+  // O filtro fica aqui, e nao em cada `res.json`, porque sao 25 saidas e o modo
+  // 26 nasceria vazando igual — que foi exatamente como este defeito apareceu.
+  // Quem escrever um modo novo fica coberto sem saber que isto existe.
+  const jsonCru = res.json.bind(res);
+  res.json = (corpo: unknown) => jsonCru(semSegredo(corpo));
+
   try {
     const { modo, dry_run, limite, test_event_code, dataset_id } = (req.body || {}) as {
-      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset';
+      modo?: 'probe' | 'inventario' | 'religar' | 'formularios' | 'escopos' | 'paginas' | 'amostra_formulario' | 'conjuntos' | 'ligacoes' | 'validar_conversao' | 'dono_do_dataset' | 'reenviar' | 'trocar_otimizacao' | 'conjunto' | 'historico_conjunto';
       dry_run?: boolean;
       limite?: number;
       test_event_code?: string;
@@ -532,6 +549,8 @@ export const handler: RequestHandler = async (req, res) => {
     // despeja milhares de `Purchase` aqui, os nossos viram ruido — e a campanha
     // otimizaria por venda de curso achando que otimiza por cliente fechado.
     if (modo === 'dono_do_dataset') {
+      // `dataset_id` opcional: serve para auditar OUTRO conjunto antes de adotar.
+      const alvoDs = String((req.body as any)?.dataset_id || CAPI_DATASET_ID);
       const g = async (path: string) => {
         const r = await fetch(
           `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
@@ -542,13 +561,263 @@ export const handler: RequestHandler = async (req, res) => {
       };
       return res.status(200).json({
         modo: 'dono_do_dataset',
-        dataset: await g(`${CAPI_DATASET_ID}?fields=id,name,last_fired_time,creation_time,owner_business{name}`),
+        dataset: await g(`${alvoDs}?fields=id,name,last_fired_time,creation_time,owner_business{name}`),
         // Varias formas de pedir o volume: a Meta muda o nome dessas bordas com
         // frequencia, entao pergunta-se de tres jeitos e mostra-se o que responder.
-        stats_evento: await g(`${CAPI_DATASET_ID}/stats?aggregation=event&start_time=1756684800`),
-        stats_total: await g(`${CAPI_DATASET_ID}/stats?aggregation=event_total_counts`),
-        fontes: await g(`${CAPI_DATASET_ID}/da_checks`),
+        stats_evento: await g(`${alvoDs}/stats?aggregation=event&start_time=1754006400`),
+        stats_total: await g(`${alvoDs}/stats?aggregation=event_total_counts`),
+        fontes: await g(`${alvoDs}/da_checks`),
       });
+    }
+
+    // Reenvia conversao ja aceita, para o conjunto de dados ATUAL.
+    //
+    // Existe porque trocar de dataset e cenario real: em 09/09/2026 descobrimos
+    // que o dataset em uso era o pixel do checkout de um curso, e as conversoes
+    // do CRM tinham ido parar la. O dataset novo nasce vazio, e sem reenvio o
+    // historico se perde.
+    //
+    // Seguro por dois motivos: a Meta deduplica por `event_id` DENTRO de cada
+    // dataset, entao a mesma conversao em outro dataset nao duplica nada; e a
+    // janela de 7 dias e respeitada, porque evento mais velho a Meta recusa.
+    if (modo === 'reenviar') {
+      const body = (req.body || {}) as { confirmar?: boolean; dias?: number; somente_com_lead_id?: boolean };
+      if (body.confirmar !== true) return res.status(400).json({ error: 'exige confirmar: true' });
+      const dias = Math.min(Math.max(Number(body.dias) || 7, 1), 7);
+      const corte = new Date(Date.now() - dias * 86_400_000).toISOString();
+
+      const { data: candidatos, error: errSel } = await supabase
+        .from('meta_capi_events')
+        .select('id, event_id, event_time, user_data_hash')
+        .eq('status', 'sent')
+        .gte('event_time', corte);
+      if (errSel) return res.status(500).json({ error: errSel.message });
+
+      const alvo = (candidatos || []).filter((e: any) =>
+        body.somente_com_lead_id ? Boolean(e?.user_data_hash?.lead_id) : true,
+      );
+      if (!alvo.length) {
+        return res.status(200).json({ ok: true, dentro_da_janela: 0, reenfileirados: 0, dias });
+      }
+
+      const ids = alvo.map((e: any) => e.id);
+      let reenfileirados = 0;
+      for (let i = 0; i < ids.length; i += 200) {
+        const { error: errUp } = await supabase
+          .from('meta_capi_events')
+          .update({
+            status: 'pending',
+            enviado_em: null,
+            tentativas: 0,
+            http_status: null,
+            events_received: null,
+            fbtrace_id: null,
+            resposta: null,
+            proxima_tentativa_em: null,
+          })
+          .in('id', ids.slice(i, i + 200));
+        if (errUp) return res.status(500).json({ error: errUp.message, reenfileirados });
+        reenfileirados += ids.slice(i, i + 200).length;
+      }
+      return res.status(200).json({
+        ok: true,
+        dataset_destino: CAPI_DATASET_ID,
+        dias,
+        dentro_da_janela: (candidatos || []).length,
+        com_lead_id: (candidatos || []).filter((e: any) => e?.user_data_hash?.lead_id).length,
+        reenfileirados,
+        aviso: 'o despachante drena a fila no proximo ciclo',
+      });
+    }
+
+    // Troca a otimizacao de UM conjunto de anuncios.
+    //
+    // Existe porque a interface do Gerenciador manteve "leads com conversao"
+    // indisponivel mesmo com o conjunto de dados recebendo evento de CRM com
+    // `lead_id`. A API aceita a alteracao — conferido com `validate_only` nas
+    // duas contas — entao o bloqueio e da interface, nao da plataforma.
+    //
+    // `objetivo` aceita QUALITY_LEAD e LEAD_GENERATION: a volta e pelo mesmo
+    // caminho, em segundos. Trocar otimizacao ZERA O APRENDIZADO do conjunto,
+    // entao isto se faz num conjunto por vez e se observa por dias.
+    if (modo === 'trocar_otimizacao') {
+      const body = (req.body || {}) as { adset_id?: string; objetivo?: string; confirmar?: boolean };
+      const adsetId = String(body.adset_id || '');
+      const objetivo = String(body.objetivo || '');
+      if (!adsetId) return res.status(400).json({ error: 'informe adset_id' });
+      if (!['QUALITY_LEAD', 'LEAD_GENERATION'].includes(objetivo)) {
+        return res.status(400).json({ error: 'objetivo deve ser QUALITY_LEAD ou LEAD_GENERATION' });
+      }
+      if (body.confirmar !== true) return res.status(400).json({ error: 'exige confirmar: true' });
+
+      const get = async (path: string) => {
+        const r = await fetch(
+          `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
+            `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+        );
+        const j: any = await r.json();
+        return j?.error ? { erro: j.error.message, codigo: j.error.code } : j;
+      };
+
+      // Retrato ANTES: e a chave de rollback, e prova o que existia.
+      const antes = await get(
+        `${adsetId}?fields=id,name,optimization_goal,effective_status,promoted_object,campaign{name}`,
+      );
+      if ((antes as any)?.erro) return res.status(200).json({ ok: false, etapa: 'leitura', ...(antes as any) });
+
+      const r = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${adsetId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ optimization_goal: objetivo, access_token: CAPI_TOKEN }),
+      });
+      const resposta: any = await r.json();
+
+      const depois = await get(`${adsetId}?fields=id,name,optimization_goal,effective_status`);
+      return res.status(200).json({
+        ok: !resposta?.error,
+        conjunto: (antes as any)?.name,
+        campanha: (antes as any)?.campaign?.name ?? null,
+        antes: (antes as any)?.optimization_goal,
+        pedido: objetivo,
+        depois: (depois as any)?.optimization_goal,
+        aplicou: (depois as any)?.optimization_goal === objetivo,
+        erro: resposta?.error?.message ?? null,
+        explicacao_meta: resposta?.error?.error_user_msg ?? null,
+        rollback: `{"modo":"trocar_otimizacao","adset_id":"${adsetId}","objetivo":"${(antes as any)?.optimization_goal}","confirmar":true}`,
+      });
+    }
+
+
+    // Quem trocou a otimizacao do conjunto, e quando.
+    //
+    // Existe porque `updated_time` so diz que algo mudou — nao diz o que, nem
+    // por ordem de quem. No piloto de Leads com Conversao isso ja fez falta
+    // duas vezes: em 10/09 o conjunto voltou sozinho para LEAD_GENERATION dois
+    // minutos depois de ligado, e em 11/09 amanheceu em QUALITY_LEAD sem que
+    // nenhum comando nosso tivesse rodado. Sem o autor, cada leitura vira
+    // palpite. O log de atividades e a unica fonte que carrega `actor_name`.
+    //
+    // Le os dois logs de proposito: o do conjunto e curto e direto, mas alguns
+    // eventos so aparecem no log da conta. Junta e ordena do mais recente.
+    if (modo === 'historico_conjunto') {
+      const corpo = (req.body || {}) as { adset_id?: string; dias?: number };
+      const adsetId = String(corpo.adset_id || '');
+      if (!adsetId) return res.status(400).json({ error: 'informe adset_id' });
+      const dias = Math.min(Math.max(Number(corpo.dias) || 7, 1), 90);
+
+      const g = async (path: string) => {
+        const r = await fetch(
+          `https://graph.facebook.com/${GRAPH_VERSION}/${path}` +
+            `${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+        );
+        return (await r.json()) as any;
+      };
+
+      const conj = await g(`${adsetId}?fields=id,name,account_id,optimization_goal,updated_time`);
+      if (conj?.error) {
+        return res.status(200).json({ modo: 'historico_conjunto', erro: conj.error.message, codigo: conj.error.code });
+      }
+
+      const CAMPOS =
+        'event_type,event_time,translated_event_type,actor_id,actor_name,object_id,object_name,extra_data';
+      const desde = new Date(Date.now() - dias * 86400_000).toISOString().slice(0, 10);
+      const [noConjunto, naConta] = await Promise.all([
+        g(`${adsetId}/activities?fields=${CAMPOS}&since=${desde}&limit=200`),
+        g(`act_${conj.account_id}/activities?fields=${CAMPOS}&since=${desde}&limit=500`),
+      ]);
+
+      // A Meta devolve a hora no fuso da conta de anuncios, que nao e o nosso.
+      // Quem le compara com o horario do escritorio, entao converte para BRT.
+      const emBrasilia = (t: string) => {
+        const iso = String(t || '').replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return t;
+        return d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      };
+
+      // `extra_data` vem como string JSON, e o par muda de nome conforme o
+      // evento (`old_value`/`new_value`, as vezes `oldValue`). Sem normalizar,
+      // o "de -> para" some justamente no evento que interessa.
+      const deParaDe = (extra: unknown) => {
+        let o: any = extra;
+        if (typeof extra === 'string') {
+          try {
+            o = JSON.parse(extra);
+          } catch {
+            return { de: null, para: null, cru: extra };
+          }
+        }
+        if (!o || typeof o !== 'object') return { de: null, para: null, cru: extra ?? null };
+        const de = o.old_value ?? o.oldValue ?? o.old ?? null;
+        const para = o.new_value ?? o.newValue ?? o.new ?? null;
+        return { de, para, cru: de === null && para === null ? o : null };
+      };
+
+      const vistos = new Set<string>();
+      const eventos: Array<Record<string, unknown>> = [];
+      for (const [origem, lista] of [
+        ['conjunto', noConjunto?.data ?? []],
+        ['conta', naConta?.data ?? []],
+      ] as Array<[string, any[]]>) {
+        for (const e of lista) {
+          if (origem === 'conta' && String(e?.object_id || '') !== adsetId) continue;
+          const chave = `${e?.event_time}|${e?.event_type}|${e?.object_id}`;
+          if (vistos.has(chave)) continue;
+          vistos.add(chave);
+          const { de, para, cru } = deParaDe(e?.extra_data);
+          eventos.push({
+            quando: emBrasilia(e?.event_time),
+            quando_cru: e?.event_time ?? null,
+            quem: e?.actor_name ?? e?.actor_id ?? null,
+            evento: e?.event_type ?? null,
+            descricao: e?.translated_event_type ?? null,
+            de,
+            para,
+            origem,
+            ...(cru ? { extra: cru } : {}),
+          });
+        }
+      }
+      eventos.sort((a, b) => String(b.quando_cru).localeCompare(String(a.quando_cru)));
+
+      return res.status(200).json({
+        modo: 'historico_conjunto',
+        conjunto: {
+          id: conj?.id ?? null,
+          nome: conj?.name ?? null,
+          conta: conj?.account_id ? `act_${conj.account_id}` : null,
+          otimizacao_atual: conj?.optimization_goal ?? null,
+          atualizado: emBrasilia(conj?.updated_time),
+        },
+        desde,
+        dias,
+        total: eventos.length,
+        // Erro por log separado: acesso negado no log da conta nao pode passar
+        // por "nao houve evento" — sao coisas opostas.
+        erros: {
+          log_do_conjunto: noConjunto?.error?.message ?? null,
+          log_da_conta: naConta?.error?.message ?? null,
+        },
+        eventos,
+      });
+    }
+
+    // Le UM conjunto por inteiro, ativo ou nao. `conjuntos` filtra por ACTIVE,
+    // entao um conjunto que sai do ar simplesmente some da lista — e sumir nao
+    // diz se foi pausado, reprovado ou se a campanha inteira parou.
+    if (modo === 'conjunto') {
+      const adsetId = String((req.body as any)?.adset_id || '');
+      if (!adsetId) return res.status(400).json({ error: 'informe adset_id' });
+      const r = await fetch(
+        `https://graph.facebook.com/${GRAPH_VERSION}/${adsetId}` +
+          `?fields=id,name,status,effective_status,optimization_goal,destination_type,promoted_object,` +
+          `daily_budget,lifetime_budget,budget_remaining,` +
+          `targeting{publisher_platforms,facebook_positions,instagram_positions,device_platforms},` +
+          `created_time,updated_time,issues_info,recommendations,campaign{id,name,status,effective_status,objective}` +
+          `&access_token=${encodeURIComponent(CAPI_TOKEN)}`,
+      );
+      const j: any = await r.json();
+      return res.status(200).json(j?.error ? { erro: j.error.message, codigo: j.error.code } : j);
     }
 
     if (modo === 'conjuntos') {
@@ -564,7 +833,8 @@ export const handler: RequestHandler = async (req, res) => {
       const saida: Array<Record<string, unknown>> = [];
       for (const c of contas?.data ?? []) {
         const ads = await g(
-          `${c.id}/adsets?fields=id,name,effective_status,optimization_goal,destination_type,promoted_object,campaign{id,name,objective}&limit=200`,
+          `${c.id}/adsets?fields=id,name,effective_status,optimization_goal,destination_type,promoted_object,` +
+            `daily_budget,lifetime_budget,campaign{id,name,objective}&limit=200`,
         );
         for (const a2 of ads?.data ?? []) {
           if (a2?.effective_status !== 'ACTIVE') continue;
@@ -576,6 +846,11 @@ export const handler: RequestHandler = async (req, res) => {
             conjunto: a2.name,
             conjunto_id: a2.id,
             otimizacao_atual: a2.optimization_goal,
+            // A Meta manda centavos como string. Sem dividir, R$ 70,00 vira
+            // "7000" no relatorio e ninguem confere se o piloto e o controle
+            // estao gastando o mesmo.
+            orcamento_diario: a2.daily_budget != null ? Number(a2.daily_budget) / 100 : null,
+            orcamento_total: a2.lifetime_budget != null ? Number(a2.lifetime_budget) / 100 : null,
             destino: a2.destination_type,
             promoted_object: a2.promoted_object ?? null,
           });
@@ -663,13 +938,26 @@ export const handler: RequestHandler = async (req, res) => {
       return res.status(200).json({ drenados: 0, mensagem: 'fila vazia' });
     }
 
+    // MARCA DE EVENTO DE CRM.
+    //
+    // A Meta exige `custom_data.event_source = "crm"` e
+    // `custom_data.lead_event_source = "<nome do CRM>"` para reconhecer o evento
+    // como vindo de um CRM. Sem eles ela ACEITA o evento — `http 200`,
+    // `events_received` contando — e simplesmente nao o considera para "leads
+    // com conversao". Foi a explicacao do porque a opcao ficava indisponivel no
+    // Gerenciador mesmo com 39 conversoes aceitas e 24 com `lead_id`.
+    //
+    // Injetado aqui no ENVIO, e nao no enfileiramento, de proposito: o que ja
+    // esta na fila passa a sair correto sem precisar reescrever linha nenhuma,
+    // e reenvio pega a marca automaticamente.
+    const marcaCrm = { event_source: 'crm', lead_event_source: LEAD_EVENT_SOURCE };
     const eventos = (fila as any[]).map((f) => ({
       event_name: f.event_name,
       event_id: f.event_id,
       event_time: eventTimeSeguro(f.event_time),
       action_source: f.action_source || 'system_generated',
       user_data: f.user_data_hash || {},
-      ...(f.custom_data && Object.keys(f.custom_data).length ? { custom_data: f.custom_data } : {}),
+      custom_data: { ...marcaCrm, ...(f.custom_data || {}) },
     }));
 
     if (dry_run) {

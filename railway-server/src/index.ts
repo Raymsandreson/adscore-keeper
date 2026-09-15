@@ -11,6 +11,15 @@ import {
   WEBHOOK_PUBLIC_FUNCTIONS,
 } from './lib/functionAuth';
 import { observeUazapiOriginAsync, uazapiOriginStats } from './lib/webhookOrigin';
+import { catalogoDeSchema, diagnosticoDoCatalogo } from './lib/schemaCatalog';
+// Estado das rotinas: mora em lib/ porque a aba de Metricas tambem le.
+import {
+  sheetSyncEstado,
+  capiReconcileEstado,
+  sheetStatusEstado,
+  metaLeadsEstado,
+  avisoLeadEstado,
+} from './lib/estadoDosCrons';
 // Aliases explícitos: no Railway `SUPABASE_URL` sem prefixo é o Cloud (ver
 // CLOUD_FUNCTIONS_URL abaixo). Estes dois são do Externo.
 import {
@@ -38,6 +47,7 @@ import { handler as whatsappCloudWebhook } from './functions/whatsapp-cloud-webh
 import { handler as whatsappGroupExit } from './functions/whatsapp-group-exit';
 import { handler as whatsappDownloadMedia } from './functions/whatsapp-download-media';
 import { handler as whatsappBackfillMedia } from './functions/whatsapp-backfill-media';
+import { handler as whatsappSyncLeitura } from './functions/whatsapp-sync-leitura';
 import { handler as extractConversationData } from './functions/extract-conversation-data';
 import { handler as manageWhatsappGroupParticipants } from './functions/manage-whatsapp-group-participants';
 import { handler as getGroupParticipants } from './functions/get-group-participants';
@@ -70,6 +80,7 @@ import { handler as metaCapiDispatch } from './functions/meta-capi-dispatch';
 import { handler as metaCapiReconcile } from './functions/meta-capi-reconcile';
 import { handler as metricasPainel } from './functions/metricas-painel';
 import { handler as metaLeadsSync } from './functions/meta-leads-sync';
+import { handler as avisarAcolhedorLead } from './functions/avisar-acolhedor-lead';
 import { handler as metaCapiStatus } from './functions/meta-capi-status';
 import { handler as syncHearingsFromSheet } from './functions/sync-hearings-from-sheet';
 import { handler as gmailInssSync } from './functions/gmail-inss-sync';
@@ -100,6 +111,7 @@ import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-ag
 import { handler as transcodeAudioOpus } from './functions/transcode-audio-opus';
 import { handler as extractActivityFromDocument } from './functions/extract-activity-from-document';
 import { handler as dictateActivity } from './functions/dictate-activity';
+import { handler as suggestRoutine } from './functions/suggest-routine';
 import { handler as chatToActivity } from './functions/chat-to-activity';
 import { handler as detectClientCommitments } from './functions/detect-client-commitments';
 import { handler as detectGroupCaseReports } from './functions/detect-group-case-reports';
@@ -119,12 +131,20 @@ import { handler as inssAudioPreview } from './functions/inss-audio-preview';
 import { handler as celcoinOpenFinance } from './functions/celcoin-open-finance';
 import { handler as updateProfileAvatar } from './functions/update-profile-avatar';
 import { handler as agentProactiveFirstMessage } from './functions/agent-proactive-first-message';
+import { handler as referralClassify } from './functions/referral-classify';
+import { handler as referralOutreach } from './functions/referral-outreach';
+import { handler as referralBackfill } from './functions/referral-backfill';
 import { handler as testimonialToInstagramPost } from './functions/testimonial-to-instagram-post';
 import { handler as publishInstagramTestimonial } from './functions/publish-instagram-testimonial';
+import { handler as externalSession } from './functions/external-session';
+import { handler as datastoneApitest } from './functions/datastone-apitest';
+import { handler as datastoneConsulta } from './functions/datastone-consulta';
 
 
 
 const functionHandlers: Record<string, express.RequestHandler> = {
+  // Sessão de verdade no Externo para quem está logado no Cloud (10/09/2026).
+  'external-session': externalSession,
   'whatsapp-webhook': whatsappWebhook,
   'send-team-push': sendTeamPush,
   'call-queue-processor': callQueueProcessor,
@@ -138,6 +158,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-group-exit': whatsappGroupExit,
   'whatsapp-download-media': whatsappDownloadMedia,
   'whatsapp-backfill-media': whatsappBackfillMedia,
+  'whatsapp-sync-leitura': whatsappSyncLeitura, // leitura feita no celular apaga o badge do app (retroativo + config do evento)
   'extract-conversation-data': extractConversationData,
   'manage-whatsapp-group-participants': manageWhatsappGroupParticipants,
   'get-group-participants': getGroupParticipants,
@@ -150,6 +171,10 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'submit-document-review': submitDocumentReview,
   'sync-agent-labels': syncAgentLabels,
   'agent-proactive-first-message': agentProactiveFirstMessage,
+  // Indicações por cartão de contato compartilhado no WhatsApp.
+  'referral-classify': referralClassify,
+  'referral-outreach': referralOutreach,
+  'referral-backfill': referralBackfill,
   'sync-result-labels': syncResultLabels,
   'sync-stage-labels': syncStageLabels,
   'apply-stage-label': applyStageLabel,
@@ -195,11 +220,13 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'meta-capi-reconcile': metaCapiReconcile, // acha fechamento sem evento (webhook fecha lead sem passar por gatilho)
   'metricas-painel': metricasPainel, // agregados da aba de metricas (investimento ao vivo + funil)
   'meta-leads-sync': metaLeadsSync, // le lead do formulario direto da Meta, sem a planilha no meio
+  'avisar-acolhedor-lead': avisarAcolhedorLead, // leva o lead novo pro WhatsApp de quem atende, com link wa.me pronto
   'meta-capi-status': metaCapiStatus, // leitura do painel (RLS barra o navegador)
   'sync-hearings-from-sheet': syncHearingsFromSheet,
   'transcode-audio-opus': transcodeAudioOpus,
   'extract-activity-from-document': extractActivityFromDocument,
   'dictate-activity': dictateActivity,
+  'suggest-routine': suggestRoutine, // rotina semanal por texto/voz/PDF, presa aos tipos que existem
   'chat-to-activity': chatToActivity,
   'detect-client-commitments': detectClientCommitments,
   'detect-group-case-reports': detectGroupCaseReports, // IA lê grupos marcados e acha gente relatando acidente
@@ -220,6 +247,8 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'update-profile-avatar': updateProfileAvatar, // foto de perfil — RLS do Externo barra o navegador, precisa de service role
   'testimonial-to-instagram-post': testimonialToInstagramPost, // testemunho do WhatsApp vira rascunho de post (sharp + fonte embutida)
   'publish-instagram-testimonial': publishInstagramTestimonial, // publica rascunho aprovado via Graph API (só por clique humano)
+  'datastone-apitest': datastoneApitest, // sonda da Data Stone: 0 créditos, revela o IP de saída a liberar na whitelist
+  'datastone-consulta': datastoneConsulta, // telefone -> cadastro, com cache, teto diário e gate de nome
 };
 
 const app = express();
@@ -299,6 +328,31 @@ app.get('/health', (_req, res) => {
       // Placar desde o ultimo deploy. `missing_por_funcao` e a lista que precisa
       // estar vazia antes de ligar o enforce.
       observado: authStats(),
+      // Por que a flag aparece CRUA aqui, ao contrario das credenciais acima:
+      // ela e booleana e publica, e tres defeitos diferentes produzem o MESMO
+      // `enforced: false`, sem aviso nenhum — nome digitado diferente, valor
+      // que o regex recusa, ou variavel salva em outro servico/environment.
+      // Sem isto, distinguir os tres depende de alguem ler o painel a olho.
+      // Mesmo remedio do `meta_dataset` abaixo, que nasceu de um caso igual.
+      // Valor de credencial continua fora daqui: abaixo so saem NOMES.
+      flag: {
+        RAILWAY_AUTH_ENFORCE: process.env.RAILWAY_AUTH_ENFORCE ?? null,
+        aceito_pelo_regex: AUTH_ENFORCE,
+        valores_aceitos: '1 | true | on | yes',
+        // So os NOMES das variaveis que chegaram, nunca os valores: e o que
+        // mostra a variavel salva com nome parecido (AUTH_ENFORCE,
+        // RAILWAY_ENFORCE_AUTH, um typo em ENFORCE) sem expor nada.
+        nomes_railway: Object.keys(process.env)
+          .filter((k) => k.startsWith('RAILWAY_'))
+          .sort(),
+        nomes_com_enforce: Object.keys(process.env)
+          .filter((k) => /ENFOR/i.test(k))
+          .sort(),
+        // Qual servico/environment do Railway atende esta URL. Variavel salva
+        // em outro nunca chega aqui, e isso nao da pra ver de fora.
+        servico: process.env.RAILWAY_SERVICE_NAME || null,
+        environment: process.env.RAILWAY_ENVIRONMENT_NAME || null,
+      },
     },
     // QUAL conjunto de dados esta em uso, e DE QUAL variavel ele veio.
     //
@@ -324,10 +378,24 @@ app.get('/health', (_req, res) => {
     capi_reconcile: capiReconcileEstado,
     // Status que a equipe escreve na planilha chegando ao CRM.
     sheet_status_sync: sheetStatusEstado,
+    // Lead lido direto da Meta, sem depender da planilha.
+    meta_leads_sync: metaLeadsEstado,
+    // Aviso de lead novo no WhatsApp do acolhedor. `ligado: false` com
+    // `enviados_acumulado: 0` e o estado de fabrica — nao e falha.
+    aviso_lead_acolhedor: avisoLeadEstado,
     // Webhook da UazAPI: entra sem credencial de proposito (servico externo).
     // Aqui se mede se da pra exigir o instance_token como prova de origem —
     // `sem_token_por_evento` e a lista que precisa esvaziar antes disso.
     origem_webhook: uazapiOriginStats(),
+    // Mapa do banco que o analista de relatórios recebe no prompt. `fonte`
+    // precisa dizer "banco": em "degradado" a leitura do schema falhou e a IA
+    // está respondendo sem saber quais colunas existem. `fora_do_catalogo` > 0
+    // significa tabela de negócio nova que ninguém liberou pro relatório ainda.
+    // Só contagens — nome de tabela não sai daqui, /health é rota pública.
+    schema_catalog: diagnosticoDoCatalogo(),
+    // Data Stone: só presença. Sem isso não dá pra distinguir "token não setado"
+    // de "token setado depois do último deploy" olhando de fora.
+    datastone: { token: !!(process.env.DATASTONE_TOKEN || '').trim() },
     functions: Object.keys(functionHandlers),
     gmailKeys,
   });
@@ -480,6 +548,18 @@ app.listen(PORT, () => {
       ` | internal_key:${process.env.RAILWAY_INTERNAL_KEY ? 'set' : 'unset'}` +
       ` api_key:${API_KEY ? 'set' : 'unset'} jwt_cloud:${process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY ? 'ok' : 'SEM ANON KEY'}`,
   );
+  // Lê o schema já no boot: o /health passa a dizer a verdade sobre o mapa do
+  // banco sem esperar a primeira pergunta da diretoria, e essa primeira
+  // pergunta não paga a leitura. Falha aqui não derruba o server — o catálogo
+  // tenta de novo (e em modo degradado avisa a IA) na hora da pergunta.
+  catalogoDeSchema()
+    .then(() => {
+      const d: any = diagnosticoDoCatalogo();
+      console.log(`🗂️  catálogo do relatório: fonte=${d.fonte} tabelas=${d.tabelas} colunas=${d.colunas}` +
+        `${d.faltando?.length ? ` faltando=${d.faltando.join(',')}` : ''}` +
+        `${d.fora_do_catalogo ? ` fora_do_catalogo=${d.fora_do_catalogo}` : ''}`);
+    })
+    .catch((e) => console.warn('[schemaCatalog] falhou no boot:', e instanceof Error ? e.message : e));
 });
 
 // ============================================================
@@ -992,14 +1072,6 @@ const SHEET_SYNC_LIGADO = (process.env.SHEET_LEAD_SYNC || '').toLowerCase() === 
 // indistinguiveis de fora: com a janela ja importada, uma rodada correta cria
 // zero leads e nao deixa rastro nenhum no banco. Foi assim que 4 jobs do
 // pg_cron do Externo rodaram pra nada por meses sem ninguem notar.
-const sheetSyncEstado = {
-  ligado: SHEET_SYNC_LIGADO,
-  execucoes: 0,
-  ultima_em: null as string | null,
-  ultimo_resultado: null as string | null,
-  criados_acumulado: 0,
-};
-
 async function runSheetLeadSync() {
   // Antes do await: prova que a rodada disparou mesmo que ela trave depois.
   sheetSyncEstado.execucoes += 1;
@@ -1050,6 +1122,69 @@ if (SHEET_SYNC_LIGADO) {
 }
 
 // ============================================================
+// CRON: lead do formulario da Meta -> funil, sem a planilha no meio
+//
+// A planilha do Google e ponto unico de falha silenciosa. Medido em 10/09/2026
+// no board BPC: **3.492 linhas na planilha, 2.290 lidas** — 875 perdidas em duas
+// abas que nao tem linha de cabecalho (a primeira linha ja e dado) e 220 com a
+// celula de nome vazia. Nenhuma dessas falhas reclama.
+//
+// A API da Meta nao tem esse problema: le dado estruturado, com o id do lead e a
+// atribuicao completa. Ja trouxe 2.147 leads ao BPC, mais do que a planilha
+// inteira alcanca. Com este cron, o que a planilha perde deixa de importar.
+//
+// NAO substitui o cron da planilha: os dois criam no mesmo board e deduplicam
+// pelo mesmo telefone (`lib/leadAdsSheet`), entao quem chegar primeiro cria e o
+// outro reconhece. Planilha continua util para o que a equipe escreve nela
+// (a coluna de status), que a API nao tem.
+//
+// 30 min e nao 10: cada rodada varre os formularios de 3 paginas na Graph API, e
+// a Meta limita chamada por segundo. A janela de 7 dias mantem a leitura curta.
+// ============================================================
+const META_LEADS_INTERVAL_MS = 30 * 60 * 1000;
+const META_LEADS_DIAS = 7;
+async function runMetaLeadsSync() {
+  metaLeadsEstado.execucoes += 1;
+  metaLeadsEstado.ultima_em = new Date().toISOString();
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/meta-leads-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: JSON.stringify({ since_days: META_LEADS_DIAS, dry_run: false }),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    if (json?.error) {
+      console.error(`[cron:meta-leads] ${json.error}`);
+      metaLeadsEstado.ultimo_resultado = `erro: ${String(json.error).slice(0, 120)}`;
+      return;
+    }
+    const criados = Number(json?.criados || 0);
+    const alertas = Number(json?.formularios_com_alerta || 0);
+    metaLeadsEstado.criados_acumulado += criados;
+    metaLeadsEstado.ultimo_resultado = `criados=${criados} formularios=${json?.formularios_roteados ?? 0} alertas=${alertas}`;
+    // Formulario que le linha e aproveita ZERO e mapeamento quebrado, nao
+    // ausencia de lead. Ja aconteceu (os dois do Israel, em portugues) e custou
+    // 817 leads. Aqui isso grita.
+    if (alertas > 0) {
+      console.error(
+        `[cron:meta-leads] ALERTA: ${alertas} formulario(s) leram linhas e aproveitaram zero — mapeamento de campo quebrado`,
+      );
+    }
+    if (criados > 0) console.log(`[cron:meta-leads] ${metaLeadsEstado.ultimo_resultado}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[cron:meta-leads] failed:', msg);
+    metaLeadsEstado.ultimo_resultado = `falha: ${msg.slice(0, 120)}`;
+  }
+}
+
+// 540s: depois de sheet-lead-sync (360s), capi-reconcile (420s) e
+// sheet-status (480s), pra nao disputar I/O nem cota no boot.
+setTimeout(runMetaLeadsSync, 540_000);
+setInterval(runMetaLeadsSync, META_LEADS_INTERVAL_MS);
+console.log(`[cron:meta-leads] ligado — janela de ${META_LEADS_DIAS} dias, a cada 30 min`);
+
+// ============================================================
 // CRON: status da planilha -> CRM
 //
 // A equipe escreve o desfecho na coluna `status da lead` da planilha, e ate
@@ -1069,13 +1204,6 @@ if (SHEET_SYNC_LIGADO) {
 // ============================================================
 const SHEET_STATUS_INTERVAL_MS = 60 * 60 * 1000;
 const SHEET_STATUS_DIAS = 90;
-const sheetStatusEstado = {
-  execucoes: 0,
-  ultima_em: null as string | null,
-  ultimo_resultado: null as string | null,
-  status_escritos_acumulado: 0,
-};
-
 async function runSheetStatusSync() {
   sheetStatusEstado.execucoes += 1;
   sheetStatusEstado.ultima_em = new Date().toISOString();
@@ -1131,13 +1259,6 @@ console.log(`[cron:sheet-status] ligado — janela de ${SHEET_STATUS_DIAS} dias,
 // em 15 min não duplica nem reenvia — quem já foi volta como `ja_existia`.
 // ============================================================
 const CAPI_RECONCILE_INTERVAL_MS = 15 * 60 * 1000;
-const capiReconcileEstado = {
-  execucoes: 0,
-  ultima_em: null as string | null,
-  ultimo_resultado: null as string | null,
-  enfileirados_acumulado: 0,
-};
-
 async function runCapiReconcile() {
   capiReconcileEstado.execucoes += 1;
   capiReconcileEstado.ultima_em = new Date().toISOString();
@@ -1171,3 +1292,122 @@ async function runCapiReconcile() {
 setTimeout(runCapiReconcile, 420_000);
 setInterval(runCapiReconcile, CAPI_RECONCILE_INTERVAL_MS);
 console.log('[cron:capi-reconcile] ligado — janela de 7 dias, a cada 15 min');
+
+// ============================================================
+// CRON: lead novo -> WhatsApp do acolhedor
+//
+// O acolhedor vive no WhatsApp, nao na tela. Ate aqui, para saber que entrou
+// lead do trafego pago ele tinha que abrir o sistema — e enquanto nao abria, o
+// lead esfriava. Esta rodada leva o lead ao WhatsApp dele com um link `wa.me`
+// que ja abre a conversa com o cliente com a primeira mensagem escrita.
+//
+// 3 min, e nao 30: a varredura le no MAXIMO os leads das ultimas 3h de um board
+// e so escreve quando tem aviso para mandar. Rodada sem lead novo custa duas
+// queries. O que manda na latencia real nao e este cron, e o de ingestao
+// (`meta-leads-sync`, 30 min) — este so nao pode somar atraso ao dele.
+//
+// GATE: sai DESLIGADO de proposito. Ligar e `AVISO_LEAD_ACOLHEDOR=on` no
+// Railway, DEPOIS de cadastrar quem recebe em `acolhedor_aviso_config`. Sem
+// cadastro a funcao nao manda nada, entao o gate e a segunda trava, nao a
+// unica. Desligar de volta: tirar a env var e reiniciar; nada se perde, os
+// leads continuam entrando no funil como sempre.
+// ============================================================
+const AVISO_LEAD_INTERVAL_MS = 3 * 60 * 1000;
+const AVISO_LEAD_LIGADO = (process.env.AVISO_LEAD_ACOLHEDOR || '').toLowerCase() === 'on';
+async function runAvisoLeadAcolhedor() {
+  // Antes do await: prova que a rodada disparou mesmo que ela trave depois.
+  avisoLeadEstado.execucoes += 1;
+  avisoLeadEstado.ultima_em = new Date().toISOString();
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/avisar-acolhedor-lead`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: JSON.stringify({ dry_run: false }),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    if (json?.error) {
+      console.error(`[cron:aviso-lead] ${json.error}`);
+      avisoLeadEstado.ultimo_resultado = `erro: ${String(json.error).slice(0, 120)}`;
+      return;
+    }
+    if (json?.pulado) {
+      avisoLeadEstado.ultimo_resultado = String(json.pulado);
+      return;
+    }
+    const enviados = Number(json?.enviados || 0);
+    const falhas = Number(json?.falhas || 0);
+    avisoLeadEstado.enviados_acumulado += enviados;
+    avisoLeadEstado.ultimo_resultado =
+      `enviados=${enviados} falhas=${falhas} sem_config=${json?.sem_config ?? 0} sem_operador=${json?.sem_operador ?? 0}`;
+    // Lead com dono conhecido e sem WhatsApp cadastrado e lead que ninguem vai
+    // saber que existe. Some no JSON se nao aparecer no log.
+    if (Number(json?.sem_config || 0) > 0) {
+      console.warn(`[cron:aviso-lead] ${json.sem_config} lead(s) de operador sem cadastro em acolhedor_aviso_config`);
+    }
+    if (enviados > 0 || falhas > 0) console.log(`[cron:aviso-lead] ${avisoLeadEstado.ultimo_resultado}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[cron:aviso-lead] failed:', msg);
+    avisoLeadEstado.ultimo_resultado = `falha: ${msg.slice(0, 120)}`;
+  }
+}
+
+if (AVISO_LEAD_LIGADO) {
+  // 660s: ultimo da fila de boot (600s agora e do meta-call-queue).
+  setTimeout(runAvisoLeadAcolhedor, 660_000);
+  setInterval(runAvisoLeadAcolhedor, AVISO_LEAD_INTERVAL_MS);
+  console.log('[cron:aviso-lead] ligado — a cada 3 min');
+} else {
+  console.log('[cron:aviso-lead] DESLIGADO (defina AVISO_LEAD_ACOLHEDOR=on para ligar)');
+}
+
+// ============================================================
+// CRON: fila de ligacao da Meta Cloud, a cada 1 min. Substitui o pg_cron
+// (que mora no projeto Cloud, nao no Externo) apontado direto pra URL
+// publica deste /functions/meta-call-queue-processor.
+//
+// O docstring do handler diz "POST autenticado". Nao era: a chamada chega
+// sem credencial nenhuma, porque RAILWAY_API_KEY nunca teve valor — nem na
+// producao do Railway (`/health.auth.api_key: false`) nem no vault de quem
+// chama. Medido em 14/09/2026 com ~30 min de uptime: 30 de 31 chamadas
+// anonimas do /functions/* eram desta funcao, 1-2 por minuto. Era o ultimo
+// bloqueador do RAILWAY_AUTH_ENFORCE=1.
+//
+// Trazido pra dentro, autentica com o LOOPBACK_TOKEN do boot e deixa de
+// depender de segredo — mesmo movimento ja feito com o sync do funil e com
+// a caixa processual do Gmail.
+//
+// Rodar em paralelo com o pg_cron durante a transicao NAO duplica envio:
+// medido no Externo em 14/09, whatsapp_call_queue tem 2.086 linhas e
+// ZERO com provider='meta_cloud' ou nos status que este handler processa
+// (`pending_permission`/`ready_to_call`) — todas as 2.086 sao do uazapi,
+// que tem outro processador. Na pratica o handler seleciona lista vazia.
+// Fica o registro de que ele NAO tem claim atomico: se alguem enfileirar
+// pelo AutoDialer enquanto os dois gatilhos existem, duas rodadas podem
+// pegar a mesma linha e mandar o template de permissao duas vezes. A janela
+// fecha sozinha quando o enforce entrar (o pg_cron do Cloud passa a tomar
+// 401); enquanto isso, o risco e o de uma fila que hoje esta vazia.
+//   Desligar o pg_cron (painel do Cloud): select cron.unschedule('<nome>');
+// ============================================================
+const META_CALL_QUEUE_INTERVAL_MS = 60 * 1000;
+async function runMetaCallQueue() {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/meta-call-queue-processor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: '{}',
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    // Fila vazia e o caso comum (uma vez por minuto) — so loga trabalho ou erro.
+    if (json?.processed > 0 || json?.success === false || !resp.ok) {
+      console.log(
+        `[cron:meta-call-queue] status=${resp.status} processed=${json?.processed ?? 0}${json?.error ? ` error=${json.error}` : ''}`,
+      );
+    }
+  } catch (err) {
+    console.warn('[cron:meta-call-queue] failed:', err instanceof Error ? err.message : err);
+  }
+}
+// 600s: depois do meta-leads-sync (540s) e antes do aviso-lead (660s).
+setTimeout(runMetaCallQueue, 600_000);
+setInterval(runMetaCallQueue, META_CALL_QUEUE_INTERVAL_MS);

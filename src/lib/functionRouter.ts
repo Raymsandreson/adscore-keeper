@@ -39,6 +39,11 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'sync-agent-labels': 'railway',
   // Ativar o agente pela tela também manda a 1ª mensagem proativa (antes só a etiqueta mandava)
   'agent-proactive-first-message': 'railway',
+  // Indicações: leem/escrevem referrals e whatsapp_messages (Externo) e usam
+  // o token da instância, que não sai do Railway.
+  'referral-classify': 'railway',
+  'referral-outreach': 'railway',
+  'referral-backfill': 'railway',
   'sync-result-labels': 'railway',
   'sync-stage-labels': 'railway',
   'apply-stage-label': 'railway',
@@ -48,6 +53,15 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   // Lista os templates aprovados da WABA ativa. Só existe no Railway (usa o
   // WHATSAPP_CLOUD_TOKEN, que não sai de lá).
   'whatsapp-cloud-templates': 'railway',
+  // Mesmo motivo do de cima (o WHATSAPP_CLOUD_TOKEN so existe no Railway), mas
+  // esta estava CAINDO NO DEFAULT 'cloud' — e a edge do Cloud e so um trampolim
+  // que repassa pro Railway `if (RAILWAY_API_KEY)`, variavel que nunca teve
+  // valor. Resultado: toda checagem de token chegava no /functions/* SEM
+  // credencial nenhuma, e era um dos dois chamadores anonimos que impediam
+  // ligar o RAILWAY_AUTH_ENFORCE (medido em 14/09/2026 no /health).
+  // Indo direto, o functionRouter manda o JWT do usuario logado, que e
+  // credencial aceita — e ainda tira um hop do caminho.
+  'check-whatsapp-cloud-token': 'railway',
   'get-whatsapp-group-info': 'railway',
   'get-group-participants': 'railway', // lia whatsapp_instances/groups_cache do Cloud (moram no Externo) e descartava participante @lid
   'sync-group-contacts': 'railway', // blocklist de equipe lia instances/profiles do Cloud; ilike não casava telefone formatado (criava contato duplicado); @lid descartado e nome do roster ignorado
@@ -62,6 +76,11 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   // tem que ser por service role.
   'inss-procuracao-vincular': 'railway',
   'dictate-activity': 'railway',
+  // Rotina semanal por IA (texto/voz/PDF). Estava na edge do Cloud, que mandava a IA
+  // INVENTAR tipos de atividade e nunca recebia os tipos reais (keys `custom_...`) —
+  // a tela descartava tudo e mostrava "a IA não conseguiu mapear". A versão do Railway
+  // recebe os tipos existentes e prende a IA a eles por enum; o Cloud fica de fallback.
+  'suggest-routine': 'railway',
   'chat-to-activity': 'railway',
   'detect-client-commitments': 'railway', // IA lê a conversa e registra o que o cliente ficou de fazer
   'detect-group-case-reports': 'railway', // IA lê os grupos marcados e acha gente relatando acidente

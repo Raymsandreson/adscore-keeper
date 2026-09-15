@@ -29,7 +29,9 @@ Quais usuários podem ver qual instância. Permissão de leitura SEMPRE do Cloud
 Campos customizados por escopo (board/funnel). Use antes de `ALTER TABLE leads`.
 
 ### `contact_leads`
-Relação N↔N contato↔lead com `relationship_type`. Não crie nova tabela de vínculo.
+Relação N↔N contato↔lead. Não crie nova tabela de vínculo.
+- Colunas reais (conferidas em 11/09/2026): `contact_id`, `lead_id`, `is_primary_client` (o cliente do lead), `relationship_to_victim`, `relationship_to_primary`, `notes`. **Não existe `relationship_type`** — esta linha dizia que existia e induzia ao erro.
+- É a ponte de verdade: 10.264 vínculos cobrindo 8.545 leads. `contacts.lead_id` enxerga só 1.270 leads — usar a coluna em vez da ponte deixa 92% dos vínculos invisíveis. Já mordeu uma vez (limite de gasto por cliente, 11/09/2026).
 
 ### `form_layout_tabs` + `form_layout_fields`
 Layout configurável de formulários. Use antes de hardcodar ordem/visibilidade em componente.
@@ -60,6 +62,26 @@ Cobrem ciclo completo de processo. `generate_case_number(nucleus_id)` já gera c
 
 ### `financial_entries` / `bank_transactions` / `credit_card_transactions`
 Lançamentos. `cost_accounts` + `cost_centers` para classificação.
+
+### Conta e forma de pagamento de uma despesa — NÃO crie tabela nova
+`cost_accounts` é o ÚNICO vocabulário de conta da casa (5 linhas: PESSOAL,
+ABRACI, WHATSJUD, PRUDÊNCIO CAPITAL, PRUDÊNCIO ADVOGADOS). Já é apontada por
+`card_assignments.cost_account_id`, `transaction_category_overrides.cost_account_id`
+e, desde 11/09/2026, `lead_financials.cost_account_id`.
+Forma de pagamento é TEXT (`pix`, `boleto`, `cartao_credito`, `cartao_debito`,
+`transferencia`, `dinheiro`) em `payment_method` — mesma lista em
+`FORMAS_DE_PAGAMENTO` (`src/hooks/useContasDePagamento.ts`).
+QUAL cartão se guarda pelos quatro dígitos (`card_last_digits`), porque é o que
+casa com `credit_card_transactions` — id de `card_assignments` casaria com o
+cadastro, não com o extrato.
+
+### Despesa ↔ caso: `group_jid`, não só `lead_id`
+`transaction_category_overrides.group_jid` diz de QUAL caso é a despesa quando o
+lead tem mais de um grupo. `setTransactionOverride` faz **upsert da linha
+inteira**: qualquer tela que salve um override e NÃO mande `group_jid` zera o
+vínculo do caso sem erro nenhum. Escolha do grupo:
+`src/components/finance/SeletorGrupoCaso.tsx` (busca no servidor — são 2.429
+jids, não carregue a lista toda).
 
 ## Métricas / Metas
 

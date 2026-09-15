@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronUp, X, ClipboardList, Sparkles } from 'lucide-react';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ChevronDown, ChevronUp, ChevronRight, ClipboardList, Sparkles, Flag, Target, ListChecks } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useChecklists, CHECKLIST_TYPES } from '@/hooks/useChecklists';
@@ -164,9 +164,19 @@ interface LeadFunnelProgressBarProps {
    * "herdado" sem dizer herdado de quê.
    */
   origemDoPop?: 'atividade' | 'processo' | 'lead' | null;
+  /**
+   * 'barra' (padrão): desenha a barra de progresso e abre a ABA LATERAL dos
+   * passos no clique. 'somente-passos': não desenha barra nenhuma — só a aba
+   * lateral, já aberta. É o modo que a pergunta pós-criação usa, pra reaproveitar
+   * exatamente a mesma tela de passos (mesma marcação, mesmo log, mesmas regras)
+   * sem ter que montar a ficha da atividade inteira por trás.
+   */
+  modo?: 'barra' | 'somente-passos';
+  /** Chamado quando a aba lateral dos passos fecha. Só o modo 'somente-passos' usa. */
+  onFecharPainel?: () => void;
 }
 
-export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, processId = null, origemDoPop = null }: LeadFunnelProgressBarProps) {
+export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, processId = null, origemDoPop = null, modo = 'barra', onFecharPainel }: LeadFunnelProgressBarProps) {
   const { user } = useAuthContext();
   const [stages, setStages] = useState<Stage[]>([]);
   const [currentStageId, setCurrentStageId] = useState<string | null>(null);
@@ -175,7 +185,10 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
   // Sem isso a lista sai por created_at (objetivo novo pula pro topo e o funil
   // parece "começar" no último objetivo adicionado).
   const [linkOrder, setLinkOrder] = useState<Record<string, number>>({});
-  const [expanded, setExpanded] = useState(false);
+  // Painel dos passos. Desde 14/09/2026 ele é uma ABA LATERAL, não mais um
+  // bloco que abria DENTRO da atividade: a equipe reclamou de "muita coisa no
+  // mesmo lugar" — a ficha e o POP disputavam a mesma tela.
+  const [expanded, setExpanded] = useState(modo === 'somente-passos');
   const [_loading, setLoading] = useState(true);
   const [viewingStageId, setViewingStageId] = useState<string | null>(null);
   const [isLeadClosed, setIsLeadClosed] = useState(false);
@@ -1130,42 +1143,136 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
   const activeViewStageId = viewingStageId || currentStageId;
 
   /**
-   * Rola até o PASSO ATUAL (1º não-marcado da fase em vista) ao expandir.
-   * Depois da unificação do BPC a fase judicial tem 13+ objetivos num painel
-   * só — sem a rolagem, achar o passo era caçada (pedido do usuário, 30/08).
+   * NÍVEL DE VISÃO da aba lateral — "só os marcos", "até os objetivos" ou "tudo".
+   * Pedido do usuário (14/09/2026): fase judicial do BPC tem 13+ objetivos; quem
+   * só quer conferir ONDE o processo está não precisa rolar duzentos passos.
+   * O nível define o padrão de cada seção; o clique numa fase/objetivo vale como
+   * exceção, e trocar de nível zera as exceções — senão a tela fica meio aberta,
+   * meio fechada, sem ninguém saber por quê.
    */
-  const passoAtualRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!expanded) return;
-    const t = setTimeout(() => {
-      passoAtualRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 120);
-    return () => clearTimeout(t);
-  }, [expanded, activeViewStageId, instances.length]);
+  type NivelVisao = 'marcos' | 'objetivos' | 'passos';
+  const [nivelVisao, setNivelVisao] = useState<NivelVisao>('passos');
+  const [faseOverride, setFaseOverride] = useState<Record<string, boolean>>({});
+  const [objetivoOverride, setObjetivoOverride] = useState<Record<string, boolean>>({});
 
-  // Get instances for the viewed stage, na ordem projetada do fluxo (display_order),
-  // não na ordem de criação. Órfãos (template sem link na fase) vão pro fim.
-  const currentStageInstances = useMemo(() => {
+  const faseAberta = (stageId: string) => faseOverride[stageId] ?? (nivelVisao !== 'marcos');
+  const objetivoAberto = (instanceId: string) => objetivoOverride[instanceId] ?? (nivelVisao === 'passos');
+  const trocarNivel = (nivel: NivelVisao) => {
+    setNivelVisao(nivel);
+    setFaseOverride({});
+    setObjetivoOverride({});
+  };
+
+  // Passos de TODAS as fases, cada fase na ordem projetada do fluxo
+  // (display_order), não na de criação. Antes a tela mostrava uma fase por vez e
+  // obrigava a trocar de "aba" a cada marco — agora é uma lista só, empilhada.
+  const instancesPorFase = useMemo(() => {
     const orderOf = (i: ChecklistInstance) =>
       linkOrder[`${i.stage_id}::${i.checklist_template_id}`] ?? Number.MAX_SAFE_INTEGER;
-    return liveInstances
-      .filter(i => i.stage_id === activeViewStageId)
-      .slice()
-      .sort((a, b) => {
-        const diff = orderOf(a) - orderOf(b);
-        if (diff !== 0) return diff;
-        return ((a as any).created_at || '').localeCompare((b as any).created_at || '');
-      });
-  }, [liveInstances, activeViewStageId, linkOrder]);
+    const mapa = new Map<string, ChecklistInstance[]>();
+    stages.forEach(s => mapa.set(s.id, []));
+    liveInstances.forEach(i => {
+      const lista = mapa.get(i.stage_id);
+      if (lista) lista.push(i);
+    });
+    mapa.forEach(lista => lista.sort((a, b) => {
+      const diff = orderOf(a) - orderOf(b);
+      if (diff !== 0) return diff;
+      return ((a as any).created_at || '').localeCompare((b as any).created_at || '');
+    }));
+    return mapa;
+  }, [liveInstances, stages, linkOrder]);
 
-  // 1º passo vivo não-marcado da fase em vista — o alvo da rolagem.
-  const primeiroPendenteId = useMemo(() => {
-    for (const inst of currentStageInstances) {
-      const it = inst.items.find(i => !i.supersededBy && !i.checked);
-      if (it) return `${inst.id}|${it.id}`;
+  /**
+   * PASSO ATUAL — o 1º vivo não-marcado, varrendo a partir da fase em que o
+   * processo está e dando a volta nas anteriores. É o alvo da rolagem automática
+   * ao abrir a aba: a pessoa não tem que caçar onde parou.
+   */
+  const passoAtual = useMemo(() => {
+    const ordem = stages.map(s => s.id);
+    const idx = Math.max(0, ordem.indexOf(currentStageId || ''));
+    const varredura = [...ordem.slice(idx), ...ordem.slice(0, idx)];
+    for (const stageId of varredura) {
+      for (const inst of instancesPorFase.get(stageId) || []) {
+        const item = inst.items.find(i => !i.supersededBy && !i.checked);
+        if (item) return { stageId, instanceId: inst.id, itemId: item.id, key: `${inst.id}|${item.id}` };
+      }
     }
     return null;
-  }, [currentStageInstances]);
+  }, [stages, currentStageId, instancesPorFase]);
+
+  // Passos marcados HOJE (pop_steps_log), pra o selo "hoje" ao lado do passo.
+  // Passo-pergunta entra no log como "rótulo — resposta": por isso o startsWith.
+  const marcadosHoje = useMemo(
+    () => stepLogResumo.labelsHoje.map(l => normalizeLabel(l)),
+    [stepLogResumo.labelsHoje],
+  );
+  const foiMarcadoHoje = useCallback((label: string) => {
+    const alvo = normalizeLabel(label);
+    if (!alvo) return false;
+    return marcadosHoje.some(l => l === alvo || l.startsWith(alvo));
+  }, [marcadosHoje]);
+
+  const passoAtualRef = useRef<HTMLDivElement | null>(null);
+  const faseRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  /**
+   * Ao abrir a aba lateral, rola até onde a pessoa precisa olhar: a fase que ela
+   * clicou na barra, ou — quando abriu pelo percentual — o PASSO ATUAL. Abre à
+   * força a fase e o objetivo do alvo, senão a rolagem levaria a uma seção
+   * recolhida e pareceria não ter funcionado.
+   */
+  // O passo atual entra por REF de propósito: a rolagem acontece ao ABRIR a aba
+  // (ou ao trocar a fase em foco), não a cada passo marcado — senão a tela
+  // pularia debaixo do dedo de quem está marcando vários seguidos.
+  const passoAtualInfo = useRef(passoAtual);
+  passoAtualInfo.current = passoAtual;
+  useEffect(() => {
+    if (!expanded) return;
+    const alvoAtual = passoAtualInfo.current;
+    const faseAlvo = viewingStageId || alvoAtual?.stageId || null;
+    if (faseAlvo) setFaseOverride(prev => (prev[faseAlvo] ? prev : { ...prev, [faseAlvo]: true }));
+    if (!viewingStageId && alvoAtual) {
+      setObjetivoOverride(prev => (prev[alvoAtual.instanceId] ? prev : { ...prev, [alvoAtual.instanceId]: true }));
+    }
+    const t = setTimeout(() => {
+      const alvo = viewingStageId ? faseRefs.current[viewingStageId] : passoAtualRef.current;
+      alvo?.scrollIntoView({ behavior: 'smooth', block: viewingStageId ? 'start' : 'center' });
+    }, 180);
+    return () => clearTimeout(t);
+  }, [expanded, viewingStageId, instances.length]);
+
+  /**
+   * Modo 'somente-passos' (pergunta pós-criação): se o POP não tem fase nenhuma,
+   * não há painel pra abrir — avisa quem montou, senão o host fica pendurado
+   * esperando um `onOpenChange` que nunca vem.
+   */
+  useEffect(() => {
+    if (modo !== 'somente-passos' || _loading) return;
+    if (!boardId || stages.length === 0) onFecharPainel?.();
+  }, [modo, _loading, boardId, stages.length, onFecharPainel]);
+
+  const fecharPainel = useCallback((aberto: boolean) => {
+    setExpanded(aberto);
+    if (!aberto) {
+      setViewingStageId(null);
+      onFecharPainel?.();
+    }
+  }, [onFecharPainel]);
+
+  const abrirPainelNaFase = (stageId: string | null) => {
+    setViewingStageId(stageId);
+    setExpanded(true);
+  };
+
+  // Percentual de cada fase — a MESMA conta dos segmentos da barra, pra a aba
+  // lateral nunca mostrar um número diferente do que está logo acima dela.
+  const percentDaFase = (stageId: string) => {
+    const detalhe = hierarchicalProgress.stageDetails.find(d => d.stageId === stageId);
+    const peso = detalhe?.stagePercent || 0;
+    const porPasso = peso > 0 ? ((detalhe?.completedPercent || 0) / peso) * 100 : 0;
+    return fillPorMarco ? (fillPorMarco[stageId] ?? 0) : porPasso;
+  };
 
   // Cardápio do "Atualizar passos com IA": TODOS os passos do POP (todas as
   // fases), com fase e objetivo pra IA se localizar. Passo-pergunta e passo com
@@ -1196,11 +1303,311 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
 
   if (!boardId || stages.length === 0) return null;
 
+  /** Um objetivo (checklist) com os passos dentro — o mesmo bloco em toda fase. */
+  const renderObjetivo = (instance: ChecklistInstance, stageId: string) => {
+    const objDetail = hierarchicalProgress.stageDetails
+      .find(d => d.stageId === stageId)
+      ?.objectives.find(o => o.instanceId === instance.id);
+    const objPercent = objDetail && objDetail.objectiveWeight > 0
+      ? Math.round((objDetail.completedPercent / objDetail.objectiveWeight) * 100)
+      : 0;
+
+    // Passos do POP de hoje. O registro do passo antigo aparece na lista, mas
+    // não entra na contagem nem no "marcar todos".
+    const liveItems = instance.items.filter(i => !i.supersededBy);
+    const aberto = objetivoAberto(instance.id);
+    const temPassoAtual = passoAtual?.instanceId === instance.id;
+
+    return (
+      <div key={instance.id} className="bg-muted/30 rounded-lg border border-border/50">
+        <div className="flex items-center justify-between gap-2 p-2">
+          <button
+            type="button"
+            onClick={() => setObjetivoOverride(prev => ({ ...prev, [instance.id]: !aberto }))}
+            className="flex items-center gap-1.5 min-w-0 flex-1 text-left hover:opacity-80 transition-opacity"
+            title={aberto ? 'Recolher os passos deste objetivo' : 'Mostrar os passos deste objetivo'}
+          >
+            {aberto
+              ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+            <span className="text-xs font-medium min-w-0 truncate">{instance.template_name}</span>
+            {!aberto && temPassoAtual && (
+              <span className="shrink-0 rounded bg-primary/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-primary">
+                passo atual
+              </span>
+            )}
+          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {!instance.is_readonly && liveItems.length > 1 && (() => {
+              const allStepsChecked = liveItems.every(i => i.checked);
+              return (
+                <button
+                  type="button"
+                  className="text-[10px] text-primary hover:underline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleMarkAllSteps(instance, !allStepsChecked);
+                  }}
+                >
+                  {allStepsChecked ? 'Desmarcar todos' : 'Marcar todos'}
+                </button>
+              );
+            })()}
+            <span className="text-[10px] text-muted-foreground">
+              {liveItems.filter(i => i.checked).length}/{liveItems.length}
+            </span>
+            <span className={cn(
+              "text-[10px] font-semibold",
+              objPercent >= 100 ? "text-emerald-600" : "text-primary"
+            )}>
+              {objPercent}%
+            </span>
+          </div>
+        </div>
+
+        {aberto && (
+          <div className="space-y-1 px-2 pb-2">
+            {instance.items.map(item => {
+              // Calculate individual step weight
+              const stepWeight = objDetail && objDetail.totalSteps > 0
+                ? (objDetail.objectiveWeight / objDetail.totalSteps)
+                : 0;
+
+              // Registro do que foi feito antes de o POP mudar: fica
+              // visível como histórico, mas não é marcável nem conta.
+              const isHistory = !!item.supersededBy;
+              const ehPassoAtual = passoAtual?.key === `${instance.id}|${item.id}`;
+
+              return (
+                <div
+                  key={item.id}
+                  className={cn(
+                    "space-y-0.5 rounded",
+                    ehPassoAtual && "ring-1 ring-primary/50 bg-primary/5 px-1 py-0.5",
+                  )}
+                  ref={ehPassoAtual ? passoAtualRef : undefined}
+                >
+                  <label
+                    className={cn(
+                      "flex items-start gap-2 py-0.5 text-xs rounded px-1 -mx-1",
+                      instance.is_readonly || isHistory ? "cursor-default" : "cursor-pointer hover:bg-accent/50",
+                      isHistory && "opacity-70",
+                    )}
+                  >
+                    <Checkbox
+                      checked={item.checked || false}
+                      onCheckedChange={() => handleToggleItem(instance, item.id)}
+                      disabled={instance.is_readonly || isHistory}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className={cn(item.checked && "line-through text-muted-foreground")}>
+                        {item.label}
+                      </span>
+                      {ehPassoAtual && (
+                        <span className="ml-1.5 inline-block align-middle rounded bg-primary/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-primary whitespace-nowrap">
+                          passo atual
+                        </span>
+                      )}
+                      {/* Marcado HOJE: separa o trabalho do dia do que já estava
+                          feito — a mesma régua do resumo lá em cima. */}
+                      {item.checked && !isHistory && stepLogReady && foiMarcadoHoje(item.label) && (
+                        <span className="ml-1.5 inline-block align-middle rounded bg-emerald-100 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-emerald-700 whitespace-nowrap dark:bg-emerald-950/40 dark:text-emerald-400">
+                          hoje
+                        </span>
+                      )}
+                      {/* Passo já marcado NÃO é reescrito quando o POP muda —
+                          fica registrado como foi feito, só avisa o que mudou. */}
+                      {item.popChange && (
+                        <span
+                          className={cn(
+                            "ml-1.5 inline-block align-middle px-1 py-px rounded text-[9px] font-semibold uppercase tracking-wide whitespace-nowrap",
+                            item.popChange === 'alterado'
+                              ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+                              : "bg-muted text-muted-foreground",
+                          )}
+                          title={
+                            item.popChange === 'removido'
+                              ? 'Este passo não existe mais no POP. Ficou aqui porque já tinha sido marcado.'
+                              : isHistory
+                                ? `Registro do que foi feito antes de o POP mudar. O passo atual${item.popNewLabel ? ` (${item.popNewLabel})` : ''} está logo abaixo, para ser executado.`
+                                : 'O conteúdo deste passo mudou no POP depois que ele foi marcado.'
+                          }
+                        >
+                          {POP_CHANGE_LABEL[item.popChange]}
+                        </span>
+                      )}
+                      {item.description && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{item.description}</p>
+                      )}
+                      {item.popChange === 'alterado' && item.popNewLabel && (
+                        <p className="text-[10px] text-amber-700 dark:text-amber-500 mt-0.5 break-words">
+                          Agora no POP: {item.popNewLabel}
+                        </p>
+                      )}
+                    </div>
+                    {stepWeight > 0 && !isHistory && (
+                      <span className="text-[9px] text-muted-foreground shrink-0 mt-0.5">
+                        {stepWeight.toFixed(1)}%
+                      </span>
+                    )}
+                  </label>
+
+                  {/* Passo-pergunta: concluir = escolher a resposta. */}
+                  {(item.answers?.length || 0) > 0 && !item.checked && !isHistory && !instance.is_readonly && (
+                    <div className="ml-6 mb-1 flex flex-col gap-1">
+                      {item.answers!.map(ans => (
+                        <AnswerButton
+                          key={ans.id}
+                          answer={ans}
+                          stages={stages}
+                          statusLabel={statusLabel}
+                          onClick={() => handleAnswerStep(instance, item, ans)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {(item.answers?.length || 0) > 0 && item.checked && (
+                    <p className="ml-6 text-[10px] text-purple-600 dark:text-purple-400 break-words">
+                      Resposta:{' '}
+                      <span className="font-medium">
+                        {item.answers!.find(a => a.id === item.selectedAnswerId)?.label || '—'}
+                      </span>
+                    </p>
+                  )}
+
+                  {/* Checklist associado ao passo (documentos/requisitos/etc.):
+                      antes nem aparecia aqui — agora é visível e marcável. */}
+                  {item.docChecklist && item.docChecklist.length > 0 && (() => {
+                    const checklistType = item.docChecklist[0]?.type || 'documentos';
+                    const typeInfo = CHECKLIST_TYPES.find(t => t.value === checklistType) || CHECKLIST_TYPES[0];
+                    const docDone = item.docChecklist.filter(d => d.checked || d.notApplicable).length;
+                    // Itens que repetem as respostas do passo: a escolha da
+                    // resposta é que marca (e desmarca) esses.
+                    const stepMirrors = mirrorLabelsOf(item);
+                    // Só item-pergunta ainda segura o passo: o resto é
+                    // marcado em cascata ao concluir (handleToggleItem).
+                    const pendentesDoPasso = pendingSubItems(item) as DocChecklistItem[];
+                    const travadoPorPergunta = pendentesDoPasso.some(d => (d.answers?.length || 0) > 0);
+                    return (
+                      <div className="ml-6 p-1.5 rounded bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/40">
+                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                          <div className="flex items-center gap-1 min-w-0">
+                            <ClipboardList className="h-2.5 w-2.5 shrink-0 text-orange-600 dark:text-orange-400" />
+                            <span className="text-[9px] font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide truncate">
+                              {typeInfo.icon} {typeInfo.label} · {docDone}/{item.docChecklist.length}
+                            </span>
+                          </div>
+                          {/* Concluir o passo marca o que sobrou aqui (menos
+                              "não se aplica", espelho de resposta e pergunta).
+                              Aviso pra ninguém fechar o passo achando que o
+                              checklist ficou intocado. */}
+                          {!instance.is_readonly && !isHistory && docDone < item.docChecklist.length && (
+                            <span className="text-[9px] shrink-0 text-orange-700/80 dark:text-orange-400/80 whitespace-nowrap">
+                              {travadoPorPergunta ? 'trava o passo' : 'marcados ao concluir o passo'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="space-y-0.5">
+                          {item.docChecklist.map(doc => {
+                            // Item-pergunta: marcar é escolher uma das respostas —
+                            // é dela que saem a fase de destino e o status do POP.
+                            const docAnswers = doc.answers || [];
+                            const chosenDocAnswer = docAnswers.find(a => a.id === doc.selectedAnswerId);
+                            // Espelho de uma resposta do passo: quem marca é a
+                            // resposta escolhida, não o clique aqui.
+                            const isMirror = stepMirrors.has(normalizeLabel(doc.label));
+                            return (
+                            <div key={doc.id}>
+                            <label
+                              className={cn(
+                                "flex items-center gap-1.5 text-[11px] py-0.5",
+                                instance.is_readonly || isMirror ? "cursor-default" : "cursor-pointer",
+                                isMirror && !doc.checked && "opacity-60",
+                                doc.notApplicable && "opacity-70",
+                              )}
+                              title={isMirror ? 'Marcado pela resposta escolhida no passo' : undefined}
+                            >
+                              <Checkbox
+                                checked={doc.checked || false}
+                                onCheckedChange={() => handleToggleDocItem(instance, item.id, doc.id)}
+                                disabled={instance.is_readonly || isHistory || isMirror || doc.notApplicable}
+                                className="h-3 w-3"
+                              />
+                              <span className={cn((doc.checked || doc.notApplicable) && "line-through text-muted-foreground")}>
+                                {doc.label}
+                              </span>
+                              {doc.notApplicable && (
+                                <span className="px-1 py-px rounded bg-muted text-muted-foreground text-[9px] font-semibold uppercase tracking-wide whitespace-nowrap">
+                                  não se aplica
+                                </span>
+                              )}
+                              {doc.popChange === 'removido' && (
+                                <span
+                                  className="px-1 py-px rounded bg-muted text-muted-foreground text-[9px] font-semibold uppercase tracking-wide whitespace-nowrap"
+                                  title="Este item não existe mais no POP. Ficou aqui porque já tinha sido marcado."
+                                >
+                                  {POP_CHANGE_LABEL.removido}
+                                </span>
+                              )}
+                              {/* Escape do item que não cabe neste caso: destrava o passo
+                                  sem dizer que foi feito. Não conta como trabalho. */}
+                              {!instance.is_readonly && !isHistory && !isMirror && !doc.checked && (
+                                <button
+                                  type="button"
+                                  className="ml-auto shrink-0 text-[9px] text-muted-foreground hover:text-foreground hover:underline"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleToggleDocNotApplicable(instance, item.id, doc.id);
+                                  }}
+                                >
+                                  {doc.notApplicable ? 'aplica-se' : 'não se aplica'}
+                                </button>
+                              )}
+                            </label>
+
+                            {docAnswers.length > 0 && !doc.checked && !doc.notApplicable && !isHistory && !instance.is_readonly && (
+                              <div className="ml-4.5 mt-0.5 mb-1 flex flex-col gap-1">
+                                {docAnswers.map(ans => (
+                                  <AnswerButton
+                                    key={ans.id}
+                                    answer={ans}
+                                    stages={stages}
+                                    statusLabel={statusLabel}
+                                    onClick={() => handleAnswerDocItem(instance, item.id, doc, ans)}
+                                  />
+                                ))}
+                              </div>
+                            )}
+
+                            {docAnswers.length > 0 && doc.checked && (
+                              <p className="ml-5 text-[10px] text-purple-600 dark:text-purple-400 break-words">
+                                Resposta: <span className="font-medium">{chosenDocAnswer?.label || '—'}</span>
+                              </p>
+                            )}
+                            </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
-    <Collapsible open={expanded} onOpenChange={setExpanded}>
-      {/* Stepper bar — always visible, segments clickable to switch stage view, click toggles expand */}
+    {modo === 'barra' && (
       <div className="w-full mt-2">
+        {/* Stepper bar — sempre visível. Clique num segmento abre a ABA LATERAL
+            já rolada até aquela fase; o percentual abre no passo atual. */}
         <div className="flex items-center gap-2">
           <div
             className="flex items-center gap-1 flex-1 min-w-0"
@@ -1219,13 +1626,12 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (!expanded) setExpanded(true);
-                    if (m.stage_id && stages.some(st => st.id === m.stage_id)) {
-                      setViewingStageId(m.stage_id === currentStageId ? null : m.stage_id);
-                    }
+                    abrirPainelNaFase(
+                      m.stage_id && stages.some(st => st.id === m.stage_id) ? m.stage_id : null,
+                    );
                   }}
                   className="flex items-center flex-1 relative group/seg"
-                  title={`${m.rotulo}${m.data_detectada ? ` · ${formatBRShort(m.data_detectada)}` : ''}${m.estado === 'presumido' ? ' · presumido' : ''}`}
+                  title={`${m.rotulo}${m.data_detectada ? ` · ${formatBRShort(m.data_detectada)}` : ''}${m.estado === 'presumido' ? ' · presumido' : ''}\nAbre os passos aqui do lado`}
                 >
                   <div className={cn(
                     "h-2 w-full rounded-full transition-all",
@@ -1261,7 +1667,7 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
               const medida = porMarco
                 ? `\n(andamento por marco · passos: ${Math.round(fillPorPasso)}%)`
                 : '';
-              const tooltip = `${prefix}${stage.name} — ${Math.round(fillPercent)}%${medida}${objLine}`;
+              const tooltip = `${prefix}${stage.name} — ${Math.round(fillPercent)}%${medida}${objLine}\nAbre os passos aqui do lado`;
 
               return (
                 <button
@@ -1269,8 +1675,7 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (!expanded) setExpanded(true);
-                    setViewingStageId(stage.id === currentStageId ? null : stage.id);
+                    abrirPainelNaFase(stage.id);
                   }}
                   className="flex items-center flex-1 relative group/seg"
                   title={tooltip}
@@ -1302,13 +1707,14 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
 
           <button
             type="button"
-            onClick={() => setExpanded(e => !e)}
+            onClick={() => (expanded ? fecharPainel(false) : abrirPainelNaFase(null))}
             className="flex items-center gap-1.5 text-xs shrink-0 hover:opacity-80 transition-opacity"
             title={porMarco
               ? `Andamento do processo: marco ${regua.cumpridos} de ${regua.previstos} da régua.\n`
                 + `Vem das movimentações e documentos — não depende de marcar passo.\n`
-                + `Passos executados neste POP: ${Math.round(globalPercent)}%.`
-              : 'Percentual por passos marcados no POP'}
+                + `Passos executados neste POP: ${Math.round(globalPercent)}%.\n`
+                + `Abre os passos numa aba aqui do lado, no passo atual.`
+              : 'Percentual por passos marcados no POP.\nAbre os passos numa aba aqui do lado, no passo atual.'}
           >
             <span className={cn(
               "font-bold tabular-nums min-w-[34px] text-right",
@@ -1366,55 +1772,30 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
           </div>
         )}
       </div>
+    )}
 
-      <CollapsibleContent>
-        <div className="mt-3 space-y-2 max-h-[320px] overflow-y-auto">
-          {/* Stage navigator: prev | current name + position | next */}
-          {(() => {
-            const viewIdx = stages.findIndex(s => s.id === activeViewStageId);
-            const viewStage = stages[viewIdx];
-            const goPrev = () => viewIdx > 0 && setViewingStageId(stages[viewIdx - 1].id === currentStageId ? null : stages[viewIdx - 1].id);
-            const goNext = () => viewIdx < stages.length - 1 && setViewingStageId(stages[viewIdx + 1].id === currentStageId ? null : stages[viewIdx + 1].id);
-            const isViewingCurrent = activeViewStageId === currentStageId;
-            return (
-              <div className="flex items-center justify-between gap-2 px-1 py-1.5 rounded-md bg-muted/40">
-                <button
-                  type="button"
-                  onClick={goPrev}
-                  disabled={viewIdx <= 0}
-                  className="p-1 rounded hover:bg-background disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  aria-label="Fase anterior"
-                >
-                  <ChevronUp className="h-4 w-4 -rotate-90" />
-                </button>
-                <div className="flex-1 min-w-0 text-center">
-                  <div className="text-xs font-semibold truncate">{viewStage?.name || '—'}</div>
-                  <div className="text-[10px] text-muted-foreground">
-                    Fase {viewIdx + 1} de {stages.length}
-                    {!isViewingCurrent && <span className="ml-1.5 text-primary">· visualizando</span>}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={goNext}
-                  disabled={viewIdx >= stages.length - 1}
-                  className="p-1 rounded hover:bg-background disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  aria-label="Próxima fase"
-                >
-                  <ChevronDown className="h-4 w-4 -rotate-90" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setExpanded(false)}
-                  className="p-1 rounded hover:bg-background text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="Minimizar detalhes do fluxo"
-                  title="Minimizar"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            );
-          })()}
+    {/* ABA LATERAL DOS PASSOS — abre à ESQUERDA de propósito: a ficha da
+        atividade e a do processo ocupam a direita, e o painel tem que ficar AO
+        LADO, nunca por cima do que a pessoa está lendo (skills
+        `ui-sem-redirecionar` + `ui-sem-sobreposicao`). Fechar devolve a pessoa
+        exatamente onde ela estava. */}
+    <Sheet open={expanded} onOpenChange={fecharPainel}>
+      <SheetContent side="left" className="w-full sm:max-w-2xl p-0 flex flex-col gap-0 overflow-hidden">
+        <SheetHeader className="space-y-2 border-b px-4 pb-3 pt-4 text-left">
+          <SheetTitle className="pr-10 text-sm leading-snug">
+            {boardType === 'workflow' ? 'POP' : 'Funil'}: {boardName || 'Passos'}
+            {currentStageId && (
+              <span className="ml-1.5 font-normal text-muted-foreground">
+                · {stages.find(s => s.id === currentStageId)?.name}
+                {porMarco
+                  ? ` · marco ${regua.cumpridos} de ${regua.previstos}`
+                  : ` · fase ${currentIdx + 1} de ${stages.length}`}
+              </span>
+            )}
+          </SheetTitle>
+          <SheetDescription className="sr-only">
+            Passos do POP desta atividade, todas as fases numa lista só. Marcar aqui grava no POP.
+          </SheetDescription>
 
           {/* Onde o PROCESSO está, pela régua de marcos — leitura automática das
               movimentações e documentos. Aparece acima dos passos de propósito:
@@ -1449,313 +1830,175 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
             </div>
           )}
 
-          {/* Régua "onde você está": o que foi marcado hoje x em outro dia, e o
-              atalho pra conciliar o POP com as movimentações do processo. */}
-          <div className="flex items-start justify-between gap-2 px-1">
-            <p className="text-[10px] leading-snug text-muted-foreground min-w-0 flex-1">
-              {!stepLogReady ? null : stepLogResumo.hojeCount > 0 ? (
-                <>
-                  <span className="font-medium text-foreground">
-                    Hoje: {stepLogResumo.hojeCount} passo{stepLogResumo.hojeCount > 1 ? 's' : ''}
-                  </span>
-                  {stepLogResumo.labelsHoje.length > 0 && (
-                    <span> — {stepLogResumo.labelsHoje.slice(0, 3).join(', ')}
-                      {stepLogResumo.labelsHoje.length > 3 && ` +${stepLogResumo.labelsHoje.length - 3}`}
-                    </span>
+          {/* Quanto mostrar: só os marcos, até os objetivos, ou tudo. Uma lista
+              só, sem aba por marco — é o que a equipe pediu. */}
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-md border p-0.5">
+              {([
+                { id: 'marcos' as const, label: 'Marcos', Icon: Flag, dica: 'Só as fases/marcos — recolhe todo o resto' },
+                { id: 'objetivos' as const, label: 'Objetivos', Icon: Target, dica: 'Fases e objetivos, sem os passos' },
+                { id: 'passos' as const, label: 'Passos', Icon: ListChecks, dica: 'Tudo aberto, passo a passo' },
+              ]).map(({ id, label, Icon, dica }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => trocarNivel(id)}
+                  title={dica}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors",
+                    nivelVisao === id
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted",
                   )}
-                </>
-              ) : (
-                <>
-                  <span className="font-medium text-foreground">Nenhum passo marcado hoje</span>
-                  {stepLogResumo.anterioresCount > 0 && stepLogResumo.ultima && (
-                    <span> — os {stepLogResumo.anterioresCount} últimos são de outro dia (último em{' '}
-                      {stepLogResumo.ultima.split('-').reverse().join('/')})
-                    </span>
-                  )}
-                </>
-              )}
-            </p>
+                >
+                  <Icon className="h-3 w-3" /> {label}
+                </button>
+              ))}
+            </div>
+            {passoAtual && (
+              <button
+                type="button"
+                onClick={() => {
+                  setViewingStageId(null);
+                  setFaseOverride(prev => ({ ...prev, [passoAtual.stageId]: true }));
+                  setObjetivoOverride(prev => ({ ...prev, [passoAtual.instanceId]: true }));
+                  setTimeout(() => passoAtualRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+                }}
+                className="text-[11px] text-primary hover:underline"
+                title="Rolar até o primeiro passo que falta marcar"
+              >
+                Ir ao passo atual
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setCatchUpOpen(true)}
-              className="shrink-0 inline-flex items-center gap-1 rounded border border-violet-200 px-1.5 py-0.5 text-[10px] text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-400 dark:hover:bg-violet-900/20 transition-colors"
+              className="ml-auto shrink-0 inline-flex items-center gap-1 rounded border border-violet-200 px-1.5 py-1 text-[10px] text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-400 dark:hover:bg-violet-900/20 transition-colors"
               title="A IA lê as movimentações do processo e sugere os passos que já podem ser marcados"
             >
               <Sparkles className="h-3 w-3" /> Atualizar passos
             </button>
           </div>
 
-          {/* Current stage checklists with objective percentages */}
-          {currentStageInstances.length > 0 ? (
-            currentStageInstances.map(instance => {
-              const objDetail = hierarchicalProgress.stageDetails
-                .find(d => d.stageId === activeViewStageId)
-                ?.objectives.find(o => o.instanceId === instance.id);
-              const objPercent = objDetail && objDetail.objectiveWeight > 0
-                ? Math.round((objDetail.completedPercent / objDetail.objectiveWeight) * 100)
-                : 0;
+          {/* Régua "onde você está": o que foi marcado hoje x em outro dia. */}
+          <p className="text-[10px] leading-snug text-muted-foreground">
+            {!stepLogReady ? null : stepLogResumo.hojeCount > 0 ? (
+              <>
+                <span className="font-medium text-foreground">
+                  Hoje: {stepLogResumo.hojeCount} passo{stepLogResumo.hojeCount > 1 ? 's' : ''}
+                </span>
+                {stepLogResumo.labelsHoje.length > 0 && (
+                  <span> — {stepLogResumo.labelsHoje.slice(0, 3).join(', ')}
+                    {stepLogResumo.labelsHoje.length > 3 && ` +${stepLogResumo.labelsHoje.length - 3}`}
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="font-medium text-foreground">Nenhum passo marcado hoje</span>
+                {stepLogResumo.anterioresCount > 0 && stepLogResumo.ultima && (
+                  <span> — os {stepLogResumo.anterioresCount} últimos são de outro dia (último em{' '}
+                    {stepLogResumo.ultima.split('-').reverse().join('/')})
+                  </span>
+                )}
+              </>
+            )}
+          </p>
+        </SheetHeader>
 
-              // Passos do POP de hoje. O registro do passo antigo aparece na
-              // lista, mas não entra na contagem nem no "marcar todos".
-              const liveItems = instance.items.filter(i => !i.supersededBy);
+        {/* TODAS as fases numa lista só, empilhadas — sem aba por marco. */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+          {stages.map((stage, idx) => {
+            const objetivos = instancesPorFase.get(stage.id) || [];
+            const passosVivos = objetivos.flatMap(i => i.items.filter(it => !it.supersededBy));
+            const feitos = passosVivos.filter(i => i.checked).length;
+            const percent = Math.round(percentDaFase(stage.id));
+            const aberta = faseAberta(stage.id);
+            const ehFaseAtual = stage.id === currentStageId;
+            const temPassoAtual = passoAtual?.stageId === stage.id;
+            const marcosDaFase = regua.marcos.filter(m => m.stage_id === stage.id && !m.atravessa_fases);
 
-              return (
-                <div key={instance.id} className="bg-muted/30 rounded-lg p-2 border border-border/50">
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="text-xs font-medium min-w-0 truncate">{instance.template_name}</span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {!instance.is_readonly && liveItems.length > 1 && (() => {
-                        const allStepsChecked = liveItems.every(i => i.checked);
-                        return (
-                          <button
-                            type="button"
-                            className="text-[10px] text-primary hover:underline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleMarkAllSteps(instance, !allStepsChecked);
-                            }}
-                          >
-                            {allStepsChecked ? 'Desmarcar todos' : 'Marcar todos'}
-                          </button>
-                        );
-                      })()}
-                      <span className="text-[10px] text-muted-foreground">
-                        {liveItems.filter(i => i.checked).length}/{liveItems.length}
-                      </span>
-                      <span className={cn(
-                        "text-[10px] font-semibold",
-                        objPercent >= 100 ? "text-emerald-600" : "text-primary"
-                      )}>
-                        {objPercent}%
-                      </span>
+            return (
+              <div
+                key={stage.id}
+                ref={el => { faseRefs.current[stage.id] = el; }}
+                className={cn(
+                  "rounded-lg border",
+                  ehFaseAtual ? "border-primary/40 bg-primary/[0.03]" : "border-border/60",
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => setFaseOverride(prev => ({ ...prev, [stage.id]: !aberta }))}
+                  className="flex w-full items-center gap-2 px-2 py-2 text-left hover:bg-muted/40 transition-colors rounded-lg"
+                >
+                  {aberta
+                    ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold truncate">{stage.name}</span>
+                      {ehFaseAtual && (
+                        <span className="shrink-0 rounded bg-primary/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-primary">
+                          fase atual
+                        </span>
+                      )}
+                      {!aberta && temPassoAtual && (
+                        <span className="shrink-0 rounded bg-amber-100 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-950/40 dark:text-amber-400">
+                          falta marcar aqui
+                        </span>
+                      )}
                     </div>
-                  </div>
-                  <div className="space-y-1">
-                    {instance.items.map(item => {
-                      // Calculate individual step weight
-                      const stepWeight = objDetail && objDetail.totalSteps > 0
-                        ? (objDetail.objectiveWeight / objDetail.totalSteps)
-                        : 0;
-
-                      // Registro do que foi feito antes de o POP mudar: fica
-                      // visível como histórico, mas não é marcável nem conta.
-                      const isHistory = !!item.supersededBy;
-
-                      return (
-                        <div
-                          key={item.id}
-                          className="space-y-0.5"
-                          ref={`${instance.id}|${item.id}` === primeiroPendenteId ? passoAtualRef : undefined}
-                        >
-                          <label
+                    <div className="text-[10px] text-muted-foreground">
+                      Fase {idx + 1} de {stages.length} · {feitos}/{passosVivos.length} passos
+                      {objetivos.length > 0 && ` · ${objetivos.length} objetivo${objetivos.length > 1 ? 's' : ''}`}
+                    </div>
+                    {/* No nível "Marcos" a fase recolhida ainda diz o que o
+                        processo já atingiu — senão recolher viraria esconder. */}
+                    {!aberta && marcosDaFase.length > 0 && (
+                      <div className="mt-0.5 flex flex-wrap gap-1">
+                        {marcosDaFase.map(m => (
+                          <span
+                            key={m.marco_chave}
                             className={cn(
-                              "flex items-start gap-2 py-0.5 text-xs rounded px-1 -mx-1",
-                              instance.is_readonly || isHistory ? "cursor-default" : "cursor-pointer hover:bg-accent/50",
-                              isHistory && "opacity-70",
+                              "rounded px-1 py-px text-[9px] whitespace-nowrap",
+                              m.estado === 'pendente'
+                                ? "bg-muted text-muted-foreground"
+                                : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400",
                             )}
+                            title={m.data_detectada ? formatBRShort(m.data_detectada) : undefined}
                           >
-                            <Checkbox
-                              checked={item.checked || false}
-                              onCheckedChange={() => handleToggleItem(instance, item.id)}
-                              disabled={instance.is_readonly || isHistory}
-                              className="mt-0.5"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <span className={cn(item.checked && "line-through text-muted-foreground")}>
-                                {item.label}
-                              </span>
-                              {/* Passo já marcado NÃO é reescrito quando o POP muda —
-                                  fica registrado como foi feito, só avisa o que mudou. */}
-                              {item.popChange && (
-                                <span
-                                  className={cn(
-                                    "ml-1.5 inline-block align-middle px-1 py-px rounded text-[9px] font-semibold uppercase tracking-wide whitespace-nowrap",
-                                    item.popChange === 'alterado'
-                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
-                                      : "bg-muted text-muted-foreground",
-                                  )}
-                                  title={
-                                    item.popChange === 'removido'
-                                      ? 'Este passo não existe mais no POP. Ficou aqui porque já tinha sido marcado.'
-                                      : isHistory
-                                        ? `Registro do que foi feito antes de o POP mudar. O passo atual${item.popNewLabel ? ` (${item.popNewLabel})` : ''} está logo abaixo, para ser executado.`
-                                        : 'O conteúdo deste passo mudou no POP depois que ele foi marcado.'
-                                  }
-                                >
-                                  {POP_CHANGE_LABEL[item.popChange]}
-                                </span>
-                              )}
-                              {item.description && (
-                                <p className="text-[10px] text-muted-foreground mt-0.5">{item.description}</p>
-                              )}
-                              {item.popChange === 'alterado' && item.popNewLabel && (
-                                <p className="text-[10px] text-amber-700 dark:text-amber-500 mt-0.5 break-words">
-                                  Agora no POP: {item.popNewLabel}
-                                </p>
-                              )}
-                            </div>
-                            {stepWeight > 0 && !isHistory && (
-                              <span className="text-[9px] text-muted-foreground shrink-0 mt-0.5">
-                                {stepWeight.toFixed(1)}%
-                              </span>
-                            )}
-                          </label>
-
-                          {/* Passo-pergunta: concluir = escolher a resposta. */}
-                          {(item.answers?.length || 0) > 0 && !item.checked && !isHistory && !instance.is_readonly && (
-                            <div className="ml-6 mb-1 flex flex-col gap-1">
-                              {item.answers!.map(ans => (
-                                <AnswerButton
-                                  key={ans.id}
-                                  answer={ans}
-                                  stages={stages}
-                                  statusLabel={statusLabel}
-                                  onClick={() => handleAnswerStep(instance, item, ans)}
-                                />
-                              ))}
-                            </div>
-                          )}
-                          {(item.answers?.length || 0) > 0 && item.checked && (
-                            <p className="ml-6 text-[10px] text-purple-600 dark:text-purple-400 break-words">
-                              Resposta:{' '}
-                              <span className="font-medium">
-                                {item.answers!.find(a => a.id === item.selectedAnswerId)?.label || '—'}
-                              </span>
-                            </p>
-                          )}
-
-                          {/* Checklist associado ao passo (documentos/requisitos/etc.):
-                              antes nem aparecia aqui — agora é visível e marcável. */}
-                          {item.docChecklist && item.docChecklist.length > 0 && (() => {
-                            const checklistType = item.docChecklist[0]?.type || 'documentos';
-                            const typeInfo = CHECKLIST_TYPES.find(t => t.value === checklistType) || CHECKLIST_TYPES[0];
-                            const docDone = item.docChecklist.filter(d => d.checked || d.notApplicable).length;
-                            // Itens que repetem as respostas do passo: a escolha da
-                            // resposta é que marca (e desmarca) esses.
-                            const stepMirrors = mirrorLabelsOf(item);
-                            // Só item-pergunta ainda segura o passo: o resto é
-                            // marcado em cascata ao concluir (handleToggleItem).
-                            const pendentesDoPasso = pendingSubItems(item) as DocChecklistItem[];
-                            const travadoPorPergunta = pendentesDoPasso.some(d => (d.answers?.length || 0) > 0);
-                            return (
-                              <div className="ml-6 p-1.5 rounded bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/40">
-                                <div className="flex items-center justify-between gap-2 mb-0.5">
-                                  <div className="flex items-center gap-1 min-w-0">
-                                    <ClipboardList className="h-2.5 w-2.5 shrink-0 text-orange-600 dark:text-orange-400" />
-                                    <span className="text-[9px] font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide truncate">
-                                      {typeInfo.icon} {typeInfo.label} · {docDone}/{item.docChecklist.length}
-                                    </span>
-                                  </div>
-                                  {/* Concluir o passo marca o que sobrou aqui (menos
-                                      "não se aplica", espelho de resposta e pergunta).
-                                      Aviso pra ninguém fechar o passo achando que o
-                                      checklist ficou intocado. */}
-                                  {!instance.is_readonly && !isHistory && docDone < item.docChecklist.length && (
-                                    <span className="text-[9px] shrink-0 text-orange-700/80 dark:text-orange-400/80 whitespace-nowrap">
-                                      {travadoPorPergunta ? 'trava o passo' : 'marcados ao concluir o passo'}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="space-y-0.5">
-                                  {item.docChecklist.map(doc => {
-                                    // Item-pergunta: marcar é escolher uma das respostas —
-                                    // é dela que saem a fase de destino e o status do POP.
-                                    const docAnswers = doc.answers || [];
-                                    const chosenDocAnswer = docAnswers.find(a => a.id === doc.selectedAnswerId);
-                                    // Espelho de uma resposta do passo: quem marca é a
-                                    // resposta escolhida, não o clique aqui.
-                                    const isMirror = stepMirrors.has(normalizeLabel(doc.label));
-                                    return (
-                                    <div key={doc.id}>
-                                    <label
-                                      className={cn(
-                                        "flex items-center gap-1.5 text-[11px] py-0.5",
-                                        instance.is_readonly || isMirror ? "cursor-default" : "cursor-pointer",
-                                        isMirror && !doc.checked && "opacity-60",
-                                        doc.notApplicable && "opacity-70",
-                                      )}
-                                      title={isMirror ? 'Marcado pela resposta escolhida no passo' : undefined}
-                                    >
-                                      <Checkbox
-                                        checked={doc.checked || false}
-                                        onCheckedChange={() => handleToggleDocItem(instance, item.id, doc.id)}
-                                        disabled={instance.is_readonly || isHistory || isMirror || doc.notApplicable}
-                                        className="h-3 w-3"
-                                      />
-                                      <span className={cn((doc.checked || doc.notApplicable) && "line-through text-muted-foreground")}>
-                                        {doc.label}
-                                      </span>
-                                      {doc.notApplicable && (
-                                        <span className="px-1 py-px rounded bg-muted text-muted-foreground text-[9px] font-semibold uppercase tracking-wide whitespace-nowrap">
-                                          não se aplica
-                                        </span>
-                                      )}
-                                      {doc.popChange === 'removido' && (
-                                        <span
-                                          className="px-1 py-px rounded bg-muted text-muted-foreground text-[9px] font-semibold uppercase tracking-wide whitespace-nowrap"
-                                          title="Este item não existe mais no POP. Ficou aqui porque já tinha sido marcado."
-                                        >
-                                          {POP_CHANGE_LABEL.removido}
-                                        </span>
-                                      )}
-                                      {/* Escape do item que não cabe neste caso: destrava o passo
-                                          sem dizer que foi feito. Não conta como trabalho. */}
-                                      {!instance.is_readonly && !isHistory && !isMirror && !doc.checked && (
-                                        <button
-                                          type="button"
-                                          className="ml-auto shrink-0 text-[9px] text-muted-foreground hover:text-foreground hover:underline"
-                                          onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            handleToggleDocNotApplicable(instance, item.id, doc.id);
-                                          }}
-                                        >
-                                          {doc.notApplicable ? 'aplica-se' : 'não se aplica'}
-                                        </button>
-                                      )}
-                                    </label>
-
-                                    {docAnswers.length > 0 && !doc.checked && !doc.notApplicable && !isHistory && !instance.is_readonly && (
-                                      <div className="ml-4.5 mt-0.5 mb-1 flex flex-col gap-1">
-                                        {docAnswers.map(ans => (
-                                          <AnswerButton
-                                            key={ans.id}
-                                            answer={ans}
-                                            stages={stages}
-                                            statusLabel={statusLabel}
-                                            onClick={() => handleAnswerDocItem(instance, item.id, doc, ans)}
-                                          />
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    {docAnswers.length > 0 && doc.checked && (
-                                      <p className="ml-5 text-[10px] text-purple-600 dark:text-purple-400 break-words">
-                                        Resposta: <span className="font-medium">{chosenDocAnswer?.label || '—'}</span>
-                                      </p>
-                                    )}
-                                    </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      );
-                    })}
+                            {m.rotulo}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              );
-            })
-          ) : (
-            <p className="text-[11px] text-muted-foreground text-center py-2">
-              Nenhum passo configurado para esta fase
-            </p>
-          )}
+                  <span className={cn(
+                    "shrink-0 text-[11px] font-semibold tabular-nums",
+                    percent >= 100 ? "text-emerald-600" : "text-primary",
+                  )}>
+                    {percent}%
+                  </span>
+                </button>
+
+                {aberta && (
+                  <div className="space-y-2 px-2 pb-2">
+                    {objetivos.length > 0
+                      ? objetivos.map(inst => renderObjetivo(inst, stage.id))
+                      : (
+                        <p className="py-2 text-center text-[11px] text-muted-foreground">
+                          Nenhum passo configurado para esta fase
+                        </p>
+                      )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      </CollapsibleContent>
-    </Collapsible>
+      </SheetContent>
+    </Sheet>
 
     <PopCatchUpSheet
       open={catchUpOpen}

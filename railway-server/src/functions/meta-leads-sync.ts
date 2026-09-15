@@ -134,14 +134,31 @@ interface LeadDaMeta {
   respostas: Record<string, string>;
 }
 
-async function telefonesDoBoard(boardId: string): Promise<Set<string>> {
+/**
+ * O que ja existe no board, pelas DUAS identidades.
+ *
+ * So o telefone nao basta, e a limpeza de 11/09/2026 mostrou por que: 289 leads
+ * existiam em duplicata, cada par com o mesmo `facebook_lead_id` e telefones
+ * diferentes — o formulario traz um numero pre-preenchido pelo perfil e outro
+ * digitado na resposta, e eles discordam em ~9% dos casos. Ao consolidar, o
+ * sobrevivente ficou com UM dos dois numeros; o outro saiu de `lead_phone`.
+ *
+ * Sem o id aqui, esta rotina veria o telefone que sobrou, nao reconheceria o
+ * lead e recriaria os 255 duplicados na rodada seguinte.
+ *
+ * Hoje isso nao acontece por um acaso: a varredura nao filtra `deleted_at`,
+ * entao o telefone da linha removida ainda conta como conhecido. E seguranca
+ * acidental — no dia em que alguem acrescentar o filtro, o que parece uma
+ * correcao obvia, as duplicatas voltam em 30 minutos.
+ */
+async function existentesDoBoard(boardId: string): Promise<{ fones: Set<string>; ids: Set<string> }> {
   const chaves = new Set<string>();
+  const ids = new Set<string>();
   for (let inicio = 0; ; inicio += PAGINA_DEDUP) {
     const { data, error } = await supabase
       .from('leads')
-      .select('lead_phone')
+      .select('lead_phone, facebook_lead_id')
       .eq('board_id', boardId)
-      .not('lead_phone', 'is', null)
       .order('id', { ascending: true })
       .range(inicio, inicio + PAGINA_DEDUP - 1);
     if (error) throw new Error(`dedup do board ${boardId}: ${error.message}`);
@@ -149,11 +166,13 @@ async function telefonesDoBoard(boardId: string): Promise<Set<string>> {
     for (const l of linhas) {
       const k = phoneKey(String((l as any).lead_phone || '').replace(/\D/g, ''));
       if (k) chaves.add(k);
+      const idMeta = String((l as any).facebook_lead_id || '').trim();
+      if (idMeta) ids.add(idMeta);
     }
     if (linhas.length < PAGINA_DEDUP) break;
     if (inicio >= 200_000) break;
   }
-  return chaves;
+  return { fones: chaves, ids };
 }
 
 async function leadsDoFormulario(
@@ -332,12 +351,21 @@ export const handler: RequestHandler = async (req, res) => {
       }
       const etapaInicial = stages[0].id;
 
-      const conhecidos = await telefonesDoBoard(boardId);
+      const conhecidos = await existentesDoBoard(boardId);
       const vistosAgora = new Set<string>();
+      let barradosPeloId = 0;
       const aCriar: LeadDaMeta[] = [];
       for (const l of lista) {
+        // O id do lead na Meta vem antes do telefone: e a identidade exata do
+        // registro, e sobrevive a divergencia entre o numero pre-preenchido e o
+        // digitado na resposta. Ver o comentario de `existentesDoBoard`.
+        const idMeta = String(l.meta_lead_id || '').trim();
+        if (idMeta && conhecidos.ids.has(idMeta)) {
+          barradosPeloId += 1;
+          continue;
+        }
         const k = phoneKey(l.telefone);
-        if (!k || conhecidos.has(k) || vistosAgora.has(k)) continue;
+        if (!k || conhecidos.fones.has(k) || vistosAgora.has(k)) continue;
         vistosAgora.add(k);
         aCriar.push(l);
       }
@@ -405,7 +433,10 @@ export const handler: RequestHandler = async (req, res) => {
         ja_no_board: lista.length - aCriar.length,
         a_criar: aCriar.length,
         criados,
-        dedup_telefones_conhecidos: conhecidos.size,
+        dedup_telefones_conhecidos: conhecidos.fones.size,
+        dedup_ids_da_meta_conhecidos: conhecidos.ids.size,
+        // Quantos so o id salvou de virar duplicata nesta rodada.
+        barrados_pelo_id_da_meta: barradosPeloId,
         erros: totalErros,
         erros_por_motivo: porErro,
         amostra_erros: erros,

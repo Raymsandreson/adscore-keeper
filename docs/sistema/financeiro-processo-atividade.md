@@ -1115,3 +1115,185 @@ exceção; lançamento avulso segue com um tipo só; clique na linha abre a edi�
 botão de dentro da linha não abre; e leitura de documento abandonada não
 sequestra a edição da linha. Os três últimos foram vistos **vermelhos** com o
 painel revertido, antes de ficarem verdes.
+
+---
+
+## Conta, forma de pagamento e o caso (grupo de WhatsApp) — 11/09/2026
+
+### O buraco
+
+Duas perguntas que o sistema já sabia responder na sessão **Financeiro** e não
+sabia na **ficha do lead**:
+
+1. **Por onde o dinheiro andou.** `lead_financials.payment_method` existia desde
+   sempre, mas só no estado do formulário — nunca chegou à tela. Conferido no
+   Externo em 11/09/2026: **0 das 43 linhas** tinham valor. E não havia nenhuma
+   coluna de conta. Resultado: quem lançava já sabia que a despesa saiu no cartão
+   final 1234, e essa informação morria entre o cadastro e a conferência — a
+   conciliação tinha de varrer conta + cartão inteiros e oferecer tudo que
+   coubesse na janela de dias.
+2. **De qual caso é a despesa.** O `Vincular a` das telas do Financeiro oferecia
+   só **Lead** e **Contato**. O grupo de WhatsApp — que é o caso — só dava para
+   escolher dentro do diálogo `TransactionCategorizer`, e por dentro do lead.
+
+E havia um vazamento silencioso: `setTransactionOverride` faz **upsert da linha
+inteira**. `PendingTransactionsList`, `BankTransactionsView`, `LoansView` e
+`InvestmentsView` não mandavam `group_jid` — então **salvar por qualquer uma
+delas zerava o grupo** escolhido no diálogo. Sem erro, sem aviso: a despesa
+voltava a ser pendência na Análise de Limites.
+
+### Migration
+
+`supabase/migrations/20260911140000_lancamento_do_lead_sabe_a_conta.sql`
+
+```sql
+ALTER TABLE public.lead_financials
+  ADD COLUMN IF NOT EXISTS cost_account_id UUID
+    REFERENCES public.cost_accounts(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS card_last_digits TEXT;
+```
+
+- `cost_account_id` aponta para a **mesma** `cost_accounts` que
+  `card_assignments.cost_account_id` e `transaction_category_overrides.cost_account_id`
+  já usam (PESSOAL, ABRACI, WHATSJUD, PRUDÊNCIO CAPITAL, PRUDÊNCIO ADVOGADOS).
+  Tabela de conta nova aqui seria um segundo vocabulário de conta na mesma casa.
+- `card_last_digits` é TEXT porque é assim em `card_assignments` e em
+  `credit_card_transactions` — é o que **casa com o extrato**. Guardar o id do
+  `card_assignments` casaria com o cadastro, não com o extrato, e o extrato é o
+  lado que precisa fechar.
+
+Aplicada em 11/09/2026: 43 linhas, nenhuma reescrita (`com_conta = 0`,
+`com_cartao = 0` logo depois). **Rollback** (< 1 min):
+
+```sql
+ALTER TABLE public.lead_financials
+  DROP COLUMN IF EXISTS cost_account_id,
+  DROP COLUMN IF EXISTS card_last_digits;
+```
+
+### No formulário do lead (aba Financeiro)
+
+Bloco novo no **Novo Lançamento**, entre a data e a categoria:
+
+- **Como pagou / Como recebeu** — PIX, boleto, cartão de crédito, cartão de
+  débito, transferência, dinheiro (`FORMAS_DE_PAGAMENTO`, a mesma lista da
+  sessão Financeiro);
+- **Conta** — `cost_accounts`;
+- **Qual cartão** — só aparece quando a forma é cartão, porque é aí que vira
+  pergunta de verdade. Escolher o cartão **preenche a conta se ela estiver
+  vazia** (`card_assignments.cost_account_id`), e nunca sobrescreve escolha de
+  quem está lançando;
+- sair de cartão para PIX **apaga** o cartão guardado: dígito órfão manda a
+  conciliação procurar no extrato errado.
+
+O documento com vários valores (`salvarVarios`) herda forma/conta/cartão do
+formulário: é um pagamento só, repartido em linhas.
+
+Fonte: `src/hooks/useContasDePagamento.ts` — duas tabelas minúsculas, buscadas
+**só com o diálogo aberto**. A ficha do lead abre muito mais vezes do que alguém
+lança despesa, e `useExpenseCategories` traria junto categorias e todos os
+overrides, carga que esta tela não tem por que pagar.
+
+### A conciliação começa pelo cartão
+
+`buscarCandidatos` ganhou `cartao`. Com o cartão declarado, a busca abre
+estreitada nele — e **nunca some calado**: `ocultadas_pelo_cartao` conta o que
+ficou de fora, a tela mostra o número e um clique em **"ver tudo"** reabre o
+extrato inteiro. Filtro aqui é preferência de busca, não verdade: o cadastro
+pode ter errado o cartão.
+
+Testes: `src/hooks/__tests__/useConciliacaoOpenFinance.cartao.test.ts` (3 casos)
+— só o cartão pedido é oferecido; sem cartão nada muda; cartão sem linha nenhuma
+devolve vazio **com a conta do que sumiu**, para a tela poder oferecer "ver tudo"
+em vez de dizer que não há movimento.
+
+### Grupo de WhatsApp (caso) no "Vincular a"
+
+Terceira opção nas **quatro** telas — `PendingTransactionsList`,
+`BankTransactionsView`, `LoansView`, `InvestmentsView`:
+
+- componente `src/components/finance/SeletorGrupoCaso.tsx` — combobox com busca
+  **no servidor** (`ilike`, teto de 30; lista inicial = 30 vínculos mais
+  recentes). São 2.429 jids distintos em `lead_whatsapp_groups`: carregar tudo
+  para escolher um seria 2 mil linhas por abertura de tela. Nome vazio (555 das
+  2.769 linhas) é completado pelo `whatsapp_groups_index`, só para as linhas que
+  vão aparecer;
+- **escolher o grupo entrega o lead dele junto** (`lead_whatsapp_groups.lead_id`,
+  preenchido em 100% das linhas). O caso é do cliente; gravar só o jid sumiria
+  com a despesa de todo relatório que soma por lead;
+- **trocar o alvo zera o alvo anterior**: manter o grupo do lead A pendurado
+  depois de escolher o lead B é vínculo errado que ninguém vê;
+- as quatro telas passaram a **sempre enviar `group_jid`** no upsert — é o
+  conserto do vazamento descrito acima;
+- ver/criar (olho e +) continuam valendo só para lead e contato: grupo de
+  WhatsApp não se cria daqui, nasce na conversa.
+
+### Aba "Grupo (caso)" no diálogo de categorizar — 11/09/2026
+
+`TransactionCategorizer` já deixava escolher o grupo, mas **por dentro do lead**:
+era preciso achar o lead certo primeiro. Quem olha uma despesa de deslocamento
+reconhece o nome do grupo (*"LEAD 2313 - JOELMA - BPC/LOAS"*), não
+necessariamente qual lead do CRM é aquele — e num lead com dois grupos a escolha
+continuava sendo a última pergunta, não a primeira.
+
+Agora são **três abas**: Lead · Contato · **Grupo (caso)**, a terceira com o
+mesmo `SeletorGrupoCaso` das outras telas. Regras que a aba prende:
+
+- escolher o grupo **preenche o lead dele** e mostra qual é, na tela;
+- grupo sem lead vinculado é dito em amarelo — a despesa entra no caso, mas fica
+  de fora de relatório que soma por lead, e o conserto é vincular o grupo ao lead
+  na ficha, não adivinhar;
+- **escolher contato larga o grupo** (`setSelectedGroupJid('')`). O grupo é do
+  lead; contato + grupo de outro lead grava vínculo cruzado que ninguém vê;
+- override com `group_jid` **abre já na aba Grupo**: foi a escolha mais
+  específica que alguém fez.
+
+### O teste da aba Grupo desenterrou um diálogo quebrado — 14/09/2026
+
+Escrever o teste de componente do `TransactionCategorizer` revelou que **o
+diálogo inteiro não funcionava**, e já não funcionava antes desta série de
+mudanças (conferido rodando o mesmo teste contra o arquivo como estava em
+`84f8c15`): clicar numa categoria não marcava nada e o botão **Salvar nunca
+habilitava**.
+
+**Causa raiz, em `src/hooks/useBrazilianLocations.ts`:** `fetchCities` era uma
+função comum, recriada a cada render. Ela está nas dependências do efeito que
+zera o formulário quando o diálogo abre. A cadeia:
+
+```
+clicar na categoria → setState → render → nova `fetchCities`
+  → deps mudaram → efeito roda → setSelectedCategory('') → escolha apagada
+```
+
+Nenhum erro no console. A tela simplesmente não obedecia — o pior tipo de falha,
+porque não deixa rastro para procurar.
+
+**Conserto:** `useCallback(..., [])` no `fetchCities`. Ela só usa setters de
+estado e constantes de módulo, então não há o que invalidar. São **8 telas**
+consumindo esse hook; esta era a mais sensível porque é a única cujo efeito de
+dependência apaga escolha do usuário.
+
+`src/hooks/__tests__/useBrazilianLocations.estabilidade.test.ts` prende a
+identidade estável, para o dia em que alguém tirar o `useCallback`.
+
+### Testes do diálogo
+
+`src/components/finance/__tests__/TransactionCategorizer.grupo.test.tsx`
+(6 casos, render de verdade do diálogo, busca de grupo rodando contra um `db`
+falso com a cadeia real do PostgREST):
+
+1. escolher o grupo grava `group_jid` **e** o `lead_id` dele, com o lead dito na
+   tela, e `link_acknowledged: false`;
+2. a busca do grupo sai como `or(...ilike...)` — vai ao **servidor**, não filtra
+   2.429 jids no navegador;
+3. **escolher contato larga o grupo** — visto vermelho antes (sem o conserto o
+   teste acusa `expected 'jid-joelma@g.us' to be null`, que é exatamente o
+   contato de uma pessoa com o caso de outra);
+4. override com `group_jid` abre na aba Grupo já com o nome do grupo;
+5. grupo sem lead avisa na tela e grava o caso mesmo assim, com lead em branco —
+   chutar o lead seria inventar vínculo;
+6. a aba Lead segue inteira: grava lead e `group_jid` nulo.
+
+Detalhe de quem for mexer: o mock de `useBrazilianLocations` declara
+`fetchCities` **fora** da fábrica. Um `vi.fn()` novo por render reproduz dentro
+do teste exatamente o bug acima, e aí o teste passa a medir o mock.

@@ -19,6 +19,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { trackFinanceEntry } from '@/hooks/useFinanceTimeTracker';
+import type { UnidadeLimite } from '@/lib/limitesPorVinculo';
 
 export interface ExpenseCategory {
   id: string;
@@ -26,7 +27,7 @@ export interface ExpenseCategory {
   icon: string;
   color: string;
   max_limit_per_unit: number | null;
-  limit_unit: 'per_transaction' | 'per_day' | 'per_month' | null;
+  limit_unit: UnidadeLimite | null;
   is_system: boolean;
   display_order: number;
   parent_id: string | null;
@@ -55,6 +56,8 @@ export interface TransactionOverride {
   category_id: string;
   lead_id: string | null;
   contact_id: string | null;
+  /** Grupo de WhatsApp (o caso) escolhido a mao para esta despesa. */
+  group_jid: string | null;
   notes: string | null;
   manual_city: string | null;
   manual_state: string | null;
@@ -351,6 +354,13 @@ export function useExpenseCategories() {
       beneficiary_id?: string;
       payment_method?: string;
       invoice_number?: string;
+      /**
+       * Grupo de WhatsApp (o caso) desta despesa. Sem ele o limite
+       * `per_whatsapp_group` so consegue deduzir o grupo quando o lead tem
+       * exatamente um; com dois ou mais a despesa vira pendencia em vez de
+       * chute. Ver `src/lib/limitesPorVinculo.ts`.
+       */
+      group_jid?: string | null;
     }
   ) => {
     try {
@@ -373,7 +383,8 @@ export function useExpenseCategories() {
           beneficiary_id: extraFields?.beneficiary_id || null,
           payment_method: extraFields?.payment_method || null,
           invoice_number: extraFields?.invoice_number || null,
-        }], { onConflict: 'transaction_id' });
+          group_jid: extraFields?.group_jid || null,
+        }] as never, { onConflict: 'transaction_id' });
 
       if (error) throw error;
       toast.success('Transação categorizada');

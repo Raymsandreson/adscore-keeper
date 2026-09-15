@@ -49,6 +49,7 @@ import { useGeolocation } from '@/hooks/useGeolocation';
 import { translateCategory } from '@/utils/categoryTranslations';
 import { toast } from 'sonner';
 import { CategorySelector } from '@/components/finance/CategorySelector';
+import { SeletorGrupoCaso } from '@/components/finance/SeletorGrupoCaso';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface Transaction {
@@ -121,8 +122,16 @@ export function PendingTransactionsList({
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [editData, setEditData] = useState<{
     categoryId: string | null;
-    linkType: 'lead' | 'contact';
+    /**
+     * 'group' = vincular ao CASO (o grupo de WhatsApp). O grupo é mais
+     * específico que o lead: lead com dois processos tem dois grupos, e é o
+     * grupo que faz o limite `per_whatsapp_group` somar no caso certo em vez de
+     * virar pendência. Ver `src/lib/limitesPorVinculo.ts`.
+     */
+    linkType: 'lead' | 'contact' | 'group';
     linkId: string | null;
+    /** jid do grupo escolhido, ou o que já estava gravado no override. */
+    groupJid: string | null;
     notes: string;
     manualState: string;
     manualCity: string;
@@ -137,6 +146,7 @@ export function PendingTransactionsList({
     categoryId: null,
     linkType: 'lead',
     linkId: null,
+    groupJid: null,
     notes: '',
     manualState: '',
     manualCity: '',
@@ -490,10 +500,14 @@ export function PendingTransactionsList({
     const override = getTransactionOverride(transaction.id);
     const cardAssignment = getCardAssignment(transaction.card_last_digits || '');
     
-    let linkType: 'lead' | 'contact' = 'lead';
+    let linkType: 'lead' | 'contact' | 'group' = 'lead';
     let linkId: string | null = null;
     
-    if (override?.lead_id) {
+    // Grupo gravado manda na aba: foi a escolha mais específica que alguém fez.
+    if (override?.group_jid) {
+      linkType = 'group';
+      linkId = override.lead_id || null;
+    } else if (override?.lead_id) {
       linkType = 'lead';
       linkId = override.lead_id;
     } else if (override?.contact_id) {
@@ -512,6 +526,7 @@ export function PendingTransactionsList({
       categoryId: override?.category_id || null,
       linkType,
       linkId,
+      groupJid: override?.group_jid || null,
       notes: override?.notes || '',
       manualState: override?.manual_state || transaction.merchant_state || '',
       manualCity: override?.manual_city || transaction.merchant_city || '',
@@ -548,6 +563,7 @@ export function PendingTransactionsList({
       categoryId: null,
       linkType: 'lead',
       linkId: null,
+      groupJid: null,
       notes: '',
       manualState: '',
       manualCity: '',
@@ -567,22 +583,34 @@ export function PendingTransactionsList({
       return;
     }
     
-    // Validate that user selected something (even "NONE" is valid)
-    if (!editData.linkId) {
+    if (editData.linkType === 'group') {
+      if (!editData.groupJid) {
+        toast.error('Escolha o grupo de WhatsApp (o caso) ou troque para Lead/Contato');
+        return;
+      }
+    } else if (!editData.linkId) {
+      // Validate that user selected something (even "NONE" is valid)
       toast.error(`Selecione um ${editData.linkType === 'lead' ? 'Lead' : 'Contato'} ou "Nenhum Vinculado"`);
       return;
     }
 
     try {
+      const vinculandoAoGrupo = editData.linkType === 'group';
       // Check if user explicitly chose "no link"
-      const isNoneSelected = editData.linkId === NONE_SELECTED;
+      const isNoneSelected = !vinculandoAoGrupo && editData.linkId === NONE_SELECTED;
       const linkAcknowledged = isNoneSelected;
-      
+      // Grupo escolhido entrega o LEAD dele junto: o caso é do cliente, e
+      // gravar só o jid sumiria com a despesa de todo relatório que soma por
+      // lead. `SeletorGrupoCaso` já devolve o lead_id do vínculo.
+      const leadDoVinculo = vinculandoAoGrupo
+        ? (editData.linkId || undefined)
+        : (!isNoneSelected && editData.linkType === 'lead' ? editData.linkId! : undefined);
+
       await setTransactionOverride(
         transactionId,
         editData.categoryId,
-        !isNoneSelected && editData.linkType === 'contact' ? editData.linkId : undefined,
-        !isNoneSelected && editData.linkType === 'lead' ? editData.linkId : undefined,
+        !isNoneSelected && !vinculandoAoGrupo && editData.linkType === 'contact' ? editData.linkId : undefined,
+        leadDoVinculo,
         editData.notes || undefined,
         editData.manualCity || undefined,
         editData.manualState || undefined,
@@ -596,6 +624,10 @@ export function PendingTransactionsList({
           beneficiary_id: editData.beneficiaryId || undefined,
           payment_method: editData.paymentMethod || undefined,
           invoice_number: editData.invoiceNumber || undefined,
+          // Sempre enviado. O upsert reescreve a linha inteira: omitir aqui
+          // zerava o `group_jid` escolhido no diálogo de categorizar toda vez
+          // que alguém salvasse por esta tela — o caso sumia sem aviso.
+          group_jid: editData.groupJid,
         }
       );
       
@@ -871,8 +903,12 @@ export function PendingTransactionsList({
                           <label className="text-xs font-medium">Vincular a</label>
                           <Select
                             value={editData.linkType}
-                            onValueChange={(v: 'lead' | 'contact') => 
-                              setEditData(prev => ({ ...prev, linkType: v, linkId: null }))
+                            onValueChange={(v: 'lead' | 'contact' | 'group') =>
+                              // Trocar de alvo zera o que foi escolhido no alvo
+                              // anterior: manter o grupo do lead A pendurado
+                              // depois de escolher o lead B é vínculo errado
+                              // que ninguém vê.
+                              setEditData(prev => ({ ...prev, linkType: v, linkId: null, groupJid: null }))
                             }
                           >
                             <SelectTrigger className="h-8 text-xs">
@@ -881,6 +917,7 @@ export function PendingTransactionsList({
                             <SelectContent>
                               <SelectItem value="lead">Lead</SelectItem>
                               <SelectItem value="contact">Contato</SelectItem>
+                              <SelectItem value="group">Grupo de WhatsApp (caso)</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -888,73 +925,91 @@ export function PendingTransactionsList({
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">
                             <label className="text-xs font-medium">
-                              {editData.linkType === 'lead' ? 'Lead' : 'Contato'}
+                              {editData.linkType === 'group'
+                                ? 'Grupo (caso)'
+                                : editData.linkType === 'lead' ? 'Lead' : 'Contato'}
                             </label>
                             <div className="flex gap-1">
-                              {editData.linkId && editData.linkId !== NONE_SELECTED && (
+                              {/* Ver/criar valem para lead e contato — grupo de
+                                  WhatsApp não se cria daqui, ele nasce na conversa. */}
+                              {editData.linkType !== 'group' && editData.linkId && editData.linkId !== NONE_SELECTED && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   className="h-5 w-5"
-                                  onClick={(e) => { e.stopPropagation(); openViewSheet(editData.linkType, editData.linkId!); }}
+                                  onClick={(e) => { e.stopPropagation(); openViewSheet(editData.linkType as 'lead' | 'contact', editData.linkId!); }}
                                   title="Visualizar"
                                 >
                                   <Eye className="h-3 w-3" />
                                 </Button>
                               )}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-5 w-5"
-                                onClick={(e) => { e.stopPropagation(); openCreateSheet(editData.linkType); }}
-                                title={`Criar ${editData.linkType === 'lead' ? 'Lead' : 'Contato'}`}
-                              >
-                                <Plus className="h-3 w-3" />
-                              </Button>
+                              {editData.linkType !== 'group' && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5"
+                                  onClick={(e) => { e.stopPropagation(); openCreateSheet(editData.linkType as 'lead' | 'contact'); }}
+                                  title={`Criar ${editData.linkType === 'lead' ? 'Lead' : 'Contato'}`}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              )}
                             </div>
                           </div>
-                          <Select
-                            value={editData.linkId || ''}
-                            onValueChange={(v) => setEditData(prev => ({ ...prev, linkId: v }))}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Selecione..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={NONE_SELECTED} className="text-amber-600 dark:text-amber-400 font-medium italic">
-                                <div className="flex items-center gap-2">
-                                  <X className="h-3 w-3" />
-                                  Nenhum {editData.linkType === 'lead' ? 'Lead' : 'Contato'} Vinculado
-                                </div>
-                              </SelectItem>
-                              {editData.linkType === 'lead' 
-                                ? localLeads.map(lead => (
-                                    <SelectItem key={lead.id} value={lead.id}>
-                                      <div className="flex items-center gap-2">
-                                        <span>{lead.lead_name || 'Sem nome'}</span>
-                                        {(lead.city || lead.state) && (
-                                          <span className="text-xs text-muted-foreground">
-                                            ({[lead.city, lead.state].filter(Boolean).join('-')})
-                                          </span>
-                                        )}
-                                      </div>
-                                    </SelectItem>
-                                  ))
-                                : localContacts.map(contact => (
-                                    <SelectItem key={contact.id} value={contact.id}>
-                                      <div className="flex items-center gap-2">
-                                        <span>{contact.full_name}</span>
-                                        {(contact.city || contact.state) && (
-                                          <span className="text-xs text-muted-foreground">
-                                            ({[contact.city, contact.state].filter(Boolean).join('-')})
-                                          </span>
-                                        )}
-                                      </div>
-                                    </SelectItem>
-                                  ))
-                              }
-                            </SelectContent>
-                          </Select>
+                          {editData.linkType === 'group' ? (
+                            <SeletorGrupoCaso
+                              value={editData.groupJid}
+                              onChange={(g) => setEditData(prev => ({
+                                ...prev,
+                                groupJid: g?.group_jid || null,
+                                // O lead vem junto com o grupo: é o dono do caso.
+                                linkId: g?.lead_id || null,
+                              }))}
+                            />
+                          ) : (
+                            <Select
+                              value={editData.linkId || ''}
+                              onValueChange={(v) => setEditData(prev => ({ ...prev, linkId: v }))}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Selecione..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={NONE_SELECTED} className="text-amber-600 dark:text-amber-400 font-medium italic">
+                                  <div className="flex items-center gap-2">
+                                    <X className="h-3 w-3" />
+                                    Nenhum {editData.linkType === 'lead' ? 'Lead' : 'Contato'} Vinculado
+                                  </div>
+                                </SelectItem>
+                                {editData.linkType === 'lead' 
+                                  ? localLeads.map(lead => (
+                                      <SelectItem key={lead.id} value={lead.id}>
+                                        <div className="flex items-center gap-2">
+                                          <span>{lead.lead_name || 'Sem nome'}</span>
+                                          {(lead.city || lead.state) && (
+                                            <span className="text-xs text-muted-foreground">
+                                              ({[lead.city, lead.state].filter(Boolean).join('-')})
+                                            </span>
+                                          )}
+                                        </div>
+                                      </SelectItem>
+                                    ))
+                                  : localContacts.map(contact => (
+                                      <SelectItem key={contact.id} value={contact.id}>
+                                        <div className="flex items-center gap-2">
+                                          <span>{contact.full_name}</span>
+                                          {(contact.city || contact.state) && (
+                                            <span className="text-xs text-muted-foreground">
+                                              ({[contact.city, contact.state].filter(Boolean).join('-')})
+                                            </span>
+                                          )}
+                                        </div>
+                                      </SelectItem>
+                                    ))
+                                }
+                              </SelectContent>
+                            </Select>
+                          )}
                         </div>
                       </div>
                       

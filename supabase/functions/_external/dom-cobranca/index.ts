@@ -83,6 +83,26 @@ const dias = (iso: string | null): number | null => {
   return Math.floor((Date.now() - t) / 86400000);
 };
 
+/**
+ * Dia em que a pendência deve ser cobrada.
+ *
+ * Espelho de `commitmentChargeDate` em `src/lib/clientCommitments.ts` — aquele
+ * é a fonte da regra e tem os testes; este roda no Deno, que não importa `src`.
+ * Mudou lá, muda aqui.
+ *
+ * Com prazo: o próprio dia do prazo (a cobrança é o retorno — "deu tudo certo
+ * na perícia?"). Sem prazo: o dia seguinte ao da promessa.
+ */
+const diaDeCobrar = (dueDate: string | null, promisedAt: string | null): string | null => {
+  if (dueDate) return dueDate;
+  const promised = (promisedAt || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(promised)) return null;
+  const d = new Date(`${promised}T12:00:00Z`);
+  if (!Number.isFinite(d.getTime())) return null;
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
+
 async function gemini(systemPrompt: string, pedido: string, maxTokens: number, temperatura: number) {
   const key = Deno.env.get("GOOGLE_AI_API_KEY");
   if (!key) throw new Error("GOOGLE_AI_API_KEY não configurada");
@@ -235,8 +255,23 @@ Deno.serve(async (req) => {
         .in("status", ["combinado", "cobrado"])
         .limit(50);
 
-      const abertas = todas ?? [];
-      if (abertas.length === 0) { pulados.push({ grupo: g.group_jid, motivo: "nenhuma pendência aberta" }); continue; }
+      const todasAbertas = todas ?? [];
+      if (todasAbertas.length === 0) { pulados.push({ grupo: g.group_jid, motivo: "nenhuma pendência aberta" }); continue; }
+
+      // Trava MECÂNICA de calendário: só entra o que já chegou o dia de cobrar.
+      // Com prazo é o dia do prazo; sem prazo, o dia seguinte à promessa. Antes
+      // disso a cobrança atropela o cliente — ele ainda tem tempo. Pendência
+      // sem prazo E sem data de promessa fica de fora: sem data não se inventa
+      // cobrança.
+      const hoje = new Date().toISOString().slice(0, 10);
+      const abertas = todasAbertas.filter((c: any) => {
+        const dia = diaDeCobrar(c.due_date ?? null, c.promised_at ?? null);
+        return dia !== null && dia <= hoje;
+      });
+      if (abertas.length === 0) {
+        pulados.push({ grupo: g.group_jid, motivo: `nenhuma pendência chegou no dia de cobrar (${todasAbertas.length} aberta(s))` });
+        continue;
+      }
 
       // 3. Cooldown — trava MECÂNICA, não interpretação: se o grupo foi
       //    lembrado há pouco, ele espera, por melhor que seja o argumento.

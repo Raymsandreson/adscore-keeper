@@ -73,7 +73,7 @@ import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/wha
 import { LEAD_FIELD_REGISTRY } from '@/components/leads/leadFormFields';
 import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
-import { ehInstanciaCloud, carregarInstanciasCloud, rotuloDaLinha } from '@/lib/cloudApiInstances';
+import { ehInstanciaCloud, carregarInstanciasCloud, rotuloDaLinha, linhaCloudPadrao } from '@/lib/cloudApiInstances';
 
 const FIELD_LABELS: Record<string, string> = {
   lead_name: 'Nome do Lead', victim_name: 'Nome da Vítima', lead_email: 'E-mail', lead_phone: 'Telefone',
@@ -350,10 +350,11 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       if (lockInstanceName) {
         const target = lockInstanceName.trim().toLowerCase();
         if (ehInstanciaCloud(target)) {
-          // Com mais de uma linha Cloud, abrir fixado numa esconderia as conversas
-          // da outra sem nenhum aviso — que é justamente o que o seletor evita.
-          const cloud = instances.filter(i => ehInstanciaCloud(i.instance_name));
-          setSelectedInstanceId(cloud.length === 1 ? cloud[0].id : 'all');
+          // Abre na linha do próprio nome travado (hoje: Abraci). "Todas as linhas"
+          // como padrão misturava Abraci, Prudencio Advogados e Quitepay na mesma
+          // lista — quem entra no menu quer a caixa da Abraci. O seletor da barra
+          // continua ali para trocar de linha (e para escolher "Todas").
+          setSelectedInstanceId(linhaCloudPadrao(instances, target));
         } else {
           const locked = instances.find(
             i => (i.instance_name || '').trim().toLowerCase() === target,
@@ -833,6 +834,17 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       const withMe = (withMeData || []) as ConvShare[];
       setSharedConvs(withMe);
 
+      // Caixa travada num canal (`lockInstanceName` — o menu WhatsApp API): a
+      // lista mostra o que o canal traz, e só. Compartilhamento não acrescenta
+      // conversa nenhuma ali, nem de outra instância nem do próprio canal.
+      // Sai antes da RPC de resumo: a busca só serviria para montar uma lista
+      // que essa tela não usa. `sharedConvs` acima continua valendo — é dele
+      // que o chat tira identify_sender/can_reshare.
+      if (lockInstanceName) {
+        setSharedMessages([]);
+        return;
+      }
+
       // Compartilhadas POR MIM: a sidebar precisa mostrar os dois lados. Uma
       // conversa que eu compartilhei de uma instância que não estou vendo agora
       // sumia da lista, e com ela sumia do filtro "Compartilhadas".
@@ -936,7 +948,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
 
     fetchShared();
     return () => { alive = false; };
-  }, [user, hasLoaded]);
+  }, [user, hasLoaded, lockInstanceName]);
 
   // Filter out private conversations the user can't see and merge shared conversations
   const visibleConversations = useMemo(() => {
@@ -2298,6 +2310,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
                 cloudAssignees={cloudAssignees}
                 currentUserId={user?.id || null}
                 canSeeAllAssignments={canViewPrivate}
+                hideSharedFilter={!!lockInstanceName}
                 onServerSearch={searchConversations}
                 onLoadMore={loadMoreConversations}
                 hasMore={hasMoreConversations}
@@ -2386,6 +2399,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
               cloudAssignees={cloudAssignees}
               currentUserId={user?.id || null}
               canSeeAllAssignments={canViewPrivate}
+              hideSharedFilter={!!lockInstanceName}
               onServerSearch={searchConversations}
               onLoadMore={loadMoreConversations}
               hasMore={hasMoreConversations}

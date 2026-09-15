@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCnj, originScopeLabel, digitoVerificadorCnj, cnjDvValido, candidatosCnj } from '../cnj';
+import { parseCnj, originScopeLabel, digitoVerificadorCnj, cnjDvValido, candidatosCnj, cnjDigitado } from '../cnj';
 import { normalizeUnitName, buildUnitKey, isContactStale } from '../courtCatalog';
 
 /**
@@ -155,5 +155,35 @@ describe('candidatosCnj', () => {
     expect(candidatosCnj('7219266600')).toHaveLength(0); // NB do INSS
     expect(candidatosCnj('')).toHaveLength(0);
     expect(candidatosCnj(null)).toHaveLength(0);
+  });
+});
+
+describe('cnjDigitado — máscara automática na busca', () => {
+  it('mascara o número colado sem separador nenhum', () => {
+    expect(cnjDigitado('00008466920255080009')?.formatted).toBe('0000846-69.2025.5.08.0009');
+  });
+
+  it('conserta o zero perdido na cópia (caso real da busca, 09/09/2026)', () => {
+    // 19 dígitos: é o processo 0000846-69.2025.5.08.0009 sem um zero à esquerda.
+    const cnj = cnjDigitado('0008466920255080009');
+    expect(cnj?.formatted).toBe('0000846-69.2025.5.08.0009');
+    expect(cnj?.reparado).toBe(true);
+  });
+
+  it('não mexe no que já está mascarado', () => {
+    expect(cnjDigitado('0000846-69.2025.5.08.0009')?.formatted).toBe('0000846-69.2025.5.08.0009');
+  });
+
+  it('deixa passar o que não é processo', () => {
+    expect(cnjDigitado('11122233344')).toBeNull();      // CPF
+    expect(cnjDigitado('5591988887777')).toBeNull();    // telefone com DDI
+    expect(cnjDigitado('7219266600')).toBeNull();       // NB do INSS
+    expect(cnjDigitado('CASO-369')).toBeNull();
+    expect(cnjDigitado('Maria de Souza')).toBeNull();
+    expect(cnjDigitado('')).toBeNull();
+  });
+
+  it('não escolhe por conta própria quando o reparo é ambíguo', () => {
+    expect(cnjDigitado('123456789012345678901')).toBeNull();
   });
 });

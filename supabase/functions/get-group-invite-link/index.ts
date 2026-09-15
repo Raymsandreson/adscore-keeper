@@ -43,13 +43,30 @@ function jsonResponse(payload: unknown, status = 200) {
   })
 }
 
+// Sem timeout, cada chamada à UazAPI pode ficar pendurada até o limite de
+// ociosidade da edge (150s). Com dezenas de instâncias checadas em série isso
+// estourava sempre. Todo fetch externo agora tem teto próprio.
+const STATUS_TIMEOUT_MS = 5000
+const INFO_TIMEOUT_MS = 12000
+const MAX_CANDIDATES = 6
+
+async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const ctrl = new AbortController()
+  const tid = setTimeout(() => ctrl.abort(), ms)
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal })
+  } finally {
+    clearTimeout(tid)
+  }
+}
+
 async function isInstanceConnected(inst: any): Promise<boolean> {
   try {
     const url = (inst.base_url || 'https://abraci.uazapi.com') + '/status'
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json', token: inst.instance_token },
-    })
+    }, STATUS_TIMEOUT_MS)
     if (!res.ok) return false
     const data = await res.json()
     const statusObj = data?.status
@@ -96,11 +113,11 @@ async function fetchGroupInvite(
       getRequestsParticipants: false,
       force: false,
     })
-    const res = await fetch(`${baseUrl}/group/info`, {
+    const res = await fetchWithTimeout(`${baseUrl}/group/info`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', token },
       body: JSON.stringify(uazBody),
-    })
+    }, INFO_TIMEOUT_MS)
     const text = await res.text()
     let data: any = null
     try { data = text ? JSON.parse(text) : null } catch { /* texto não-JSON */ }
@@ -155,48 +172,25 @@ Deno.serve(async (req) => {
 
     const groupJid = groupJidRaw.includes('@g.us') ? groupJidRaw : `${groupJidRaw}@g.us`
 
-    // Pick a connected instance: requested first, fallback to any active connected.
-    let chosen: any = null
-    if (requestedInstanceId) {
-      const { data } = await supabase
-        .from('whatsapp_instances')
-        .select('*')
-        .eq('id', requestedInstanceId)
-        .eq('is_active', true)
-        .maybeSingle()
-      if (data && (await isInstanceConnected(data))) chosen = data
-    }
+    // Carrega as instâncias ativas de uma vez e checa conectividade EM PARALELO.
+    // Antes era em série (até 40 chamadas encadeadas sem timeout), o que estourava
+    // o limite de 150s de ociosidade da edge antes de qualquer resposta.
+    const { data: allInstances } = await supabase
+      .from('whatsapp_instances')
+      .select('*')
+      .eq('is_active', true)
+      .limit(20)
 
-    if (!chosen) {
-      const { data: instances } = await supabase
-        .from('whatsapp_instances')
-        .select('*')
-        .eq('is_active', true)
-        .limit(20)
-      for (const inst of instances || []) {
-        if (await isInstanceConnected(inst)) { chosen = inst; break }
-      }
-    }
+    const list: any[] = allInstances || []
+    const preferred = requestedInstanceId ? list.find((i) => i.id === requestedInstanceId) : null
+    const ordered = preferred ? [preferred, ...list.filter((i) => i.id !== preferred.id)] : list
 
-    if (!chosen) {
+    const connectedFlags = await Promise.all(ordered.map((i) => isInstanceConnected(i)))
+    const candidates = ordered.filter((_, idx) => connectedFlags[idx]).slice(0, MAX_CANDIDATES)
+
+    if (candidates.length === 0) {
       return jsonResponse({ success: false, error: 'No connected WhatsApp instance available' }, 200)
     }
-
-    // Monta lista de candidatas: a escolhida primeiro, depois TODAS as outras conectadas.
-    // Motivo: a instância preferida pode não ser membro/admin do grupo; tentamos as demais
-    // automaticamente até alguma conseguir retornar o invite_link.
-    const candidates: any[] = [chosen]
-    try {
-      const { data: others } = await supabase
-        .from('whatsapp_instances')
-        .select('*')
-        .eq('is_active', true)
-        .neq('id', chosen.id)
-        .limit(20)
-      for (const inst of others || []) {
-        if (await isInstanceConnected(inst)) candidates.push(inst)
-      }
-    } catch (e) { console.warn('[invite] listing fallback instances failed', e) }
 
     let used: any = null
     let code: string | null = null
@@ -204,7 +198,14 @@ Deno.serve(async (req) => {
     let lastError: string | undefined
     const attempts: Array<{ instance: string; error?: string }> = []
 
+    // Orçamento global: nunca chegar perto dos 150s da edge.
+    const deadline = Date.now() + 90_000
+
     for (const inst of candidates) {
+      if (Date.now() > deadline) {
+        lastError = lastError || 'timeout while querying WhatsApp instances'
+        break
+      }
       const baseUrl = inst.base_url || 'https://abraci.uazapi.com'
       const result = await fetchGroupInvite(baseUrl, inst.instance_token, groupJid)
       attempts.push({ instance: inst.instance_name, error: result.error })

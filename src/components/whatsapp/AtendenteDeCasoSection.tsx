@@ -27,12 +27,20 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Trash2, ArrowUp, ArrowDown, Plus, Scale } from 'lucide-react';
+import { Trash2, ArrowUp, ArrowDown, Plus, Scale, Search, Loader2 } from 'lucide-react';
 
 const dbAny = db as unknown as SupabaseClient;
 
-interface Voz { id: string; name: string; genero: 'masculina' | 'feminina' | null }
-interface Grupo { group_jid: string; group_name: string | null; modo: string; ativo: boolean }
+interface Voz {
+  id: string; name: string; genero: 'masculina' | 'feminina' | null;
+  /** Voz clonada que ainda nao pode falar — e o motivo, para a lista dizer. */
+  situacao?: string | null;
+}
+interface Grupo {
+  group_jid: string; group_name: string | null; modo: string; ativo: boolean;
+  /** true = ele só lê números de processo ali, não responde. Fora da lista da tela. */
+  so_varredura?: boolean;
+}
 interface Atendente { id: string; nome: string; whatsapp: string; escopo: string; is_active: boolean; position: number }
 
 /** Vozes prontas do ElevenLabs, com o gênero que a edge list_presets declara. */
@@ -92,8 +100,81 @@ export function AtendenteDeCasoSection({ agentId }: { agentId: string | null | u
   const [novoNome, setNovoNome] = useState('');
   const [novoZap, setNovoZap] = useState('');
   const [novoEscopo, setNovoEscopo] = useState('geral');
+  const [buscaGrupo, setBuscaGrupo] = useState('');
+  const [achadosGrupo, setAchadosGrupo] = useState<Grupo[]>([]);
+  const [buscandoGrupo, setBuscandoGrupo] = useState(false);
 
   const vozes = useMemo(() => [...VOZES_PRONTAS, ...vozesClonadas], [vozesClonadas]);
+
+  /**
+   * Os que FOGEM do padrão — e é só isso que a tela desenha de saída.
+   *
+   * Medido em 09/09/2026: 1.149 grupos na lista, os 1.149 em rascunho e
+   * ligados. Desenhar mil e cento e quarenta e nove linhas idênticas custa a
+   * rolagem inteira e não diz nada; o que merece a tela é a exceção. Para
+   * achar um grupo específico existe a busca logo acima.
+   *
+   * useMemo porque a lista passa de cem itens e o componente redesenha a cada
+   * troca de voz, nome ou atendente.
+   */
+  const foraDoPadrao = useMemo(
+    () => grupos.filter(g => g.modo !== 'rascunho' || !g.ativo),
+    [grupos],
+  );
+
+  /**
+   * A busca vai ao BANCO, e não à lista carregada.
+   *
+   * Filtrar em memória só acharia os 1.149 que já atende — e metade do pedido
+   * é incluir um grupo NOVO, que hoje está entre os 1.335 de só varredura e
+   * por isso nem foi carregado. Uma consulta por termo, com teto de 30: é a
+   * mesma forma da busca de grupos do painel do atendente.
+   */
+  useEffect(() => {
+    const termo = buscaGrupo.trim();
+    if (termo.length < 2) { setAchadosGrupo([]); setBuscandoGrupo(false); return; }
+    setBuscandoGrupo(true);
+    // Espera a pessoa parar de digitar: sem isto sai uma consulta por tecla.
+    const t = setTimeout(async () => {
+      const { data } = await dbAny.from('dom_grupos_piloto')
+        .select('group_jid, group_name, modo, ativo, so_varredura')
+        .ilike('group_name', `%${termo}%`)
+        .order('group_name')
+        .limit(30);
+      setAchadosGrupo((data as unknown as Grupo[]) || []);
+      setBuscandoGrupo(false);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [buscaGrupo]);
+
+  /** Trocar o modo de um grupo, venha ele da lista ou da busca. */
+  const trocarModoGrupo = async (g: Grupo, modo: string) => {
+    const { error } = await dbAny.from('dom_grupos_piloto')
+      .update({ modo } as never).eq('group_jid', g.group_jid);
+    if (error) { toast.error(error.message); return; }
+    setAchadosGrupo(a => a.map(x => (x.group_jid === g.group_jid ? { ...x, modo } : x)));
+    carregar();
+  };
+
+  /**
+   * Tirar da lista, ou trazer para ela.
+   *
+   * "Tirar" NÃO apaga: vira `so_varredura`, que é o estado em que ele continua
+   * lendo número de processo naquele grupo e para de falar lá. Apagar a linha
+   * perderia a varredura junto, e a varredura é o que faz processo citado pela
+   * equipe entrar sozinho na ficha. Reversível pelo mesmo botão.
+   */
+  const mudarVarredura = async (g: Grupo, so: boolean) => {
+    const { error } = await dbAny.from('dom_grupos_piloto')
+      .update({ so_varredura: so, ativo: !so } as never).eq('group_jid', g.group_jid);
+    if (error) { toast.error(error.message); return; }
+    toast.success(so
+      ? `${g.group_name || 'Grupo'} saiu da lista — continua só na varredura`
+      : `${g.group_name || 'Grupo'} entrou na lista, em rascunho`);
+    setAchadosGrupo(a => a.map(x => (
+      x.group_jid === g.group_jid ? { ...x, so_varredura: so, ativo: !so } : x)));
+    carregar();
+  };
 
   const carregar = useCallback(async () => {
     if (!agentId) return;
@@ -104,12 +185,16 @@ export function AtendenteDeCasoSection({ agentId }: { agentId: string | null | u
         .eq('id', agentId).maybeSingle(),
       // As vozes clonadas moram no CLOUD; no Externo a mesma tabela tem RLS
       // `user_id = auth.uid()` com uuid do Cloud gravado — nunca casa.
-      supabase.from('custom_voices').select('id, name').eq('status', 'ready').order('name'),
+      // TODAS as vozes clonadas, e nao so as prontas. Filtrar aqui fazia a voz
+      // que ainda esta sendo preparada sumir da lista sem uma palavra — e quem
+      // acabou de mandar clonar procura por ela, nao acha, e conclui que a
+      // clonagem falhou. Ela aparece, desabilitada, dizendo em que pe esta.
+      supabase.from('custom_voices').select('id, name, status').order('name'),
       // `so_varredura = false`: desde 08/09/2026 a tabela também guarda os
       // grupos de caso onde o Dom NÃO fala, só para a varredura de processos
       // citados. São 1.331 — aqui é a lista de onde o Dom responde, não a
       // lista de tudo que o sistema lê.
-      dbAny.from('dom_grupos_piloto').select('group_jid, group_name, modo, ativo').eq('so_varredura', false).order('group_name'),
+      dbAny.from('dom_grupos_piloto').select('group_jid, group_name, modo, ativo, so_varredura').eq('so_varredura', false).order('group_name'),
       dbAny.from('dom_atendentes').select('id, nome, whatsapp, escopo, is_active, position').order('position'),
     ]);
     const cfg = a.data as any;
@@ -117,7 +202,12 @@ export function AtendenteDeCasoSection({ agentId }: { agentId: string | null | u
     setNome(cfg?.nome_atendente || '');
     setGenero(cfg?.genero_voz ?? null);
     setVozId(cfg?.reply_voice_id ?? null);
-    setVozesClonadas(((v.data as any[]) || []).map(x => ({ id: x.id, name: `🎤 ${x.name}`, genero: null })));
+    setVozesClonadas(((v.data as any[]) || []).map(x => ({
+      id: x.id,
+      name: `🎤 ${x.name}`,
+      genero: null,
+      situacao: x.status === 'ready' ? null : (x.status || 'sem status'),
+    })));
     setGrupos((g.data as Grupo[]) || []);
     setAtendentes((at.data as Atendente[]) || []);
   }, [agentId]);
@@ -202,9 +292,18 @@ export function AtendenteDeCasoSection({ agentId }: { agentId: string | null | u
               <Select value={vozId || ''} onValueChange={trocarVoz}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Escolha a voz" /></SelectTrigger>
                 <SelectContent>
+                  {vozes.length === VOZES_PRONTAS.length && (
+                    <p className="px-2 py-1.5 text-[10px] text-muted-foreground">
+                      Nenhuma voz clonada chegou aqui. Clonagem que existe mas não aparece
+                      quase sempre é sessão sem permissão de leitura em custom_voices.
+                    </p>
+                  )}
                   {vozes.map(v => (
-                    <SelectItem key={v.id} value={v.id} className="text-xs">
+                    <SelectItem key={v.id} value={v.id} className="text-xs" disabled={!!v.situacao}>
                       {v.name}{v.genero ? ` — ${v.genero}` : ''}
+                      {v.situacao && (
+                        <span className="text-[10px] text-amber-700"> — ainda não dá para usar ({v.situacao})</span>
+                      )}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -231,38 +330,6 @@ export function AtendenteDeCasoSection({ agentId }: { agentId: string | null | u
                 Voz masculina vira <strong>Dom</strong>, feminina vira <strong>Dora</strong>. Dá para trocar.
               </p>
             </div>
-          </div>
-
-          {/* Grupos */}
-          <div className="space-y-2">
-            <Label className="text-xs">Grupos que ele atende</Label>
-            <p className="text-[10px] text-muted-foreground">
-              Fora desta lista ele fica mudo, mesmo ligado. É o freio de mão.
-            </p>
-            {grupos.length === 0 && <p className="text-[11px] text-muted-foreground">Nenhum grupo escolhido.</p>}
-            {grupos.map(g => (
-              <div key={g.group_jid} className="flex items-center gap-2 border rounded p-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-medium truncate">{g.group_name || g.group_jid}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{MODOS[g.modo]}</p>
-                </div>
-                <Select value={g.modo} onValueChange={async v => {
-                  await dbAny.from('dom_grupos_piloto').update({ modo: v } as never).eq('group_jid', g.group_jid);
-                  carregar();
-                }}>
-                  <SelectTrigger className="h-7 w-28 text-[11px]"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.keys(MODOS).map(k => (
-                      <SelectItem key={k} value={k} className="text-xs">{k}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Switch checked={g.ativo} onCheckedChange={async v => {
-                  await dbAny.from('dom_grupos_piloto').update({ ativo: v } as never).eq('group_jid', g.group_jid);
-                  carregar();
-                }} />
-              </div>
-            ))}
           </div>
 
           {/* Atendentes */}
@@ -343,6 +410,116 @@ export function AtendenteDeCasoSection({ agentId }: { agentId: string | null | u
             <p className="text-[10px] text-muted-foreground">
               {ESCOPOS.map(e => `${e.rotulo}: ${e.ajuda}`).join(' · ')}
             </p>
+          </div>
+
+          {/* Grupos */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-xs">Grupos que ele atende</Label>
+              <Badge variant="outline" className="text-[10px]">{grupos.length}</Badge>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Fora desta lista ele fica mudo, mesmo ligado. É o freio de mão.
+            </p>
+
+            {/* A BUSCA VEM ANTES DA LISTA, E A LISTA ENCOLHEU.
+                Eram 1.149 linhas desenhadas de uma vez — e as 1.149 diziam a
+                MESMA coisa (rascunho, ligado). Uma lista em que toda linha é
+                igual não informa nada e ainda enterra tudo o que vem depois:
+                para chegar em "quem recebe as pendências" era preciso rolar os
+                mil e cento e quarenta e nove.
+
+                Então o padrão passou a ser o contrário: aparecem só os que
+                FOGEM do padrão, mais o que a busca achar. A busca vai ao banco
+                e alcança também os 1.335 que hoje são só varredura — é assim
+                que dá para INCLUIR um grupo, e não só mexer nos que já estão. */}
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+              <Input
+                className="h-8 pl-7 text-[11px]"
+                placeholder="Procurar grupo pelo nome — inclusive os que ainda não atende"
+                value={buscaGrupo}
+                onChange={e => setBuscaGrupo(e.target.value)}
+              />
+              {buscandoGrupo && (
+                <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 animate-spin text-muted-foreground" />
+              )}
+            </div>
+
+            {buscaGrupo.trim().length >= 2 ? (
+              achadosGrupo.length === 0 && !buscandoGrupo ? (
+                <p className="text-[11px] text-muted-foreground">Nenhum grupo com esse nome.</p>
+              ) : (
+                achadosGrupo.map(g => (
+                  <div key={g.group_jid} className="flex items-center gap-2 border rounded p-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-medium truncate">{g.group_name || g.group_jid}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        {g.so_varredura
+                          ? 'Só varredura — ele lê os números de processo, mas não fala aqui.'
+                          : MODOS[g.modo]}
+                      </p>
+                    </div>
+                    {g.so_varredura ? (
+                      <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                        onClick={() => mudarVarredura(g, false)}>
+                        <Plus className="h-3 w-3" />Passar a atender
+                      </Button>
+                    ) : (
+                      <>
+                        <Select value={g.modo} onValueChange={v => trocarModoGrupo(g, v)}>
+                          <SelectTrigger className="h-7 w-28 text-[11px]"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {Object.keys(MODOS).map(k => (
+                              <SelectItem key={k} value={k} className="text-xs">{k}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button size="sm" variant="ghost" className="h-7 text-[11px] text-destructive"
+                          onClick={() => mudarVarredura(g, true)}>
+                          Tirar
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                ))
+              )
+            ) : (
+              <>
+                <p className="text-[10px] text-muted-foreground">
+                  {foraDoPadrao.length === 0
+                    ? `Os ${grupos.length} estão no padrão: rascunho e ligados. Procure pelo nome para mexer num deles.`
+                    : `Fora do padrão (${foraDoPadrao.length} de ${grupos.length}). O resto está em rascunho e ligado — procure pelo nome para achar um específico.`}
+                </p>
+                {foraDoPadrao.map(g => (
+              <div key={g.group_jid} className="flex items-center gap-2 border rounded p-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-medium truncate">{g.group_name || g.group_jid}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{MODOS[g.modo]}</p>
+                </div>
+                <Select value={g.modo} onValueChange={async v => {
+                  await dbAny.from('dom_grupos_piloto').update({ modo: v } as never).eq('group_jid', g.group_jid);
+                  carregar();
+                }}>
+                  <SelectTrigger className="h-7 w-28 text-[11px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(MODOS).map(k => (
+                      <SelectItem key={k} value={k} className="text-xs">{k}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Switch checked={g.ativo} onCheckedChange={async v => {
+                  await dbAny.from('dom_grupos_piloto').update({ ativo: v } as never).eq('group_jid', g.group_jid);
+                  carregar();
+                }} />
+                <Button size="sm" variant="ghost" className="h-7 text-[11px] text-destructive"
+                  onClick={() => mudarVarredura(g, true)}>
+                  Tirar
+                </Button>
+              </div>
+                ))}
+              </>
+            )}
           </div>
 
           <p className="text-[10px] text-muted-foreground">

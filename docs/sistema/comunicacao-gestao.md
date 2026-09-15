@@ -37,6 +37,7 @@ Documentação funcional de WhatsApp, chat da equipe, campanhas, relatórios IA,
   - **Abrir uma conversa órfã já assume ela.** O claim é `insert` (sticky): abrir a conversa de outra pessoa **não rouba** nada. Duas exceções de propósito: **grupo** (dono de grupo é resposta errada — vários processos ali dentro) e o modo **"Todas as conversas"** (quem audita o pool está olhando, não atendendo; sem isso uma passada de gestor viraria dono de tudo que abrisse).
   - **Respondeu na conversa de outra pessoa** → pop-up "Assumir esta conversa?", **uma vez por conversa por sessão**. Responder não transfere sozinho; quem passou a atender precisa dizer que assumiu, senão a pendência continua sendo cobrada de quem saiu do papo.
   - Tabela `whatsapp_cloud_assignees` (PK `phone` + `instance_name`, IDs do **Externo**). Nasceu só no `cloud_gerencia`; desde 07/08/2026 vale para **todas as instâncias** — o mapa do front passou a ser chaveado por telefone+linha (o mesmo telefone pode falar com duas linhas, cada uma com seu dono) e o realtime perdeu o filtro de instância. `ConversationOwnerControl.tsx`; `claimConversation`/`transferConversation` em `useWhatsAppMessages`.
+- **Filtrar a lista por atendente** (desde 15/09/2026): na barra de filtros da lista de conversas, um seletor **"Todos os atendentes"** com uma entrada por dono presente na lista e quantas conversas ele tem. Existe porque "Meus" só responde pelo próprio usuário logado: quem supervisiona a linha via tudo junto ou conferia conversa por conversa pelo selo de dono. Só aparece para quem enxerga atribuição alheia (`canSeeAllAssignments`, o mesmo gate de "Sem dono") — para os demais a lista já chega restrita. A lista de nomes sai das **conversas carregadas**, não de um cadastro: quem saiu do rodízio e ainda tem fila continua aparecendo, e quem entrou hoje aparece sem release. Escolher um atendente desliga "Meus"/"Sem dono", que juntos dariam lista vazia sem dizer por quê. `WhatsAppConversationList.tsx`; 3 testes em `WhatsAppConversationList.atendente.test.tsx`.
 - **Buscar dentro da conversa — texto e data** (desde 07/08/2026): a **lupa** no topo da conversa abre uma barra logo abaixo do cabeçalho (empurra a lista de mensagens, não cobre nada) com campo de texto, botão de **calendário**, setas ↑/↓ para andar entre os resultados e contador ("3 de 12"). `Enter` vai pro próximo, `Shift+Enter` pro anterior, `Esc` fecha.
   - A busca roda no **Externo, filtrada pela própria conversa** (`instance_name` + `phone`, que caem no índice `idx_wam_inst_phone_created`), então **alcança o histórico inteiro** — não só as mensagens já carregadas em memória. Medido no grupo mais pesado do banco (26k mensagens): ~95ms com cache quente. O termo sai realçado nos resultados e também nas bolhas do chat.
   - **Calendário**: escolhido o dia, a lista abre pelas **primeiras mensagens daquele dia**. Com termo digitado junto, filtra o termo dentro do dia.
@@ -60,6 +61,27 @@ Em grupo, **cada instância-membro grava a sua própria cópia de cada mensagem*
 - **O menu "Grupo WA" abre pelo fim da conversa.** Buscava 3.000 linhas em ordem **crescente** — as mais antigas —, então grupo movimentado parava meses atrás sem avisar (a FAMILIA 374 exibia só até 19/05/2026). Agora são 800 linhas da mais recente para a mais antiga, com "Carregar mensagens anteriores", e traz as projeções `metadata->message->>sender_pn/sender_lid/senderName` para exibir quem falou (o jsonb inteiro custaria 7,5x o payload).
 
 **Mensagem enviada para o JID sumia do menu** (corrigido na edge `send-whatsapp` v25, deployada no Externo em 18/08/2026): o alvo do envio pode ser `120…@g.us`, mas a coluna `phone` tem de guardar só dígitos — é assim que o webhook grava e é por essa forma que o menu procura a conversa. Eram 1.505 linhas entre 09/04 e 18/08, todas outbound nossas (~300/mês), vindas de `sendActivityGroupNotification` e `sendVoiceToWa`. `storagePhone` separa o alvo do envio da forma gravada; backfill de 1.548 linhas aplicado (inclui 43 com `@s.whatsapp.net`, de abril).
+
+### Conversa lida no celular apaga o badge do app (14/09/2026)
+
+A mensagem digitada no aparelho já caía em `whatsapp_messages` desde sempre — o webhook grava `fromMe` como `outbound`, e é daí que saem 34% das nossas mensagens de grupo. O que nunca atravessou foi o **estado de leitura**: quem abria a conversa no celular zerava o contador no WhatsApp e o badge do app seguia aceso, porque o evento `chats` da UazAPI, que carrega esse contador, estava na lista de descarte do webhook desde o primeiro dia (`railway-server/src/functions/whatsapp-webhook.ts`).
+
+- **Agora `chats` com `wa_unreadCount: 0` carimba `read_at`** nas `inbound` daquele chat. O resto vem de graça: `trg_whatsapp_messages_update_read` decrementa `conversations.unread_count`, e tanto o web quanto o app derrubam o badge sozinhos. **Nenhuma linha de cliente mudou** — a assinatura da lista do app já contava as não lidas justamente para pegar leitura feita em outro aparelho.
+- **Só o zero é sinal.** `wa_unreadCount > 0` não desmarca nada, e campo ausente não vale por zero. A sincronia é de uma direção só: se o celular pudesse reacender o badge, ele brigaria para sempre com a leitura feita aqui — e apagar, ao contrário de acender, é idempotente.
+- **Grupo carimba as cópias de todas as instâncias**, pela mesma razão que a lista trata grupo como uma conversa só: a bolha lida é a mesma mensagem espelhada, e deixar as cópias sem `read_at` mantém o badge aceso para o próximo colega.
+- **O gate sai desligado** (`WHATSAPP_READ_SYNC=on` liga, no painel do Railway). Não é cerimônia de deploy: o `wa_unreadCount` da UazAPI nunca foi observado em produção, e se ele vier sempre zero o badge da equipe inteira apaga de uma vez, levando junto a fila de quem precisa responder. Desligado, o handler roda e **loga o que teria marcado** (`[leitura-sync][observando]`) — é essa linha que autoriza ligar.
+
+**O retroativo** (`/functions/whatsapp-sync-leitura`) existe porque o evento só resolve do dia em que entrar em diante, e o passivo é de meses. A varredura parte de **quem nós achamos não lido** (`conversations.unread_count > 0`, consulta indexada por instância) e só então pergunta à UazAPI o que o celular acha daqueles chats — instância sem pendência não gera uma chamada de rede. O `dry_run` começa ligado, porque marcar como lido é irreversível na prática.
+
+```
+{ "acao": "webhook" }                       vê o evento em cada instância (aplicar: true liga)
+{ "acao": "reconciliar" }                   dry-run
+{ "acao": "reconciliar", "dry_run": false } para valer
+```
+
+O número do dry-run é também o teste do campo: **zero chat lido no celular com milhares de pendências nossas não é "está tudo em dia"** — é motivo para não ligar o gate. O `veredito` da resposta diz isso com todas as letras.
+
+Três coisas ficaram de fora, de propósito: a **volta** (ler no app mandar `/chat/read` ao celular, que dispara confirmação de leitura para o cliente), o **`messages_update`** (tique de entrega no canal UazAPI, que o canal Cloud já tem) e o **gêmeo Deno** em `supabase/functions/whatsapp-webhook/index.ts`, que continua descartando `chats` — se alguma instância ainda apontar o webhook para a edge em vez do Railway, a leitura dela não sincroniza, e a ação `webhook` imprime a URL de cada uma para responder isso.
 
 ### Mensagem citada — o "responder" do WhatsApp na bolha (26/08/2026)
 
@@ -112,6 +134,7 @@ A **foto de perfil do WhatsApp** aparece na lista de conversas, no cabeçalho do
 - **Marcação na própria linha**: `↓ de Fulano` (roxo) para o que recebi — com ponto vermelho enquanto não foi confirmada — e `↑ para Fulano` (azul) para o que eu compartilhei. Uma conversa pode ter as duas.
 - **Sub-filtros** aparecem quando o chip está ativo: **Todas / Comigo / Eu compartilhei** e um select **quem compartilhou**, com a contagem por pessoa. Conferido em 03/09/2026: 37 no total, 8 recebidas, 33 enviadas (4 têm os dois lados), e "Luana Barros" isolando 24.
 - **A lista busca as compartilhadas no Supabase Externo**, não no espelho Cloud: o espelho é sincronizado em lote e conversa ainda não espelhada simplesmente não aparecia. São a RPC de resumo por instância envolvida + a última mensagem daquela conversa quando o share ficou fora da página de resumos — no lugar do antigo `limit(500)` global de mensagens, que sozinho já derrubava conversa antiga da lista.
+- **O menu WhatsApp API não tem compartilhadas** (14/09/2026): `/whatsapp-api` é a mesma `WhatsAppInbox` travada no canal Cloud (`lockInstanceName`), e ali `sharedMessages` nem chega a ser montado — nenhuma conversa entra na lista por ter sido compartilhada, e o chip **Compartilhadas** (com os sub-filtros) some junto, via `hideSharedFilter`. Motivo: os compartilhamentos existentes são todos de instância UazAPI (em 14/09/2026, 3 — "Raym" e "Analyne Oliveira", nenhum de linha Cloud) e apareciam no meio das conversas da Cloud API. `sharedConvs` continua sendo carregado mesmo na caixa travada — é dele que o chat tira `identify_sender`/`can_reshare` no envio. No `/whatsapp` normal nada muda.
 
 
 ### Pendências do cliente — "Cliente ficou de" (desde 05/08/2026; leitura por IA desde 06/08/2026)
@@ -300,7 +323,7 @@ Antes existia uma linha só, chamada `cloud_gerencia`, e esse nome vivia hardcod
 - **Envio escolhe a linha pelo `instance_name` da conversa**, não pela "config ativa". `maybeSingle()` ali seria uma bomba: com duas linhas ativas ele **erra**.
 - **`WHATSAPP_CLOUD_APP_SECRET` aceita lista separada por vírgula.** Cada WABA pode estar inscrita num App diferente e cada App assina com o seu secret — com um secret só, ligar o 2º número derruba o inbound do 1º com 401, que não aparece em lugar nenhum daqui.
 
-**Seletor de linha** (`/whatsapp-api/conversas`): a barra ganha um dropdown "Todas as linhas" + uma entrada por linha, e ele **só aparece com 2+ linhas** — dropdown de um item é ruído. Com mais de uma linha a caixa abre em "Todas", porque abrir fixado numa esconderia as conversas da outra sem aviso. Quando duas ou mais linhas aparecem na lista, cada conversa ganha um selo cinza com o nome da linha (`rotuloDaLinha`), ao lado do selo azul do dono — sem isso "Todas as linhas" vira uma pilha onde não dá para saber por qual número a pessoa falou. `lockInstanceName` com nome de linha Cloud passou a significar "trava no CANAL Cloud", não naquela linha.
+**Seletor de linha** (`/whatsapp-api/conversas`): a barra ganha um dropdown "Todas as linhas" + uma entrada por linha, e ele **só aparece com 2+ linhas** — dropdown de um item é ruído. A caixa **abre na linha do nome travado em `lockInstanceName`** (hoje `abraci`, 58 das 67 mensagens Cloud dos últimos 30 dias em 15/09/2026) — o padrão anterior era "Todas", que empilhava Abraci, Prudencio Advogados e Quitepay numa lista só. `linhaCloudPadrao()` (em `cloudApiInstances.ts`, 5 testes) faz a escolha e cai em "Todas" quando essa linha não está disponível — renomeada, desativada ou fora do acesso do usuário —, para não mostrar caixa vazia sem explicação. Quando duas ou mais linhas aparecem na lista, cada conversa ganha um selo cinza com o nome da linha (`rotuloDaLinha`), ao lado do selo azul do dono — sem isso "Todas as linhas" vira uma pilha onde não dá para saber por qual número a pessoa falou. `lockInstanceName` com nome de linha Cloud passou a significar "trava no CANAL Cloud", não naquela linha.
 
 **Para adicionar um número** (ex: Prudêncio Advogados, `prudencio_advogados`): (1) linha em `whatsapp_cloud_config` com `instance_name` — pela tela `/whatsapp-cloud`, no seletor "+ Adicionar linha"; (2) linha em `whatsapp_instances` com `instance_token='cloud_api_meta'`; (3) app secret do App daquela WABA acrescentado à lista (vírgula separa, **trocar derruba a outra WABA**); (4) webhook do App apontando pro nosso Railway.
 
@@ -321,6 +344,14 @@ O primeiro deu a prova do conserto do `save_config`: com o código antigo a sequ
 
 Já auditadas e limpas: `whatsapp_cloud_assignees` (PK `(phone, instance_name)`, nasceu multi-linha), `whatsapp_cloud_routing_rules`, e nenhum CHECK ou constraint de exclusão nas três.
 
+**Quem recebe a conversa nova** (pool do rodízio, medido em 15/09/2026): conversa sem dono cai no `pickAssignee` do `whatsapp-cloud-webhook.ts`, que roda a **única regra ativa** — `fc6ae3e1…` name `bpc-loas`, `match_type=default`. O pool é `eligible_user_ids`, hoje **Israel, Mateus e Karolyne** (Karolyne entrou em 15/09/2026; antes eram dois). `pick_cloud_assignee` gira por `array_position` do último atribuído, então acrescentar alguém não precisa resetar o cursor — o ciclo passa a ser 1/N. Três coisas que não são óbvias:
+
+- **A regra não olha a linha.** `match_type=default` vale para qualquer linha Cloud, então quem entra no pool entra para Abraci, Prudencio Advogados e Quitepay ao mesmo tempo. Isolar uma linha exigiria regra por linha (o `pickAssignee` não filtra por `instance_name`).
+- **Conversa que já tem dono não muda** (atribuição sticky) — mexer no pool só afeta conversa nova.
+- **O rodízio por funil vem antes, mas quase nunca dispara**: `pick_funnel_assignee` só responde se o lead já tem board com membros em `funnel_round_robin_members` — os 9 membros de lá são dos boards "Acidente de Trabalho" e "Trabalhistas judicial (desativado)". Nos 45 dias até 15/09/2026, as 8 atribuições novas do `whatsapp_cloud_routing_log` saíram todas da regra `bpc-loas`.
+
+Editar o pool pela tela `/whatsapp/cloud` (checkbox por pessoa) é o caminho normal — ela grava o `user_id` do `profiles` do **Cloud**. Mexendo por SQL, conferir o UUID no `auth_uuid_mapping` antes: para Israel, Mateus, Karolyne e Alexandre o `cloud_uuid` é igual ao `ext_uuid`, mas isso **não vale para a equipe toda** (26 de 51 diferem) e um UUID errado ali atribui a conversa a um fantasma que ninguém vê.
+
 **Linhas hoje** (02/09/2026): `abraci` (+55 86 8900-9137, WABA 458751397321968) em produção; `prudencio_advogados` (+1 555-964-5799, WABA 1495255778900978) recebendo — é o número de teste da Meta, usado para provar a cadeia multi-número, e o da Prudêncio de verdade será um 0800 ainda não liberado; `quitepay` (+55 86 8876-7464, mesma WABA) cadastrada mas **sem enviar nem receber**: `platform_type: NOT_APPLICABLE`, `code_verification_status: EXPIRED`.
 
 **Onboarding de número — a sequência que funciona** (medida no `quitepay` em 02/09/2026): apagar a conta do app WhatsApp Business no celular → `request_code` → `verify_code` → `register` → foto/perfil → nome. Três pegadinhas, e duas delas mentem:
@@ -338,6 +369,20 @@ O PIN do `register` vem de `WHATSAPP_CLOUD_REGISTER_PIN` no Railway, nunca do co
 **Estado das WABAs**: a da ABRACI (`458751397321968`) **não** tem o nosso App inscrito — tem "Dashboard de Marketing Digital" (da BM1) e Kommo; o inbound chega porque o webhook do App da BM1 aponta pra cá. A da WhatsJudd (`1495255778900978`) tem o `BussinesMessagerAPI` (nosso).
 
 **Envio**: front → edge `send-whatsapp` (com `channel: 'cloud'` e `instance_name` da conversa) → Railway `send-whatsapp-cloud`. A edge repassa o corpo verbatim, então campo novo no envio **não exige deploy de edge**.
+
+### Mídia recebida — a Cloud API não manda o arquivo
+
+O webhook da Meta não traz a foto: traz um `media_id` que só vira arquivo com duas chamadas na Graph API (`GET /{media_id}` devolve uma URL de 5 min; baixar os bytes exige o mesmo Bearer). **Esse id caduca em 30 dias** — mídia não baixada a tempo está perdida, não existe segunda chance.
+
+Até 15/09/2026 o webhook guardava o id em `metadata.cloud_media` e não baixava nada. Resultado: **toda** foto, vídeo, PDF e áudio recebido na linha oficial nascia com `media_url` nulo, a bolha caía no aviso "criptografado — clique para sincronizar", e o arquivo só existia se alguém clicasse. Deu para datar o defeito pelo nome dos arquivos no Storage: mensagem das 18:28 com arquivo `repair_…` criado às 08:01 do dia seguinte.
+
+Hoje `whatsapp-cloud-webhook` chama `sincronizarMidiaDaMensagem(rowId, 'ingest')` assim que grava a linha — duas tentativas, 3s entre elas, depois do `200` que a Meta espera e fora do `await` do loop, então não atrasa roteamento nem recibo. Medido em produção: foto chegou 09:05:44, arquivo pronto 09:05:46.
+
+- **O prefixo do arquivo no Storage diz a origem** e é prova em auditoria: `ingest_` = veio junto da mensagem, `repair_` = veio depois, de clique ou backfill. Não troque por um nome só.
+- O botão "Sincronizar" e o auto-sync do `WhatsAppChat` continuam, agora como retry — e cobrindo os quatro tipos de mídia, não só áudio.
+- **A tela não vê o arquivo chegar.** A lista de mensagens vem de um Realtime que escuta só `INSERT` (`useWhatsAppMessages.ts`), então o `UPDATE` que grava `media_url` ~3s depois não atualiza a bolha; quem conserta é o auto-sync, que recebe `already_synced` com a URL pronta. Ouvir `UPDATE` no canal resolveria também, mas `whatsapp-leitura.ts` faz `UPDATE` de `read_at` em massa e o payload de `whatsapp_messages` é gordo de `metadata` — seria egress caro por conversa aberta.
+- `type: unsupported` vem com um `errors[]` que é a única explicação da Meta: fica em `metadata.cloud_errors` e vira o texto da bolha. Resposta interativa de subtipo novo (Flow/`nfm_reply`) guarda o nó cru em `metadata.cloud_interactive` em vez de virar bolha vazia com só o horário.
+- **A bolha nunca fica muda** (desde 15/09/2026). O que motivou: uma resposta `interactive` de 14/09 às 20:10 (lead de anúncio CTWA, telefone 5541…4575) foi gravada com `message_text` vazio, `metadata` nulo, e a conversa mostrava só um retângulo com o horário — ninguém saberia que o cliente respondeu. Sem texto, sem mídia desenhável e fora do aviso de "criptografado — clique para sincronizar" (que só cobre image/video/audio/document), a bolha agora escreve `rotuloMensagemSemConteudo(msg)`: *"Mensagem sem conteúdo registrado (tipo: interactive)"*, ou *"Anexo não exibível"* quando existe `media_url` que não dá para desenhar — apontar o lugar errado manda procurar no lugar errado. Fica em `src/lib/midiaDaConversa.ts` (3 testes). **O conteúdo daquela mensagem é irrecuperável**: `metadata` nulo, `webhook_logs` com 0 linhas, o payload nunca é logado e a Meta não tem endpoint para reler mensagem por `wamid` — a linha foi carimbada à mão com `(resposta interativa)`, o mesmo rótulo que o código novo escreveria.
 
 ### Janela de 24h — a regra que faz a tela mentir se ignorada
 
@@ -564,6 +609,28 @@ Numa conversa pessoal (a esposa do dono da conta) a sugestão saía **"Entendi, 
 - Reabrindo uma conversa antiga, cada tabela mostra até 200 linhas gravadas (a contagem original continua no badge) — pra lista completa, refaça a pergunta.
 
 **Regra**: a IA aponta valor absurdo no texto, mas **nunca filtra ou esconde linha** do resultado. A tabela mostra o que está no banco; o conserto é na origem.
+
+### Gráfico no resultado — desde 09/09/2026
+
+**Quem decide se existe gráfico é a IA**, não a tela: o `run_sql` ganhou um campo opcional `chart` (`{type: bar|line|pie, x, y, label}`) e o prompt diz quando pedir — contagem ou soma agrupada com até ~25 grupos (por status, responsável, núcleo, mês, funil). Relação de registros e resultado de uma linha **não** viram gráfico; na dúvida o prompt manda não mandar o campo, porque tabela sem gráfico é melhor que gráfico que confunde.
+
+- **O gráfico nunca substitui a tabela.** Tendo gráfico, o bloco abre nele e ganha o par de botões Gráfico / Tabela; a tabela continua completa a um clique. Nenhuma linha sai da tela por parecer estranha (CLAUDE.md, "solução estrutural, nunca band-aid na tela") — o valor absurdo é desenhado igual, pra ser consertado na origem.
+- **O backend valida antes de deixar passar** (`report-query.ts` → `validarChart`): as colunas `x` e `y` têm que existir no resultado real, ser diferentes entre si, e `y` tem que ser numérico em pelo menos uma linha. Não passando, o campo é descartado e fica só a tabela — a IA não desenha em cima de coluna que não existe.
+- **Gráfico gravado só quando o resultado inteiro caber** nas 200 linhas da gravação: reabrindo a conversa, resultado cortado mostra a tabela (que já se anuncia parcial), nunca um gráfico que soma parte do dado com cara de total. No turno em que a pergunta foi feita, o gráfico se anuncia parcial ("desenhando 200 de 900 linhas").
+- **Barra é horizontal** (nome de pessoa e status em português não caberiam no eixo de baixo), barra e pizza ordenam do maior pro menor, **linha mantém a ordem do tempo**. Pizza com mais de 6 fatias **vira barra** em vez de agrupar em "Outros" — juntar categoria esconderia quem é quem. A legenda da pizza traz o valor escrito ao lado do nome: a identidade da fatia nunca depende só da cor.
+- **Animação desligada de propósito** (`isAnimationActive={false}`): medido no navegador em 09/09/2026, com recharts 2.15 puro, a animação de entrada não termina nesta base — a pizza ficava **vazia** (só a legenda) e a linha **sem pontos**. Desligada, os setores e pontos aparecem na hora. `tsc`, `build` e os testes passam verdes com a pizza vazia (jsdom não desenha), então só religar depois de conferir na tela.
+
+### O mapa do banco é lido do banco — desde 09/09/2026
+
+O analista não recebe uma lista de colunas escrita à mão: `railway-server/src/lib/schemaCatalog.ts` lê o schema do próprio banco a cada boot (e a cada hora), monta o catálogo e o `report-query` cola isso no prompt. A **curadoria** continua no arquivo — o que cada tabela significa, o vocabulário real dos status (`lead_status='closed'`, `resultado` em minúsculo, `current_status='Concluída'`) e os joins já testados —, porque isso o schema não conta.
+
+**Por que mudou**: o catálogo à mão envelheceu. `inss_admin_processes.resultado` tinha 498 registros preenchidos (396 indeferido, 100 deferido, 2 arquivado_decurso) e nunca entrou na lista; como o prompt manda "nunca invente coluna, use só as listadas", a IA respondeu à diretoria que o requerimento "não tem campo de resultado". Mesma coisa em `lead_processes`: 83 colunas no banco, 25 no catálogo — `resultado_atingido*` e `protocolo_administrativo` (275 preenchidos) invisíveis. **Não era o modelo** (quem responde é o Opus desde 04/09/2026): era o mapa.
+
+- **Tabela nova só aparece no relatório depois de entrar na lista `TABELAS`** do `schemaCatalog` (com uma linha dizendo o que ela é). O `/health` conta em `schema_catalog.fora_do_catalogo` quantas o banco expõe e ninguém liberou.
+- **Coluna de credencial fica fora de propósito** (`senha_gov` e afins). A IA não consulta senha, nem pra contar quantas estão preenchidas.
+- **Se a leitura do schema falhar**, o catálogo sai em modo degradado: sem lista de colunas e com uma regra dura no prompt — é proibido afirmar que um campo não existe; ou testa a consulta, ou diz que não sabe. Nunca cai num segundo catálogo à mão (que envelheceria igual).
+- **Como conferir de fora**: `GET /health` → `schema_catalog`. Precisa dizer `fonte: "banco"` com o número de tabelas e colunas; `"degradado"` significa IA respondendo sem enxergar o schema. Medido em 09/09/2026: 13 tabelas, 462 colunas.
+- Custo: o catálogo ficou ~1k tokens maior por rodada, mas vai cacheado no prompt.
 
 ### Anexo e ditado por voz na pergunta — desde 09/09/2026
 

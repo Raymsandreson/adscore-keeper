@@ -23,7 +23,7 @@ Leia `references/known-reusables.md`. Casos clássicos:
 
 - Nome de grupo WhatsApp → `whatsapp_groups_index` (sync diário mantém atualizado). NÃO chame UazAPI direto, NÃO crie cache novo.
 - Vínculo lead↔grupo → `lead_whatsapp_groups` (já tem `group_name` para snapshot).
-- Vínculo lead↔contato → `contact_leads` (com `relationship_type`).
+- Vínculo lead↔contato → `contact_leads` (com `is_primary_client`). NÃO use `contacts.lead_id`: enxerga 1.270 leads dos 8.545 que a ponte cobre.
 - Histórico de mensagens → `whatsapp_messages` (Externo). Não criar tabela paralela de "conversation_log".
 - Custom fields por entidade → `lead_custom_fields` + `lead_custom_field_values`. Use isso antes de `ALTER TABLE leads ADD COLUMN`.
 - Form layouts → `form_layout_tabs` + `form_layout_fields`. Não hardcode layout em componente novo.

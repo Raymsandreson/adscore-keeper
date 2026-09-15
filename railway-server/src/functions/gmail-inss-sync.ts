@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express';
 import { selfPost } from '../lib/selfCall';
 import { supabase } from '../lib/supabase';
 import { findInssOrphanMatch, applyInssMatch } from '../lib/inss-matcher';
+import { extractBenefitNumber, extractTipoBeneficio } from '../lib/inss-despacho';
 
 /**
  * Carteiro robô do Gmail.
@@ -194,15 +195,6 @@ function parseInssSubject(subject: string, body: string): {
   if (nomeMatch) out.nome = nomeMatch[1].trim().replace(/\s+/g, ' ');
 
 
-  // Tipo de benefício
-  const benMatch = body.match(/benef[íi]cio[:\s]+([^\n]{3,80})/i) ||
-                   body.match(/servi[çc]o[:\s]+([^\n]{3,80})/i);
-  if (benMatch) out.beneficio = benMatch[1].trim();
-
-  // Número do benefício (NB) - diferente do requerimento
-  const nbMatch = body.match(/\bNB[:\s]*(\d{6,12})/i) ||
-                  body.match(/n[uú]mero\s+do\s+benef[íi]cio[:\s]*(\d{6,12})/i);
-  if (nbMatch) out.beneficio_num = nbMatch[1];
 
   // Data do protocolo (data de entrada do requerimento)
   const protoMatch =
@@ -215,6 +207,14 @@ function parseInssSubject(subject: string, body: string): {
   // deferido/indeferido só é confiável quando o requerimento está Concluído.
   out.servico = extractServico(body);
   out.despacho = extractDespacho(body);
+
+  // Tipo do benefício e NB saem da fonte única (lib/inss-despacho). Os regex que
+  // viviam aqui liam o corpo como se tivesse quebras de linha — e gmailBodyToText
+  // achata o HTML numa linha só, então engoliam o bloco inteiro (benefit_type) ou
+  // não casavam formato nenhum (NB). Medido em 09/09/2026.
+  out.beneficio = extractTipoBeneficio(body);
+  // O NB mora no Despacho; o corpo é fallback para e-mail sem esse campo.
+  out.beneficio_num = extractBenefitNumber(out.despacho || body);
   const statusConcluido = /conclu[íi]d/i.test(out.status || '');
   if (statusConcluido) out.resultado = classifyResultado(out.despacho);
 

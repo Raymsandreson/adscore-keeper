@@ -50,6 +50,83 @@ Deno.serve(async (req)=>{
     const { phone, instance_name, lead_id, contact_id, group_jid, force, dry_run, apply_fields } = await req.json();
     const isGroupEnrich = !!group_jid && !!lead_id;
     const isApply = !!apply_fields && typeof apply_fields === 'object' && !Array.isArray(apply_fields);
+
+    // === PORTA DO `apply_fields` ===
+    //
+    // `apply_fields` grava QUALQUER campo em QUALQUER `lead_id`, com SERVICE
+    // ROLE, numa funcao com `verify_jwt = false`. Sem porta, bastava a chave
+    // ANON — que e publica, esta no bundle do front — para um estranho
+    // reescrever o cadastro de qualquer cliente.
+    //
+    // A porta fica so aqui, e nao na funcao inteira, porque o caminho de
+    // enriquecimento tem chamadores de servidor legitimos que so alcancam a
+    // chave anon: `whatsapp-webhook` (Railway e edge) e
+    // `zapsign-post-sign-extras`. Nenhum manda `apply_fields` (conferido em
+    // 10/09/2026: o unico chamador e o `LeadEditDialog`, pelo front).
+    //
+    // ACEITA DUAS CREDENCIAIS:
+    //  1. service role do Externo — e o que o PROXY DO CLOUD manda. O proxy
+    //     TROCA o Authorization do chamador pelo service role, entao o JWT do
+    //     usuario nunca chega aqui. Recusar isso quebraria o front.
+    //  2. JWT de usuario logado — para chamada direta, sem passar pelo proxy.
+    //
+    // LIMITE CONHECIDO: o proxy do Cloud (`supabase/functions/auto-enrich-lead`)
+    // nao verifica quem o chamou e manda service role para ca. Enquanto ele for
+    // assim, ele mesmo e uma porta aberta. Fechar exige deploy no Cloud, que so
+    // sai pelo Lovable. Esta porta fecha o acesso DIRETO com a chave publica,
+    // que e o que estava trivialmente explorável.
+    if (isApply) {
+      const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+      // Papel declarado DENTRO do JWT, e nao igualdade de chave: comparar com
+      // `SERVICE_ROLE_KEY` falhou em producao (a chave que o proxy manda nao e
+      // byte-a-byte a mesma que esta no env desta funcao), e isso derrubou o
+      // caminho legitimo do front. O `role` do payload separa o que importa:
+      // `service_role` e chave privada, `anon` e publica.
+      const papelDoToken = (() => {
+        try {
+          const meio = token.split('.')[1];
+          if (!meio) return '';
+          const json = atob(meio.replace(/-/g, '+').replace(/_/g, '/'));
+          return String(JSON.parse(json)?.role || '');
+        } catch (_e) {
+          return '';
+        }
+      })();
+      let autorizado = false;
+      // `motivo` existe para este portao poder ser TESTADO sem uma sessao real.
+      // A pergunta perigosa nao e "o usuario passa?" e sim "o verificador esta
+      // de pe?": se CLOUD_ANON_KEY faltar aqui, o getUser falha, o catch nega e
+      // o portao recusa TODO MUNDO — inclusive o front legitimo. Sem este campo
+      // os dois casos devolvem o mesmo 401 e a diferenca fica invisivel.
+      // Nenhum valor abaixo revela credencial.
+      let motivo = 'sem_token';
+      if (papelDoToken === 'service_role') {
+        autorizado = true;
+        motivo = 'service_role';
+      } else if (papelDoToken === 'anon') {
+        motivo = 'chave_anon_e_publica';
+      } else if (token) {
+        if (!CLOUD_URL || !CLOUD_ANON) {
+          motivo = 'verificador_indisponivel_falta_cloud_anon_key';
+        } else {
+          try {
+            const verificador = createClient(CLOUD_URL, CLOUD_ANON);
+            const { data } = await verificador.auth.getUser(token);
+            autorizado = !!data?.user;
+            motivo = autorizado ? 'usuario_autenticado' : 'token_nao_corresponde_a_usuario';
+          } catch (_e) {
+            motivo = 'verificador_falhou';
+          }
+        }
+      }
+      if (!autorizado) {
+        console.warn(`[auto-enrich] apply_fields recusado: ${motivo}`);
+        return new Response(JSON.stringify({ error: 'apply_fields exige credencial autorizada', motivo }), {
+          status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     if (isApply && !lead_id && !contact_id) {
       return new Response(JSON.stringify({ error: 'lead_id or contact_id required for apply_fields' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -246,8 +323,12 @@ REGRAS:
     if (lead_id) {
       const leadUpdate: Record<string, any> = {};
       if (cleaned.email) leadUpdate.lead_email = cleaned.email;
+      // `street` e `cep` estavam no prompt e na resposta `enriched`, mas fora deste
+      // mapa: a tela mostrava os dois como aplicados e o lead continuava sem eles.
+      // As colunas existem em `leads` (text) — o que faltava era o de-para.
       const leadFields: Record<string, string> = {
         city: 'city', state: 'state', neighborhood: 'neighborhood', notes: 'notes',
+        street: 'street', cep: 'cep',
       };
       if (isAccidentBoard) {
         Object.assign(leadFields, {

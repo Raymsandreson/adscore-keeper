@@ -354,3 +354,10 @@ comment on function public.escavador_alertar_saldo(boolean) is
   'WhatsApp para o dono da instância Raym quando vw_escavador_saldo.alerta. Remetente: Atendimento Processual → '
   'Atendimento Previdenciário → Dom, trocando a cada tentativa que falha. 1 aviso por 24 h quando o envio deu certo. '
   'p_forcar = true manda um teste.';
+
+-- ADENDO 2 (09/09/2026, 23h UTC, correção do Raym): "Dom" é o nome do
+-- ATENDENTE, não de instância — e aquele número não existe mais. As instâncias
+-- que ficaram são "Atendimento Processual" e "Atendimento Previdenciário 2".
+-- A lista de remetentes passa a ser essas duas (mais "Atendimento
+-- Previdenciário", que também respondeu conectada na sondagem, como terceira).
+-- Aplicado com: create or replace da função trocando só c_ordem.

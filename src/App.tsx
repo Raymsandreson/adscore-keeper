@@ -18,6 +18,7 @@ import { PushNotificationBridge } from "@/components/notifications/PushNotificat
 import { AppNavigationBridge } from "@/components/AppNavigationBridge";
 import { WhatsAppChatSheetHost } from "@/components/whatsapp/WhatsAppChatSheetHost";
 import { MovimentacaoSheetHost } from "@/components/notifications/MovimentacaoSheetHost";
+import { PopPassosAoCriarHost } from "@/components/activities/PopPassosAoCriarHost";
 import { AgentConfigSheetHost } from "@/components/whatsapp/AgentConfigSheetHost";
 import { ActivityNotificationsListener } from "@/components/activities/ActivityNotificationsListener";
 import { UserStatusGuard } from "@/components/auth/UserStatusGuard";
@@ -347,6 +348,7 @@ function SidebarLayout() {
                 notificado — no lugar do kanban do lead, que era o destino
                 antigo e não respondia nada disso. */}
             <MovimentacaoSheetHost />
+            <PopPassosAoCriarHost />
             <AgentConfigSheetHost />
             <ActivityTimerOverlay />
             {/* Sem expediente aberto, aviso em tela cheia com o POP de início de

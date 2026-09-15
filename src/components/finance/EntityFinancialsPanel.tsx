@@ -23,6 +23,9 @@ import {
 } from 'lucide-react';
 // Conciliação: dizer se o valor digitado aqui apareceu mesmo no extrato do banco.
 import { ConciliarLancamentoDialog } from '@/components/finance/ConciliarLancamentoDialog';
+import {
+  useContasDePagamento, FORMAS_DE_PAGAMENTO, formaUsaCartao, rotuloDaForma,
+} from '@/hooks/useContasDePagamento';
 import { conciliacaoDivergente } from '@/hooks/useConciliacaoOpenFinance';
 import { format } from 'date-fns';
 import { cnjVariantes } from '@/lib/cnj';
@@ -153,6 +156,14 @@ export interface EntityFinancialEntry {
   parcela_n: number | null;
   parcela_de: number | null;
   payment_method: string | null;
+  /**
+   * De QUAL conta saiu/entrou o dinheiro (`cost_accounts`) e, quando foi no
+   * cartão, QUAL cartão. Os quatro dígitos são o que casa com o extrato do
+   * cartão na conciliação — id de cadastro casaria com o cadastro, não com o
+   * extrato. Ver a migration `lancamento_do_lead_sabe_a_conta`.
+   */
+  cost_account_id: string | null;
+  card_last_digits: string | null;
   notes: string | null;
   created_at: string;
   /**
@@ -361,6 +372,10 @@ export function EntityFinancialsPanel({
     periodicidade: 'mensal' as Periodicidade,
     modo: 'dividir' as ModoParcelamento,
     payment_method: '',
+    /** Conta que pagou/recebeu. '' = não informado. */
+    cost_account_id: '',
+    /** Quatro dígitos do cartão, quando a forma é cartão. */
+    card_last_digits: '',
     notes: '',
   });
 
@@ -401,6 +416,11 @@ export function EntityFinancialsPanel({
   const [verComprovante, setVerComprovante] = useState<string | null>(null);
   /** Lançamento aberto na tela de conciliação. null = fechada. */
   const [conciliando, setConciliando] = useState<EntityFinancialEntry | null>(null);
+
+  // Contas e cartões da casa. `dialogOpen` como gatilho: a ficha do lead abre
+  // muito mais vezes do que alguém lança despesa, e duas consultas por abertura
+  // de ficha para desenhar select que ninguém vai ver é carga à toa.
+  const { contas, cartoes, carregando: carregandoContas, erro: erroContas } = useContasDePagamento(dialogOpen);
 
   // Documento com VÁRIOS valores: a tela deixa de preencher o formulário e passa
   // a mostrar a lista para escolher. Preencher um campo só com o primeiro de
@@ -902,6 +922,8 @@ export function EntityFinancialsPanel({
       periodicidade: 'mensal',
       modo: 'dividir',
       payment_method: '',
+      cost_account_id: '',
+      card_last_digits: '',
       notes: '',
     });
     setComprovante(null);
@@ -1276,7 +1298,12 @@ export function EntityFinancialsPanel({
         settled_at: it.jaPago ? (it.data || hoje) : null,
         receipt_url: receiptUrl,
         conferido: true,
-        payment_method: null,
+        // O documento não diz como foi pago; o que a pessoa marcou no formulário
+        // antes de conferir a lista, sim. Vale para todas as linhas do mesmo
+        // documento — é um pagamento só, repartido.
+        payment_method: form.payment_method || null,
+        cost_account_id: form.cost_account_id || null,
+        card_last_digits: formaUsaCartao(form.payment_method) ? (form.card_last_digits || null) : null,
         notes: null,
         parcela_grupo: null,
         parcela_n: null,
@@ -1344,6 +1371,11 @@ export function EntityFinancialsPanel({
         description: form.description || null,
         category: form.category || null,
         payment_method: form.payment_method || null,
+        cost_account_id: form.cost_account_id || null,
+        // Cartão só faz sentido quando a forma é cartão: trocar para PIX depois
+        // de escolher o cartão deixaria um dígito órfão mandando a conciliação
+        // procurar no extrato errado.
+        card_last_digits: formaUsaCartao(form.payment_method) ? (form.card_last_digits || null) : null,
         notes: form.notes || null,
       };
 
@@ -1504,6 +1536,8 @@ export function EntityFinancialsPanel({
       periodicidade: 'mensal',
       modo: 'dividir',
       payment_method: entry.payment_method || '',
+      cost_account_id: entry.cost_account_id || '',
+      card_last_digits: entry.card_last_digits || '',
       notes: entry.notes || '',
     });
     setDialogOpen(true);
@@ -2434,6 +2468,110 @@ export function EntityFinancialsPanel({
                 />
               </div>
             )}
+            {/* COMO O DINHEIRO ANDOU E POR ONDE — a parte que faltava para o
+                lançamento nascer conciliável. Quem lança já sabe que saiu no
+                cartão final 1234; sem registrar isso, a conferência contra o
+                extrato tem de varrer conta e cartão inteiros e oferecer tudo
+                que couber na janela de dias. Com o cartão escolhido, a busca
+                abre já no cartão certo (ver ConciliarLancamentoDialog). */}
+            <div className="rounded border p-2 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">
+                    {form.entry_type === 'entrada' ? 'Como recebeu' : 'Como pagou'}
+                  </Label>
+                  <Select
+                    value={form.payment_method}
+                    onValueChange={v => setForm(p => ({
+                      ...p,
+                      payment_method: v,
+                      // Sair de cartão apaga o cartão: dígito de cartão com
+                      // forma PIX manda a conciliação procurar no extrato errado.
+                      card_last_digits: formaUsaCartao(v) ? p.card_last_digits : '',
+                    }))}
+                  >
+                    <SelectTrigger className="h-8"><SelectValue placeholder="PIX, boleto, cartão..." /></SelectTrigger>
+                    <SelectContent>
+                      {FORMAS_DE_PAGAMENTO.map(f => (
+                        <SelectItem key={f.valor} value={f.valor}>{f.rotulo}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Conta</Label>
+                  <Select
+                    value={form.cost_account_id}
+                    onValueChange={v => setForm(p => ({ ...p, cost_account_id: v }))}
+                  >
+                    <SelectTrigger className="h-8">
+                      <SelectValue placeholder={carregandoContas ? 'carregando...' : 'De qual conta...'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contas.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Qual cartão só aparece quando a forma é cartão — e é aí que
+                  vira pergunta obrigatória de fato, porque é o número que casa
+                  a despesa com a linha da fatura. */}
+              {formaUsaCartao(form.payment_method) && (
+                <div>
+                  <Label className="text-xs">Qual cartão</Label>
+                  <Select
+                    value={form.card_last_digits}
+                    onValueChange={v => setForm(p => {
+                      const cartao = cartoes.find(c => c.card_last_digits === v);
+                      return {
+                        ...p,
+                        card_last_digits: v,
+                        // O cartão já sabe de qual conta ele é (card_assignments.
+                        // cost_account_id). Preenche o que estiver vazio, nunca
+                        // sobrescreve escolha de quem está lançando.
+                        cost_account_id: p.cost_account_id || cartao?.cost_account_id || '',
+                      };
+                    })}
+                  >
+                    <SelectTrigger className="h-8">
+                      <SelectValue placeholder={carregandoContas ? 'carregando...' : 'Escolha o cartão...'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cartoes.map(c => (
+                        <SelectItem key={c.id} value={c.card_last_digits}>
+                          {c.card_name || 'Cartão'} · ****{c.card_last_digits}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!carregandoContas && cartoes.length === 0 && (
+                    <p className="text-[10px] text-amber-700 mt-1 leading-snug">
+                      Nenhum cartão cadastrado em Financeiro → Cartões. Dá para salvar sem, mas a
+                      conciliação vai ter de procurar no extrato inteiro.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {erroContas && (
+                <p className="text-[10px] text-red-600 leading-snug">
+                  Contas e cartões não carregaram ({erroContas}). O lançamento salva sem eles.
+                </p>
+              )}
+
+              {form.payment_method && (
+                <p className="text-[10px] text-muted-foreground leading-snug">
+                  {rotuloDaForma(form.payment_method)}
+                  {form.card_last_digits ? ' · ****' + form.card_last_digits : ''}
+                  {form.cost_account_id
+                    ? ' · ' + (contas.find(c => c.id === form.cost_account_id)?.name || 'conta')
+                    : ''}
+                  {' — a conciliação abre a busca por aqui.'}
+                </p>
+              )}
+            </div>
+
             {/* Obrigatória: é a categoria que diz se aquele dinheiro é honorário
                 nosso ou cota do cliente. Em branco, tudo virava "operação do
                 escritório" e recebimento do cliente entrava no nosso resultado. */}

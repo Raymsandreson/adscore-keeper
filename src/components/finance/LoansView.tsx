@@ -12,6 +12,7 @@ import { exportLoans } from '@/utils/financeExport';
 import { ExportFormatMenu } from '@/components/finance/ExportFormatMenu';
 import { ExpenseCategoryManager } from '@/components/finance/ExpenseCategoryManager';
 import { CategorySelector } from '@/components/finance/CategorySelector';
+import { SeletorGrupoCaso } from '@/components/finance/SeletorGrupoCaso';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useAuth } from '@/hooks/useAuth';
@@ -55,7 +56,10 @@ export function LoansView({ searchTerm, filterCategories, filterSubcategory }: L
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [editData, setEditData] = useState<{ categoryId: string | null; linkType: 'lead' | 'contact'; linkId: string | null; notes: string }>({ categoryId: null, linkType: 'lead', linkId: null, notes: '' });
+  // 'group' = o CASO (grupo de WhatsApp), vínculo mais específico que o lead:
+  // lead com dois processos tem dois grupos, e é o grupo que faz o limite
+  // `per_whatsapp_group` somar no caso certo. Ver src/lib/limitesPorVinculo.ts.
+  const [editData, setEditData] = useState<{ categoryId: string | null; linkType: 'lead' | 'contact' | 'group'; linkId: string | null; groupJid: string | null; notes: string }>({ categoryId: null, linkType: 'lead', linkId: null, groupJid: null, notes: '' });
 
   const { categories, overrides, setTransactionOverride, getTransactionOverride, getCategoryById } = useExpenseCategories();
   const parentCategories = useMemo(() => categories.filter(c => !c.parent_id), [categories]);
@@ -140,22 +144,33 @@ export function LoansView({ searchTerm, filterCategories, filterSubcategory }: L
     setEditingId(loan.id);
     setEditData({
       categoryId: override?.category_id || null,
-      linkType: override?.lead_id ? 'lead' : override?.contact_id ? 'contact' : 'lead',
+      // Grupo gravado manda: foi a escolha mais específica que alguém fez.
+      linkType: override?.group_jid ? 'group' : override?.lead_id ? 'lead' : override?.contact_id ? 'contact' : 'lead',
       linkId: override?.lead_id || override?.contact_id || null,
+      groupJid: override?.group_jid || null,
       notes: override?.notes || '',
     });
   };
 
   const saveEdit = async (id: string) => {
     if (!editData.categoryId) { toast.error('Selecione uma categoria'); return; }
-    if (!editData.linkId) { toast.error('Selecione um vínculo ou "Nenhum"'); return; }
+    if (editData.linkType === 'group') {
+      if (!editData.groupJid) { toast.error('Escolha o grupo de WhatsApp (o caso) ou troque para Lead/Contato'); return; }
+    } else if (!editData.linkId) { toast.error('Selecione um vínculo ou "Nenhum"'); return; }
     try {
-      const isNone = editData.linkId === NONE_SELECTED;
+      const noGrupo = editData.linkType === 'group';
+      const isNone = !noGrupo && editData.linkId === NONE_SELECTED;
       await setTransactionOverride(
         id, editData.categoryId,
-        !isNone && editData.linkType === 'contact' ? editData.linkId : undefined,
-        !isNone && editData.linkType === 'lead' ? editData.linkId : undefined,
-        editData.notes || undefined, undefined, undefined, isNone
+        !isNone && !noGrupo && editData.linkType === 'contact' ? editData.linkId : undefined,
+        // O grupo entrega o lead dele junto: o caso é do cliente, e gravar só o
+        // jid sumiria com a linha de todo relatório que soma por lead.
+        noGrupo ? (editData.linkId || undefined) : (!isNone && editData.linkType === 'lead' ? editData.linkId! : undefined),
+        editData.notes || undefined, undefined, undefined, isNone,
+        undefined,
+        // Sempre enviado: o upsert reescreve a linha inteira, e omitir aqui
+        // zerava o grupo escolhido no diálogo de categorizar.
+        { group_jid: editData.groupJid },
       );
       setEditingId(null);
       toast.success('Empréstimo categorizado!');
@@ -222,23 +237,34 @@ export function LoansView({ searchTerm, filterCategories, filterSubcategory }: L
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <label className="text-xs font-medium">Vincular a</label>
-                      <Select value={editData.linkType} onValueChange={(v: 'lead' | 'contact') => setEditData(prev => ({ ...prev, linkType: v, linkId: null }))}>
+                      <Select value={editData.linkType} onValueChange={(v: 'lead' | 'contact' | 'group') => setEditData(prev => ({ ...prev, linkType: v, linkId: null, groupJid: null }))}>
                         <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="lead">Lead</SelectItem><SelectItem value="contact">Contato</SelectItem></SelectContent>
+                        <SelectContent>
+                          <SelectItem value="lead">Lead</SelectItem>
+                          <SelectItem value="contact">Contato</SelectItem>
+                          <SelectItem value="group">Grupo de WhatsApp (caso)</SelectItem>
+                        </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-medium">{editData.linkType === 'lead' ? 'Lead' : 'Contato'}</label>
-                      <Select value={editData.linkId || ''} onValueChange={(v) => setEditData(prev => ({ ...prev, linkId: v }))}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE_SELECTED} className="text-amber-600 font-medium italic"><div className="flex items-center gap-2"><X className="h-3 w-3" /> Nenhum</div></SelectItem>
-                          {editData.linkType === 'lead'
-                            ? leads.map(l => <SelectItem key={l.id} value={l.id}>{l.lead_name || 'Sem nome'}</SelectItem>)
-                            : contacts.map(c => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)
-                          }
-                        </SelectContent>
-                      </Select>
+                      <label className="text-xs font-medium">{editData.linkType === 'group' ? 'Grupo (caso)' : editData.linkType === 'lead' ? 'Lead' : 'Contato'}</label>
+                      {editData.linkType === 'group' ? (
+                        <SeletorGrupoCaso
+                          value={editData.groupJid}
+                          onChange={(g) => setEditData(prev => ({ ...prev, groupJid: g?.group_jid || null, linkId: g?.lead_id || null }))}
+                        />
+                      ) : (
+                        <Select value={editData.linkId || ''} onValueChange={(v) => setEditData(prev => ({ ...prev, linkId: v }))}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NONE_SELECTED} className="text-amber-600 font-medium italic"><div className="flex items-center gap-2"><X className="h-3 w-3" /> Nenhum</div></SelectItem>
+                            {editData.linkType === 'lead'
+                              ? leads.map(l => <SelectItem key={l.id} value={l.id}>{l.lead_name || 'Sem nome'}</SelectItem>)
+                              : contacts.map(c => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)
+                            }
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-1">
