@@ -106,11 +106,20 @@ function inQuietHours(hour: number, start: number, end: number): boolean {
   return start < end ? hour >= start && hour < end : hour >= start || hour < end;
 }
 
-/** Prévia curta da mensagem, com rótulo para mídia (nunca vaza conteúdo longo). */
+/**
+ * Prévia da mensagem, com rótulo para mídia.
+ *
+ * 300 caracteres, não 140: com 140 a mensagem que mais importa — a que traz
+ * valor, parcela e vencimento — chegava cortada no meio de um número, e quem
+ * recebia tinha que abrir o chat só pra saber do que se tratava. O aviso dentro
+ * do sistema mostra isto inteiro. É conteúdo de cliente saindo no payload do
+ * push (criptografado ponta a ponta pelo Web Push, mas fora do nosso ambiente):
+ * subir mais que isso precisa de decisão nova.
+ */
 function previewBody(text: string | null | undefined, type: string | null | undefined): string {
   const clean = (text || '').replace(/\s+/g, ' ').trim();
   const kind = (type || 'text').toLowerCase();
-  if (clean) return clean.slice(0, 140);
+  if (clean) return clean.slice(0, 300);
   if (kind.includes('image')) return '📷 Foto';
   if (kind.includes('video')) return '🎥 Vídeo';
   if (kind.includes('audio') || kind.includes('ptt')) return '🎤 Áudio';

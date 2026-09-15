@@ -214,6 +214,26 @@ No painel, estas cinco (as quatro novas mais E16) ganharam chips **por código**
 na fileira "Olho nelas" — filtrar por letra E devolvia a desistência misturada
 com quem só perguntou de prazo.
 
+### O filtro que parecia quebrado (15/09/2026)
+
+Marcar "Não pede resposta" com a aba **Na fila** aberta devolve "Nada esperando
+revisão" — está certo, mas lê como clique sem efeito. A letra **D é a que manda
+calar**: ela nunca vira rascunho na fila, vira decisão de silêncio. Medido no
+Externo em 15/09/2026: **449 na fila, nenhuma delas D**; **371 decisões de
+silêncio, todas D**.
+
+Duas coisas se somavam:
+
+1. O chip contava só as 100 linhas carregadas e dizia **97** onde o banco tinha
+   371 — consertado em `9c4dac776`, que passou a contar com `count: 'exact'` e a
+   mostrar em cada aba o número do banco com o filtro aplicado.
+2. A aba vazia não dizia onde as linhas estavam. Agora a aba esvaziada **pelo
+   filtro** nomeia as abas que têm o que ele encontrou, com o número de cada
+   uma, e o botão leva para lá (`vazioDaAba`, em `AtendenteVirtualPanel.tsx`).
+   Sem filtro, continua a frase seca: aba vazia é aba vazia.
+
+Travado por `AtendenteVirtualPanel.filtro-diz-onde-esta.test.tsx`.
+
 ## Cron: `dom_rascunho_tick`, de 2 em 2 minutos
 
 Agendado no Externo em 04/09/2026, de 5 em 5 minutos; apertado para 2 em 2 em
@@ -3782,3 +3802,226 @@ porque ainda é o caminho de aviso de pendência que **não** vira atividade.
 sozinha, e as 59 pendências de um dia normal caem todas no mesmo colo. A regra
 de urgência reduz o ruído, não o volume. Enquanto não houver mais gente
 cadastrada, o gargalo é esse — e ele não é de código.
+
+---
+
+## O Dom calou cinco dias, e ninguém viu (10–15/09/2026)
+
+### O que foi visto
+
+Em 15/09, ao abrir o relatório de intenções, a última decisão registrada era de
+**10/09 às 17:42 UTC** — cinco dias antes. Última pendência e última atividade:
+o mesmo minuto.
+
+### Duas coisas caíram juntas, e nenhuma dá erro
+
+1. **O tick sumiu.** O job `dom_rascunho_tick` (jobid 4817, 2.560 execuções,
+   todas `succeeded`) não estava mais em `cron.job`. Ele tinha sido criado à
+   mão, e **nunca existiu em migration** — nada no repositório o recriava.
+2. **Todos os grupos foram desativados.** Os 2.484 de `dom_grupos_piloto`
+   estavam `ativo = false`, inclusive os 1.146 operacionais. A RPC
+   `dom_grupos_para_olhar` exige `ativo and escopo_status = 'operacional'`:
+   com todos desligados, o cron roda, acerta, devolve zero e não produz nada.
+
+A tabela não tem `updated_at`, então não dá para datar a desativação.
+
+### O custo
+
+**7.430 mensagens de cliente em 323 grupos** do piloto entre 10/09 e 15/09.
+Nenhuma classificada, nenhuma virou pendência, nenhuma virou atividade.
+
+E a falha passou por todo verde: a edge não dá erro porque não é chamada,
+deploy passa, build passa, teste passa. A tela mostrava a fila antiga como se
+fosse do dia — que é o pior disfarce possível, porque parece movimento.
+
+### O conserto
+
+O cron voltou (`dom_rascunho_tick`, jobid 5598) e agora existe em migration
+(`20260915120000_cron_do_dom_no_repositorio.sql`). Os 1.146 grupos operacionais
+foram reativados à mão, com o número conferido antes e depois — de propósito
+fora da migration, porque quais grupos o Dom atende é decisão de operação, e
+migration que liga grupo em massa passa por cima de quem desligou um de caso.
+
+**Verificado em dado real**, 5 ticks depois de religar: 30 decisões, 6
+atividades, 2 pessoas no rodízio. E, de quebra, fechou a verificação que ficara
+pendente de 09/09 — as atividades nasceram como o desenho previa:
+
+```
+"cliente quer desistir"                  → urgente, prazo hoje
+"cliente sem condições de ir à perícia"  → alta,    prazo hoje
+"cliente desabafando"                    → alta,    prazo hoje
+todas com notificação ligada, campos escritos, grupo gravado e vínculo
+```
+
+Antes disso, entre 09/09 22:43 e 10/09 17:42: 21 atividades, 3 urgentes, 18
+altas, **0 normais**, 21 leads distintos (zero duplicata), 32 vínculos de
+mensagem. O prazo de três dias, a prioridade `normal` por omissão e a
+duplicação por título morreram todos ali.
+
+### O que ficou de fora
+
+`dom_cobranca_diaria` (0 13 * * 1-5) sumiu no mesmo minuto e **não** foi
+recriado. Aquele manda mensagem de cobrança para cliente: religar cobrança sem
+alguém decidir é diferente de religar a leitura da conversa.
+
+---
+
+## O relatório de intenções (15/09/2026)
+
+### A pergunta que não tinha onde ser feita
+
+O painel filtrava por intenção, mas só dentro da fila carregada: contava o que
+está pendente AGORA. Isso responde "o que falta fazer". Não responde "o que
+entrou" — nem "reclamação aumentou esta semana?", nem "quantos falaram em
+desistir no mês?".
+
+### A fonte é a decisão, não a fila
+
+`dom_decisoes` registra toda decisão do agente, **inclusive o silêncio**. Quem
+olha só a fila vê o que sobrou; quem olha as decisões vê o que chegou. Em 7
+dias: 1.292 decisões, das quais 411 são D12/D13 (bom-dia e obrigado) que o Dom
+calou de propósito. Sem isso na conta, o volume real de conversa some.
+
+### Duas funções, contas no banco
+
+| Função | Devolve |
+|---|---|
+| `dom_intencoes_resumo(p_dias)` | uma linha por intenção: total, grupos, e o desfecho (respondeu / precisou de gente / calou / pulou) |
+| `dom_intencoes_por_dia(p_dias)` | uma linha por dia e família, para o gráfico |
+
+Ambas `SECURITY INVOKER` — a RLS de `dom_decisoes` continua valendo — e nenhuma
+devolve `pergunta` ou `motivo`: relatório é contagem, não conversa de cliente.
+
+O dia sai **no fuso de Teresina**. Em UTC, tudo que a equipe atende depois das
+21h entra no dia seguinte e o gráfico mente sobre qual dia foi movimentado.
+
+A conta sai no Postgres porque entram ~200 decisões por dia: baixar tudo para
+somar no navegador funciona neste mês e corta a janela sem avisar no terceiro.
+
+### A tela
+
+`RelatorioDeIntencoes.tsx`, em **Agentes IA → Atendente virtual**, acima da
+fila e **aberta por padrão** — a configuração fica recolhida porque configurar
+é raro; esta é pergunta de toda semana, e coisa recolhida numa tela com duas
+camadas de aba é coisa que ninguém acha.
+
+Gráfico por **família** (seis), tabela por **código** (23): 23 séries num
+gráfico não se leem, mas "quantos E20 esta semana?" precisa do código. Os 23
+aparecem em português — a tela não pede que ninguém decore "E20".
+
+### O que mudou na leitura (15/09/2026, à tarde)
+
+A primeira versão despejava as 23 intenções abertas, em seis colunas, com sete
+cores de família disputando a mesma atenção. Cabia tudo na tela e não se lia
+nada. Três consertos, nenhum deles tirando dado:
+
+| Antes | Agora |
+|---|---|
+| Sete matizes com o mesmo peso (vermelho, laranja, azul, teal, roxo, dois cinzas) | **Vermelho** para o que custa cliente se demorar, **verde da marca** para o que o Dom resolveu, **cinza** para o resto |
+| As 23 linhas abertas, sempre | Uma seção por família; só "precisa de gente" e "cobrança" abrem sozinhas, o resto mostra o total e guarda o detalhe |
+| Seis colunas | Três — "Grupos", "Dom respondeu" e "Calou" foram para o cabeçalho da aba lateral |
+| Nenhuma linha clicável | Clicar num pedido abre `DecisoesDaIntencaoSheet` |
+
+Rótulos, famílias e cores moram em `agent-monitor/intencoes.ts`, usados pelo
+relatório e pela aba lateral — rótulo duplicado entre dois painéis é rótulo que
+diverge no terceiro mês. Os valores de cor são literais tirados do `index.css`,
+e não `hsl(var(--token))`: o recharts escreve a cor no atributo `fill` do SVG, e
+atributo com `var()` já falhou em cliente embutido — barra preta que build
+nenhum acusa.
+
+### A aba lateral: do número para a conversa
+
+`DecisoesDaIntencaoSheet.tsx`. Clicar em "Dinheiro ou prazo: 18" abre, por cima
+do relatório, as decisões daquela intenção na mesma janela de dias: grupo, o que
+o cliente escreveu, o que o atendente virtual fez e por quê, e a etiqueta "virou
+fila" quando gerou pendência. Clicar numa decisão empilha a conversa do grupo
+(`openWhatsAppChatSheet`, painel de baixo pra cima) — ninguém sai da tela.
+
+Ao contrário das RPCs do relatório, esta consulta lê `pergunta` e `motivo`: aqui
+a pergunta deixou de ser "quanto" e passou a ser "quais", e sem o texto não há
+como decidir nada. A leitura é direta em `dom_decisoes`, sob a RLS da tabela
+(`dom_decisoes_rw`, `authenticated`), coberta pelo índice `idx_dom_decisoes_data`.
+
+Dois cuidados para quem mexer nela:
+
+- **O filtro por decisão vai ao banco.** Filtrar as 200 já carregadas
+  responderia "quantos calaram *entre os 200 mais recentes*" — outra pergunta,
+  sem avisar que é outra.
+- **`(sem classificação)` é `is null`, não `eq`.** É o rótulo que a RPC inventa
+  para `intencao` nula; comparar a string traria zero linhas e pareceria "não
+  tem nada", quando são 86.
+
+---
+
+## A fila estava mentindo de tamanho (15/09/2026)
+
+A tela do atendente virtual dizia **449 esperando revisão**. Dessas, **417 já
+tinham sido respondidas por um colega no grupo** — 202 delas em menos de seis
+horas. Uma pendência real a cada catorze cartões.
+
+O retrato: **PREV 661 | nildoleonidodasilva**. O cliente perguntou por áudio em
+**10/09 14:42** ("como é que tá os movimento por aí?"). O **Atendimento
+Previdenciário 2** respondeu, também por áudio, em **11/09 09:41**. Em 15/09 o
+rascunho continuava na fila, com o cronômetro correndo, como se ninguém tivesse
+falado com o homem.
+
+### Por que acontecia
+
+A `dom-rascunho` **já sabe** o que é a equipe — `dom_numeros_equipe` mais a
+regra `daEquipe` (`fromMe`, ou remetente na lista) — e por isso pula o grupo
+quando "equipe falou por último" (`index.ts`, linha 1775). Só que essa
+conferência acontece **uma vez, no instante em que o rascunho nasce**. Depois
+disso ninguém reavalia: o grupo anda, o colega responde, e o rascunho continua
+`pendente` para sempre.
+
+### O que passou a existir
+
+| Peça | O que faz |
+|---|---|
+| `status = 'respondida_por_humano'` | sexto valor do CHECK de `dom_respostas_pendentes` |
+| `respondido_humano_em / _por / _texto / _msg_id` | a prova: quando, quem, o quê, e a linha de `whatsapp_messages` que serviu de base |
+| `dom_marcar_respondidas_por_humano(interval)` | a varredura — devolve quantas marcou |
+| cron `dom-respondida-por-humano`, `*/10 * * * *` | roda com janela de 24h |
+| aba **Já respondidas** no painel | os cartões, com a fala do colega e o caminho de volta |
+
+**A regra de "quem é equipe" é a MESMA da edge**, de propósito: duas definições
+para a mesma pergunta divergiriam na primeira troca de chip. Conferido em
+15/09/2026: das 933 mensagens com `fromMe` em grupo nos últimos três dias,
+**zero** ficam fora de `dom_numeros_equipe`.
+
+**Custo**: 905 ms com janela de 24h, medido com `EXPLAIN (ANALYZE)`. A varredura
+parte das MENSAGENS do período (`idx_whatsapp_messages_created_at`) e não da
+tabela inteira — **nenhum índice novo** foi criado na `whatsapp_messages`, que
+tem 1,8 milhão de linhas e 8 GB.
+
+### Detector, não filtro
+
+Nada é escondido na renderização. O rascunho muda de estado **no banco**, e
+aparece na aba própria com o nome de quem respondeu, o intervalo desde a
+pergunta ("19h depois") e o trecho do que foi dito. A varredura acha a fala do
+colega; ela **não lê** o que foi dito — quando ele falou de outro assunto
+("mandei o boleto" enquanto o cliente perguntava do processo), o botão
+**devolver para a fila** volta o `status` para `pendente` e apaga a prova junto,
+em um clique.
+
+O agendamento pendente é encerrado junto (`encerrado_motivo = 'respondida'`, o
+mesmo motivo que a `wa_agendadas_disparar` já usa). Hoje isso não muda nada — os
+rascunhos da fila têm zero agendamentos ativos —, mas marcar como respondido e
+deixar o envio vivo seria escrever uma coisa no painel e fazer outra no grupo.
+
+### Backfill e rollback
+
+O backfill rodou uma vez com janela de 20 dias: **417 marcados**, todos com
+evidência preenchida; a fila caiu para **32**. Os ids de antes ficaram em
+`zz_dom_status_antes_20260915` (449 linhas), e o rollback completo está escrito
+no rodapé da migration `20260915180000`.
+
+### O que isto NÃO conserta
+
+Nada da fila voltar a encher. Quando o backfill rodou, a fila de 32 estava
+**congelada** — o `dom_rascunho_tick` tinha sumido de `cron.job` em 10/09 e o
+Dom passou cinco dias sem escrever uma linha (ver a migration
+`20260915120000_cron_do_dom_no_repositorio`, que recriou o job no mesmo dia).
+Com o tick de volta, a fila volta a crescer no ritmo de sempre — e é aí que a
+varredura de dez em dez minutos passa a valer todo dia, em vez de ter sido só
+uma faxina de uma vez.

@@ -19,7 +19,7 @@ import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, MessageSquare, Sparkles, 
-  Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2, Volume2, Maximize2, RefreshCw,
+  Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2, Volume2, Maximize2, RefreshCw, BarChart3,
   ChevronUp, ChevronDown, Eye, EyeOff, Check, ChevronsUpDown, Megaphone, Filter, Inbox
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AtendenteVirtualPanel, DOM_AGENT_ID } from './agent-monitor/components/AtendenteVirtualPanel';
+import { RelatorioDeIntencoes } from './agent-monitor/components/RelatorioDeIntencoes';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { SuperPromptDiagnostic } from './SuperPromptDiagnostic';
 import { AgentTestChat } from './AgentTestChat';
@@ -327,6 +328,22 @@ export function WhatsAppCommandConfig({ focusAgentId }: WhatsAppCommandConfigPro
               <AtendenteDeCasoSection agentId={DOM_AGENT_ID} />
             </div>
           </details>
+
+          {/* O RELATÓRIO NASCE ABERTO, DE PROPÓSITO.
+              A configuração fica recolhida porque configurar é raro. Este não:
+              é a resposta de "o que os clientes andaram pedindo", que é pergunta
+              de toda semana — e coisa recolhida numa tela que já tem duas
+              camadas de aba é coisa que ninguém acha. Quem não quiser, fecha. */}
+          <details className="rounded-lg border bg-muted/30" open>
+            <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium flex items-center gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5" />
+              O que os clientes pediram — por tipo, por dia, e o que virou trabalho
+            </summary>
+            <div className="px-3 pb-3">
+              <RelatorioDeIntencoes />
+            </div>
+          </details>
+
           <AtendenteVirtualPanel />
         </TabsContent>
       </Tabs>

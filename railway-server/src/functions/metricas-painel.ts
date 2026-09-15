@@ -203,6 +203,34 @@ const ehData = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{
 
 export const handler: RequestHandler = async (req, res) => {
   try {
+    // PORTA FECHADA, INDEPENDENTE DO ENFORCE GLOBAL.
+    //
+    // `RAILWAY_AUTH_ENFORCE` esta desligado em producao e nao da para liga-lo so
+    // para esta funcao: e uma variavel do servico inteiro, e ligar hoje derruba
+    // junto quem ainda chama sem credencial (13 chamadas de
+    // `meta-call-queue-processor` no placar do /health). Entao o gate vive aqui.
+    //
+    // Medido em 15/09/2026: um `curl` anonimo de fora devolvia 200 com o
+    // investimento do mes, o custo por contrato e o desempenho de cada
+    // acolhedor — bastava saber a URL. O placar do /health registrou a chamada
+    // como `missing_por_funcao: {metricas-painel: 1}`, o que confirma que nao
+    // havia porta nenhuma, so a contagem.
+    //
+    // Fechar aqui e seguro porque esta funcao tem UM chamador: a aba, pelo
+    // `functionRouter`, que injeta o JWT da sessao do Cloud em `Authorization`
+    // sozinho (`invokeFunction` -> `getSession()`). Nenhum cron, nenhuma edge,
+    // nenhum webhook chama `metricas-painel` — conferido no repo inteiro.
+    const credencial = await authorizeFunctionRequest(req);
+    if (!credencial.ok) {
+      // O motivo junto: sem ele, "sessao expirada" e "verificador quebrado"
+      // devolvem a mesma frase e alguem passa a tarde no lugar errado. Nenhum
+      // valor aqui revela credencial.
+      return res.status(401).json({
+        error: 'o painel de métricas exige usuário logado',
+        porque: credencial.reason || 'sem credencial reconhecida',
+      });
+    }
+
     const corpo = (req.body || {}) as Record<string, unknown>;
     const hoje = hojeISO();
 
@@ -657,21 +685,10 @@ export const handler: RequestHandler = async (req, res) => {
     // de metricas nao e lugar de copiar carteira.
     let detalhe: Record<string, unknown> | null = null;
     if (querDetalhe) {
-      const credencial = await authorizeFunctionRequest(req as any);
-      if (!credencial.ok) {
-        // O PORQUE junto da recusa. Nao consigo testar o caminho feliz daqui:
-        // `RAILWAY_API_KEY` e `RAILWAY_INTERNAL_KEY` nao estao configuradas em
-        // producao (`/health` mostra `api_key: false`), entao o unico caminho
-        // que autoriza e o JWT de usuario — que so existe no navegador de quem
-        // fez login. Sem o motivo, "verificador quebrado" e "token invalido"
-        // devolveriam a mesma frase, e alguem passaria a tarde procurando o
-        // defeito no lugar errado. Nenhum valor aqui revela credencial.
-        detalhe = {
-          disponivel: false,
-          motivo: 'o detalhe nominal exige usuario logado',
-          porque: credencial.reason || 'sem credencial reconhecida',
-        };
-      } else {
+      // A guarda saiu daqui para a PORTA da funcao: quem chega ate esta linha ja
+      // apresentou credencial. Nao ha mais o caso "agregado publico, detalhe
+      // fechado" que existia enquanto o resto da funcao respondia a qualquer um.
+      {
         const mascara = (v: string | null) => {
           const d = String(v || '').replace(/\D/g, '');
           return d.length >= 4 ? `•••• ${d.slice(-4)}` : null;

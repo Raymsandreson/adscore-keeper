@@ -374,7 +374,13 @@ function SidebarLayout() {
                 <Route path="/relatos-grupos" element={<Navigate to="/leads/relatos-grupos" replace />} />
                 <Route path="/mapa-leads" element={<ProtectedRoute><LeadsMapPage /></ProtectedRoute>} />
                 <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
-                <Route path="/metricas" element={<ProtectedRoute><MetricasPage /></ProtectedRoute>} />
+                {/* Mesma permissao do Financeiro, onde a rota vive no menu: a aba
+                    mostra investimento, custo por contrato e a lista nominal de
+                    clientes por acolhedor. `ProtectedRoute` sozinho so exige
+                    login, e `MODULE_DEFINITIONS` nao tem entrada para /metricas,
+                    entao a deteccao automatica por rota nao alcanca esta tela —
+                    daí o modulo vir explicito. Admin passa sempre. */}
+                <Route path="/metricas" element={<ProtectedRoute requiredModule="finance"><MetricasPage /></ProtectedRoute>} />
                 <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
                 <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
                 <Route path="/workflow" element={<ProtectedRoute><WorkflowPage /></ProtectedRoute>} />

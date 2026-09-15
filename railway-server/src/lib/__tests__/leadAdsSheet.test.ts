@@ -7,7 +7,13 @@
  * 131 linhas gravadas com prefixo antes de alguém olhar o dado no banco.
  */
 import { describe, it, expect } from 'vitest';
-import { normalizaLeadIdMeta, normalizePhone, phoneKey, isJunkName, casaOperador, achaCabecalho, celulaDeTelefone, celulaDeStatusDaEquipe } from '../leadAdsSheet';
+import {
+  normalizaLeadIdMeta, normalizePhone, phoneKey, isJunkName, casaOperador, achaCabecalho,
+  celulaDeTelefone, celulaDeStatusDaEquipe,
+  celulaDeNome, celulaDaMeta, celulaDeIdDaMeta, dataDaPlanilha,
+  celulaDeDataDoFormulario, celulaDeDataDeFechamento,
+  motivoDeNomeRecusado, motivoDeTelefoneRecusado,
+} from '../leadAdsSheet';
 
 describe('normalizaLeadIdMeta', () => {
   it('tira o prefixo l: da exportação da Meta', () => {
@@ -185,5 +191,205 @@ describe('celulaDeStatusDaEquipe', () => {
 
   it('devolve vazio quando não há coluna de status', () => {
     expect(celulaDeStatusDaEquipe({ full_name: 'Ana', telefone: '5511999990000' })).toBe('');
+  });
+});
+
+
+// ===========================================================================
+// A PLANILHA TRADUZIDA — 15/09/2026
+//
+// Cabeçalho REAL medido no dry run das 6 abas do BPC no dia em que o leitor
+// descartou 3.456 de 3.456 linhas. Está aqui inteiro de propósito: é o formato
+// que precisa continuar sendo lido, e um teste com cabeçalho inventado não
+// provaria nada sobre ele.
+// ===========================================================================
+
+const CABECALHO_BPC_TRADUZIDO = [
+  'data / hora', 'status do lead', 'observações', 'responsável', 'criança',
+  'whatsapp', 'link whatsapp', 'cidade / uf', 'possui laudo médico?',
+  'já recebe bpc?', 'tem advogado?', 'cadúnico', 'renda familiar',
+  'qtd pessoas na casa', 'cpf', 'estado civil', 'id do lead', 'plataforma',
+  'campanha', 'conjunto de anúncios', 'anúncio', 'formulário',
+  'ad_id', 'adset_id', 'campaign_id', 'form_id',
+];
+
+/** Uma linha dessa planilha, com o titular e a criança preenchidos. */
+const linhaTraduzida = (): Record<string, string> => ({
+  'data / hora': '14/09/2026 09:41:00',
+  'status do lead': 'fechado',
+  'responsável': 'Maria da Silva',
+  'criança': 'Joãozinho da Silva',
+  'whatsapp': '5511988887777',
+  'id do lead': 'l:1009263962139850',
+  'campanha': '[PREV][BPC] Campanha 3',
+  'conjunto de anúncios': 'CONJUNTO 7 - TAFFAREL',
+  'anúncio': 'Criativo A',
+  'formulário': 'BPC - AUTISMO [ISRAEL]',
+  'estado civil': 'casada',
+});
+
+describe('celulaDeNome', () => {
+  it('lê o titular na planilha traduzida', () => {
+    expect(celulaDeNome(linhaTraduzida())).toBe('Maria da Silva');
+  });
+
+  it('NUNCA pega a criança no lugar do responsável', () => {
+    // O dependente não assina contrato. Se o titular falta, a linha cai — e
+    // cair é melhor que cadastrar a pessoa errada.
+    const o = linhaTraduzida();
+    o['responsável'] = '';
+    expect(celulaDeNome(o)).toBe('');
+  });
+
+  it('continua lendo o formato antigo da Meta', () => {
+    expect(celulaDeNome({ full_name: 'José Alves' })).toBe('José Alves');
+    expect(celulaDeNome({ nome_completo: 'Ana Souza' })).toBe('Ana Souza');
+  });
+
+  it('prefere `nome_completo` quando as duas grafias vêm na mesma linha', () => {
+    expect(celulaDeNome({ nome_completo: 'Ana', 'responsável': 'Outra' })).toBe('Ana');
+  });
+});
+
+describe('celulaDaMeta e celulaDeIdDaMeta', () => {
+  it('acha campanha, conjunto, anúncio e formulário em português', () => {
+    const o = linhaTraduzida();
+    expect(celulaDaMeta(o, 'campaign_name')).toBe('[PREV][BPC] Campanha 3');
+    expect(celulaDaMeta(o, 'adset_name')).toBe('CONJUNTO 7 - TAFFAREL');
+    expect(celulaDaMeta(o, 'ad_name')).toBe('Criativo A');
+    expect(celulaDaMeta(o, 'form_name')).toBe('BPC - AUTISMO [ISRAEL]');
+    expect(celulaDaMeta(o, 'estado_civil')).toBe('casada');
+  });
+
+  it('acha os mesmos campos no formato antigo', () => {
+    const o = { campaign_name: 'C', adset_name: 'A', ad_name: 'AD', form_name: 'F' };
+    expect(celulaDaMeta(o, 'campaign_name')).toBe('C');
+    expect(celulaDaMeta(o, 'adset_name')).toBe('A');
+  });
+
+  it('id do lead sai limpo do `id do lead`, sem o prefixo `l:`', () => {
+    expect(celulaDeIdDaMeta(linhaTraduzida())).toBe('1009263962139850');
+    expect(celulaDeIdDaMeta({ id: 'l:1086829373844173' })).toBe('1086829373844173');
+  });
+
+  it('devolve vazio quando a coluna não existe, em vez de inventar', () => {
+    expect(celulaDeIdDaMeta({ 'status do lead': 'fechado' })).toBe('');
+    expect(celulaDaMeta({}, 'campaign_name')).toBe('');
+  });
+});
+
+describe('dataDaPlanilha', () => {
+  it('lê o ISO que a Meta exporta', () => {
+    expect(dataDaPlanilha('2026-09-14T12:41:00+0000')).toBe('2026-09-14T12:41:00.000Z');
+  });
+
+  it('lê `dd/mm/aaaa hh:mm:ss` no fuso de Brasília', () => {
+    // 09:41 em São Paulo é 12:41 UTC. Sem o -03:00 a linha cairia no dia anterior
+    // toda vez que o horário fosse antes das 3 da manhã.
+    expect(dataDaPlanilha('14/09/2026 09:41:00')).toBe('2026-09-14T12:41:00.000Z');
+  });
+
+  it('lê `dd/mm/aaaa` sem hora', () => {
+    expect(dataDaPlanilha('01/09/2026')).toBe('2026-09-01T03:00:00.000Z');
+  });
+
+  it('lê dia e mês na ordem brasileira', () => {
+    // 03/04 é 3 de abril, não 4 de março.
+    expect(dataDaPlanilha('03/04/2026').slice(0, 10)).toBe('2026-04-03');
+  });
+
+  it('lê o serial do Sheets quando a coluna está formatada como número', () => {
+    expect(dataDaPlanilha('46279').slice(0, 10)).toBe('2026-09-14');
+  });
+
+  it('recusa o que não é data, em vez de devolver uma data errada', () => {
+    expect(dataDaPlanilha('')).toBe('');
+    expect(dataDaPlanilha('sim')).toBe('');
+    expect(dataDaPlanilha('2026')).toBe('');
+    expect(dataDaPlanilha('32/01/2026')).toBe('');
+    expect(dataDaPlanilha('14/13/2026')).toBe('');
+  });
+
+  it('recusa data que não existe no calendário', () => {
+    // `31/02` monta string bem-formada; sem a conferência viraria 3 de março.
+    expect(dataDaPlanilha('31/02/2026')).toBe('');
+  });
+});
+
+describe('celulaDeDataDoFormulario', () => {
+  it('lê `data / hora` da planilha traduzida', () => {
+    expect(celulaDeDataDoFormulario(linhaTraduzida())).toBe('2026-09-14T12:41:00.000Z');
+  });
+
+  it('lê `created_time` do formato antigo', () => {
+    expect(celulaDeDataDoFormulario({ created_time: '2026-09-14T12:41:00+0000' }))
+      .toBe('2026-09-14T12:41:00.000Z');
+  });
+});
+
+describe('celulaDeDataDeFechamento', () => {
+  it('devolve vazio nas duas planilhas de hoje — a coluna não existe', () => {
+    expect(celulaDeDataDeFechamento(linhaTraduzida())).toBe('');
+  });
+
+  it('passa a valer sozinha no dia em que a coluna for criada', () => {
+    const o = { ...linhaTraduzida(), 'data do fechamento': '10/09/2026' };
+    expect(celulaDeDataDeFechamento(o).slice(0, 10)).toBe('2026-09-10');
+  });
+
+  it('aceita as outras formas de escrever o mesmo', () => {
+    expect(celulaDeDataDeFechamento({ 'data da assinatura': '02/09/2026' }).slice(0, 10)).toBe('2026-09-02');
+    expect(celulaDeDataDeFechamento({ 'fechou em': '02/09/2026' }).slice(0, 10)).toBe('2026-09-02');
+    expect(celulaDeDataDeFechamento({ 'data contrato': '02/09/2026' }).slice(0, 10)).toBe('2026-09-02');
+  });
+
+  it('não confunde coluna de sim/não com data', () => {
+    // "tem contrato? sim" fala de contrato e não é data nenhuma.
+    expect(celulaDeDataDeFechamento({ 'tem contrato?': 'sim' })).toBe('');
+    expect(celulaDeDataDeFechamento({ 'assinatura pendente': 'aguardando' })).toBe('');
+  });
+});
+
+describe('achaCabecalho na planilha traduzida', () => {
+  it('reconhece a linha de cabeçalho em português', () => {
+    const valores = [
+      CABECALHO_BPC_TRADUZIDO,
+      ['14/09/2026 09:41:00', 'fechado', '', 'Maria da Silva', 'Joãozinho'],
+    ];
+    const r = achaCabecalho(valores);
+    expect(r.linha).toBe(0);
+    expect(r.headers[3]).toBe('responsável');
+    // Com só os 4 `*_id` reconhecidos, um lead colado no topo poderia empatar.
+    expect(r.acertos).toBeGreaterThan(8);
+  });
+
+  it('acha o cabeçalho traduzido mesmo com um lead colado na linha 1', () => {
+    const valores = [
+      ['14/09/2026 09:41:00', 'fechado', '', 'Maria da Silva', 'Joãozinho'],
+      CABECALHO_BPC_TRADUZIDO,
+    ];
+    expect(achaCabecalho(valores).linha).toBe(1);
+  });
+});
+
+
+describe('motivoDeNomeRecusado', () => {
+  it('separa os motivos que pedem consertos opostos', () => {
+    expect(motivoDeNomeRecusado('')).toBe('celula vazia');
+    expect(motivoDeNomeRecusado('  ')).toBe('celula vazia');
+    expect(motivoDeNomeRecusado('Jo')).toBe('menos de 3 caracteres');
+    expect(motivoDeNomeRecusado('<test lead>')).toBe('placeholder <test');
+    expect(motivoDeNomeRecusado('...')).toBe('so pontos');
+    // Telefone na coluna do nome: o caso que valeu 1.851 linhas em 09/09.
+    expect(motivoDeNomeRecusado('5511988887777')).toBe('sem letra latina');
+  });
+});
+
+describe('motivoDeTelefoneRecusado', () => {
+  it('distingue dado ausente de dado incompleto', () => {
+    expect(motivoDeTelefoneRecusado('', '')).toBe('celula vazia');
+    expect(motivoDeTelefoneRecusado('sem numero', '')).toBe('sem digito nenhum');
+    // Celular sem DDD: dado que existe e nao foi aproveitado.
+    expect(motivoDeTelefoneRecusado('988887777', '988887777')).toBe('9 digitos');
   });
 });

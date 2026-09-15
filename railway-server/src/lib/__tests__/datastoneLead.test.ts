@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { telefoneParaConsulta, camposParaGravar, hashChave } from '../datastone-lead';
+import { telefoneParaConsulta, camposParaGravar, hashChave, cpfDaResposta } from '../datastone-lead';
 
 describe('telefoneParaConsulta', () => {
   // Os quatro formatos medidos na fila alvo em 15/09/2026.
@@ -84,5 +84,56 @@ describe('hashChave', () => {
 
   it('separa por tipo: telefone e cpf não colidem', () => {
     expect(hashChave('telefone', '11144477735')).not.toBe(hashChave('cpf', '11144477735'));
+  });
+});
+
+
+describe('cpfDaResposta', () => {
+  // A API devolve `cpf` como NÚMERO. 01234567890 chega como 1234567890.
+  it('devolve o zero à esquerda que a serialização comeu', () => {
+    expect(cpfDaResposta(1234567890)).toBe('01234567890');
+    expect(cpfDaResposta(12345678)).toBe('00012345678');
+  });
+
+  it('aceita string com pontuação', () => {
+    expect(cpfDaResposta('111.444.777-35')).toBe('11144477735');
+  });
+
+  it('recusa vazio e valor grande demais para ser CPF', () => {
+    expect(cpfDaResposta(null)).toBe('');
+    expect(cpfDaResposta('')).toBe('');
+    expect(cpfDaResposta('123456789012')).toBe('');
+  });
+});
+
+describe('camposParaGravar com o retorno real de /persons/search/', () => {
+  // Shape medido em produção: resumo, sem addresses[], com cpf numérico.
+  const resumo = {
+    name: 'FULANO DE TAL',
+    cpf: 1234567890,
+    age: '45',
+    city: 'TERESINA',
+    district: 'PI',
+    ddd: '86',
+    number: '988054381',
+    mother_name: null,
+  };
+
+  it('grava CPF com o zero recuperado', () => {
+    const { campos } = camposParaGravar({}, resumo);
+    expect(campos.cpf).toBe('01234567890');
+  });
+
+  it('usa cidade e UF do topo quando não há addresses[]', () => {
+    const { campos } = camposParaGravar({}, resumo);
+    expect(campos.city).toBe('TERESINA');
+    expect(campos.state).toBe('PI');
+    expect(campos.street).toBeUndefined();
+  });
+
+  it('não inventa campo a partir de mother_name null', () => {
+    const { campos } = camposParaGravar({}, resumo);
+    expect(campos.rg).toBeUndefined();
+    expect(campos.birth_date).toBeUndefined();
   });
 });

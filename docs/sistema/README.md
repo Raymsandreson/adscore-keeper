@@ -16,7 +16,9 @@ Documentação de todas as seções do sistema: propósito de cada tela, funcion
 - [Chat interno da equipe](chat-interno.md) — de quem é a conversa de cada ficha (a da atividade é a do processo), menções e para onde elas levam
 - [Financeiro no processo e na atividade](financeiro-processo-atividade.md) — onde lançar despesa/receita de cliente e como o lançamento sobe para processo, caso e lead
 - [Dom — Assessor Jurídico Virtual](dom-assessor-virtual.md) — atendente virtual que responde o cliente no grupo do caso com o andamento real dos autos: as três travas, o isolamento por grupo, como ele fala e o que ainda falta
+- [Dom — o que muda antes de religar](dom-reformular-atividades.md) — levantamento dos 512 rascunhos e das 133 atividades que ele abriu antes da suspensão: por que a máquina se contradiz em 4 de cada 5 casos e as sete mudanças que precedem qualquer religamento
 - [Open Finance / Celcoin](open-finance-celcoin.md) — conciliação bancária que substitui a Pluggy: caminhos versionados, janela de datas, consentimento PJ e o que ainda falta conectar
+- [Data Stone — enriquecimento cadastral](datastone-enriquecimento.md) — telefone do lead vira CPF e dados cadastrais: o que a API devolve de verdade, as três travas e por que o gate de nome evitou 22 gravações erradas em 41
 - [Liberar acesso de uma pessoa](acesso-de-usuario.md) — criar acesso direto ou convite pela tela Equipe, qual perfil dá o quê, e os dois bloqueios que parecem o mesmo ("acesso desativado" × "Acesso Restrito")
 
 ### Aquisição: do anúncio ao caso fechado

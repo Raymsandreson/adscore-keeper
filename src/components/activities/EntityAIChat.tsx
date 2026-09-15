@@ -103,7 +103,7 @@ export function EntityAIChat({
     } finally {
       setLoading(false);
     }
-  }, [conversationKey, conversationField, user?.id]);
+  }, [conversationKey, conversationField, user?.id, extUserId]);
 
   useEffect(() => { fetchMessages(); }, [fetchMessages]);
 
@@ -116,7 +116,7 @@ export function EntityAIChat({
   // Realtime subscription
   useEffect(() => {
     if (!conversationKey) return;
-    const channel = supabase
+    const channel = externalSupabase
       .channel(`entity_chat_${conversationKey}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_chat_messages', filter: `${conversationField}=eq.${conversationKey}` }, () => fetchMessages())
       .subscribe();

@@ -852,7 +852,18 @@ export default function MetricasPage() {
       setDados(data as Painel);
       setErro(null);
     } catch (e) {
-      setErro(e instanceof Error ? e.message : 'falha ao carregar');
+      const bruto = e instanceof Error ? e.message : 'falha ao carregar';
+      // O 401 tem UMA causa prática: a sessão do Cloud expirou com a aba aberta
+      // (o painel se recarrega sozinho a cada minuto, então ele aparece bem
+      // depois de a pessoa ter parado de mexer). Mostrar a mensagem crua do
+      // Railway aqui manda procurar defeito onde não há — o conserto é entrar
+      // de novo. Ver a memória `legal-cases-rls-session-vanish`: a mesma
+      // expiração já derrubou a tela de casos, calada.
+      setErro(
+        /\b401\b|usuário logado/i.test(bruto)
+          ? 'sua sessão expirou — entre de novo para ver o painel.'
+          : bruto,
+      );
     } finally {
       setCarregando(false);
     }

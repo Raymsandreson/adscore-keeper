@@ -91,6 +91,46 @@ export function isCommitmentOverdue(
 }
 
 /**
+ * O lead que chegou é MESMO desta conversa?
+ *
+ * Fonte da regra. Espelhada em
+ * `railway-server/src/functions/detect-client-commitments.ts`, que a aplica
+ * antes de gravar. Mudou aqui, muda lá.
+ *
+ * O `lead_id` de uma varredura vem do front, e front com estado pela metade
+ * manda o lead da conversa ANTERIOR — foi assim que a perícia da Nilzete virou
+ * pendência da Monique (15/09/2026). Das 1.505 conversas varridas, 98 tinham
+ * recebido mais de um `lead_id`.
+ *
+ * Só recusa o que dá para PROVAR que é de outro lugar: lead com grupo
+ * declarado, e nenhum desses grupos é esta conversa. Sem prova, aceita —
+ * barrar lead que ainda não tem grupo desligaria vínculo legítimo, e o remédio
+ * seria pior que a doença.
+ *
+ * Conversa direta (telefone de pessoa) sempre passa: o cliente pode ter o
+ * grupo do caso E o WhatsApp dele, então o grupo do lead não prova nada ali.
+ */
+export function leadBelongsToConversation(
+  phone: string | null | undefined,
+  leadGroupJids: Array<string | null | undefined>
+): boolean {
+  const digitos = (v: unknown) => String(v ?? '').replace(/\D/g, '');
+
+  const alvo = digitos(phone);
+  if (!alvo) return true;
+
+  // Mesmo critério de `isWhatsAppGroupId`: JID de grupo tem 17+ dígitos;
+  // telefone de pessoa não passa de 15.
+  const ehGrupo = String(phone ?? '').includes('@g.us') || alvo.length >= 17;
+  if (!ehGrupo) return true;
+
+  const grupos = leadGroupJids.map(digitos).filter(Boolean);
+  if (grupos.length === 0) return true;
+
+  return grupos.includes(alvo);
+}
+
+/**
  * Dia em que a pendência deve ser cobrada.
  *
  * COM PRAZO: o próprio dia do prazo. A cobrança de uma pendência com data não

@@ -1799,6 +1799,34 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     );
   }
 
+  // Caixa travada no canal Cloud (menu WhatsApp API) sem nenhuma linha liberada.
+  // Precisa de aviso próprio: o bloco logo abaixo é pulado quando há
+  // `lockInstanceName`, então sem isto a pessoa recebia a caixa montada e vazia,
+  // sem nada dizendo que o caso é falta de acesso — e não de conversa.
+  if (instancesLoaded && _allInstances.length === 0 && lockInstanceName && isCloudContext) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[60vh] p-6">
+        <div className="text-center space-y-4 max-w-md">
+          <MessageSquare className="h-16 w-16 mx-auto text-muted-foreground/30" />
+          <h2 className="text-lg font-semibold">
+            {isAdmin ? 'Nenhuma linha da WhatsApp API ativa' : 'Sem acesso a nenhuma linha da WhatsApp API'}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {isAdmin
+              ? 'Cadastre ou reative um número da WhatsApp Business Cloud API para esta caixa ter o que mostrar.'
+              : 'Peça a um administrador para liberar a linha em Equipe › WhatsApp. Por padrão, a linha liberada é a Abraci.'}
+          </p>
+          {backTo && (
+            <Button variant="outline" className="gap-2" onClick={() => navigate(backTo)}>
+              <ArrowLeft className="h-4 w-4" />
+              Voltar
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // Sem NENHUMA instância liberada (nem UazAPI nem Cloud API): a inbox inteira não tem o
   // que mostrar — o seletor some, "Carregar Conversas" não traz nada e a pessoa fica sem
   // saber o que fazer. Troca por um aviso único dizendo o próximo passo.
@@ -2310,7 +2338,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
                 cloudAssignees={cloudAssignees}
                 currentUserId={user?.id || null}
                 canSeeAllAssignments={canViewPrivate}
-                hideSharedFilter={!!lockInstanceName}
+                hideSharedUi={!!lockInstanceName}
                 onServerSearch={searchConversations}
                 onLoadMore={loadMoreConversations}
                 hasMore={hasMoreConversations}
@@ -2399,7 +2427,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
               cloudAssignees={cloudAssignees}
               currentUserId={user?.id || null}
               canSeeAllAssignments={canViewPrivate}
-              hideSharedFilter={!!lockInstanceName}
+              hideSharedUi={!!lockInstanceName}
               onServerSearch={searchConversations}
               onLoadMore={loadMoreConversations}
               hasMore={hasMoreConversations}

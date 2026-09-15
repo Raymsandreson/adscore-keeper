@@ -167,10 +167,39 @@ Aplicado em `src/hooks/useClientCommitments.ts` e em
 🚫 **Recusar**: qualquer query de dado de conversa que case por `lead_id` solto
 quando existe telefone na mão.
 
-⚠️ **Ainda aberto**: a correção acima é de LEITURA. O `lead_id` errado continua
-gravado nas 382 linhas, então a caixa de pendências (que lista tudo e mostra
-`lead_name`) ainda rotula essas pendências com o nome do cliente errado. A
-origem — por que um grupo recebe o `lead_id` de outro — não foi investigada.
+### Por que o grupo recebia o lead de outro (investigado em 15/09/2026)
+
+Nenhum vínculo do banco estava errado. Descartados com evidência:
+`lead_whatsapp_groups`, `leads.whatsapp_group_id`, `conversations.lead_id`,
+`whatsapp_messages.lead_id` e trigger — todos corretos ou nulos.
+
+O erro nascia **no envio**. A tela resolve o lead de forma ASSÍNCRONA, mas a
+varredura da IA disparava no render em que o TELEFONE muda — quando o `leadId`
+ainda era o da conversa ANTERIOR. E a trava de "já varri esta conversa" era só
+`telefone|instância`, sem o lead: ela congelava a conversa com o lead errado, e
+o certo, que chegava renders depois, nunca mais era enviado.
+
+Prova: a mesma conversa (grupo `120363428635762184`) foi varrida três vezes com
+três `lead_id` diferentes — `null`, o lead da Monique e o lead certo. Das 1.505
+conversas varridas, 98 receberam mais de um lead; **97 dessas 98** também
+tiveram varredura com instância vazia — a assinatura de estado pela metade.
+
+🚫 **Recusar**: disparar trabalho que grava `lead_id`/`contact_id` antes de a
+resolução desses campos terminar para AQUELA conversa. E marcador de "já
+resolvi" é o próprio telefone comparado no render (`linkedFor === phone`),
+nunca um booleano `resolvendo` setado dentro de efeito — efeito roda depois do
+render em que o telefone mudou, tarde demais.
+
+Corrigido em três camadas: o lead entra na chave da varredura
+(`commitmentScanKey`), a tela só passa lead/contato depois de resolvidos, e o
+detector recusa lead que tem grupo declarado e nenhum deles é esta conversa
+(`leadBelongsToConversation`, com testes; espelhado no Railway).
+
+⚠️ **Ainda aberto**: as correções acima impedem linha NOVA errada. As linhas já
+gravadas continuam com o `lead_id` errado — a regra aplicada sobre as 2.578
+pendências de grupo com lead aprova 2.319 e **barra 256**. Enquanto essas 256
+não forem limpas, a caixa de pendências (que lista tudo e mostra `lead_name`)
+segue rotulando-as com o nome do cliente errado.
 
 ## Skills/memórias relacionadas
 

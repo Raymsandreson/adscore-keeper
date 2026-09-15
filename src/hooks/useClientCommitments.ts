@@ -47,6 +47,26 @@ interface Params {
   autoAnalyze?: boolean;
 }
 
+/**
+ * Identidade de uma varredura já feita nesta sessão.
+ *
+ * O LEAD E O CONTATO FAZEM PARTE DA CHAVE. Antes era só `telefone|instância`,
+ * e era esse o furo: quem usa este hook resolve o lead de forma ASSÍNCRONA, e
+ * no render em que o telefone muda o `leadId` ainda é o da conversa ANTERIOR.
+ * A varredura disparava ali — telefone novo, lead velho — e a chave sem o lead
+ * travava a conversa para sempre: o lead certo chegava renders depois e nunca
+ * mais era enviado. Com o lead na chave, a conversa é varrida de novo quando
+ * ele muda, em vez de congelar no errado.
+ */
+export function commitmentScanKey(
+  phone?: string | null,
+  instanceName?: string | null,
+  leadId?: string | null,
+  contactId?: string | null
+): string {
+  return `${phone || ''}|${instanceName || ''}|${leadId || ''}|${contactId || ''}`;
+}
+
 /** Colunas que existem na TABELA — usadas em insert/update. */
 const SELECT = `id, lead_id, process_id, contact_id, phone, instance_name, title, kind, status,
   due_date, promised_at, source_message_id, source_message_text, notes, last_reminded_at,
@@ -235,13 +255,24 @@ export function useClientCommitments({
   }, [phone, instanceName]);
 
   // Abrir a conversa já dispara a leitura da IA (uma vez por conversa por sessão).
+  //
+  // O LEAD ENTRA NA CHAVE. Antes ela era só `phone|instância`, e isso gravava
+  // pendência de um cliente na ficha de outro: quem chama este hook resolve o
+  // lead de forma ASSÍNCRONA (ver `DashboardChatPreview`), então no render em
+  // que o telefone muda o `leadId` ainda é o da conversa ANTERIOR. A varredura
+  // disparava ali, com o telefone novo e o lead velho, e a chave sem o lead
+  // travava a conversa — o lead certo chegava renders depois e nunca mais era
+  // enviado. Foi assim que a perícia da Nilzete virou pendência da Monique
+  // (15/09/2026): das 1.505 conversas varridas, 98 receberam mais de um
+  // `lead_id`, e 97 delas também tinham varredura com instância vazia — a
+  // assinatura de estado pela metade.
+  const key = commitmentScanKey(phone, instanceName, leadId, contactId);
   useEffect(() => {
     if (!autoAnalyze || !phone) return;
-    const key = `${phone}|${instanceName || ''}`;
     if (analyzedKeys.current.has(key)) return;
     analyzedKeys.current.add(key);
     analyze(false);
-  }, [autoAnalyze, phone, instanceName, analyze]);
+  }, [autoAnalyze, phone, key, analyze]);
 
   const open = useMemo(
     () => items.filter((i) => isCommitmentOpen(i.status)),

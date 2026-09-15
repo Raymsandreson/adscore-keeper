@@ -138,7 +138,9 @@ describe('Atendente virtual — o número da aba é o do banco', () => {
     render(<AtendenteVirtualPanel />);
     await waitFor(() => expect(selects.some(s => s.contando)).toBe(true));
     const contagens = selects.filter(x => x.contando && TABELAS_DA_FILA.includes(x.tabela));
-    expect(contagens.length).toBe(4);
+    // Cinco desde 15/09/2026: "Já respondidas" (o time respondeu no grupo antes
+    // de alguém revisar) conta como as outras — pelo banco, não pela lista.
+    expect(contagens.length).toBe(5);
     for (const s of contagens) expect(s.colunas).toBe('intencao');
   });
 });
