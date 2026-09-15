@@ -67,6 +67,12 @@ export const OPERATOR_KEYWORDS: { keyword: string; operator: string }[] = [
   { keyword: 'karol', operator: 'Karolyne' },
   { keyword: 'andressa', operator: 'Andressa' },
   { keyword: 'keilane', operator: 'Keilane' },
+  // Acrescentado em 15/09/2026. O formulario "TAFFAREL - BPC" existia e nao
+  // casava com keyword nenhuma: 61 leads em 4 dias (11 a 15/09) entraram no
+  // board BPC com `source` "Meta Lead Ads — BPC - Autismo", isto e, SEM DONO.
+  // Lead sem dono nao recebe status da planilha e nao gera aviso para ninguem.
+  // Antes de 'api' de proposito: 'api' e generica e casa por acidente.
+  { keyword: 'taffarel', operator: 'Taffarel' },
   { keyword: 'api', operator: 'API' },
 ];
 
