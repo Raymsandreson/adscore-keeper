@@ -134,6 +134,8 @@ import { handler as agentProactiveFirstMessage } from './functions/agent-proacti
 import { handler as referralClassify } from './functions/referral-classify';
 import { handler as referralOutreach } from './functions/referral-outreach';
 import { handler as referralBackfill } from './functions/referral-backfill';
+import { handler as referralSuccessScan } from './functions/referral-success-scan';
+import { handler as referralThanksDispatch } from './functions/referral-thanks-dispatch';
 import { handler as testimonialToInstagramPost } from './functions/testimonial-to-instagram-post';
 import { handler as publishInstagramTestimonial } from './functions/publish-instagram-testimonial';
 import { handler as externalSession } from './functions/external-session';
@@ -175,6 +177,8 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'referral-classify': referralClassify,
   'referral-outreach': referralOutreach,
   'referral-backfill': referralBackfill,
+  'referral-success-scan': referralSuccessScan,
+  'referral-thanks-dispatch': referralThanksDispatch,
   'sync-result-labels': syncResultLabels,
   'sync-stage-labels': syncStageLabels,
   'apply-stage-label': applyStageLabel,
@@ -1442,3 +1446,68 @@ async function runMetaCallQueue() {
 // 600s: depois do meta-leads-sync (540s) e antes do aviso-lead (660s).
 setTimeout(runMetaCallQueue, 600_000);
 setInterval(runMetaCallQueue, META_CALL_QUEUE_INTERVAL_MS);
+
+// ============================================================
+// CRON: quem indicou fica sabendo que deu certo.
+//
+// Dois ritmos, porque as duas metades têm pressa diferente:
+//
+//   scan (6h)      — casa indicação com lead, procura desfecho e pede
+//                    autorização ao indicado. Deferimento do INSS e alvará
+//                    levam meses; varrer de minuto em minuto só gastaria banco.
+//   dispatch (20m) — lê a resposta do cliente e entrega o aviso. Aqui a pressa
+//                    existe: quem acabou de dizer "pode contar" não deve
+//                    esperar seis horas, e fora da janela 8h-20h o handler
+//                    devolve sem enviar, então rodar 24h não manda nada de
+//                    madrugada.
+//
+// Os dois respeitam REFERRAL_AVISO: sem a variável em "on" eles varrem,
+// classificam e gravam, mas NÃO mandam mensagem nenhuma. Publicar não liga
+// disparo; desligar não precisa de deploy.
+// ============================================================
+const REFERRAL_SCAN_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const REFERRAL_DISPATCH_INTERVAL_MS = 20 * 60 * 1000;
+
+async function chamarLocal(nome: string) {
+  const resp = await fetch(`http://127.0.0.1:${PORT}/functions/${nome}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+    body: JSON.stringify({}),
+  });
+  return (await resp.json().catch(() => ({}))) as any;
+}
+
+async function runReferralScan() {
+  try {
+    const j = await chamarLocal('referral-success-scan');
+    if (j?.casados?.casadas || j?.detectados?.com_desfecho || j?.pedidos?.pedidos) {
+      console.log(
+        `[cron:referral-success-scan] casadas=${j.casados?.casadas} ambiguas=${j.casados?.ambiguas}` +
+          ` desfechos=${j.detectados?.com_desfecho} revisar=${j.detectados?.para_revisar}` +
+          ` autorizacoes_pedidas=${j.pedidos?.pedidos}`,
+      );
+    }
+  } catch (err) {
+    console.warn('[cron:referral-success-scan] failed:', err instanceof Error ? err.message : err);
+  }
+}
+
+async function runReferralDispatch() {
+  try {
+    const j = await chamarLocal('referral-thanks-dispatch');
+    if (j?.enviados > 0 || j?.respostas?.sim > 0 || j?.respostas?.nao > 0 || j?.erros > 0) {
+      console.log(
+        `[cron:referral-thanks-dispatch] respostas_sim=${j.respostas?.sim} respostas_nao=${j.respostas?.nao}` +
+          ` avisos=${j.enviados} indicacoes=${j.indicacoes_cobertas} erros=${j.erros}`,
+      );
+    }
+  } catch (err) {
+    console.warn('[cron:referral-thanks-dispatch] failed:', err instanceof Error ? err.message : err);
+  }
+}
+
+// Escalonado dos outros crons de boot para não disputar a largada.
+setTimeout(runReferralScan, 210_000);
+setInterval(runReferralScan, REFERRAL_SCAN_INTERVAL_MS);
+setTimeout(runReferralDispatch, 240_000);
+setInterval(runReferralDispatch, REFERRAL_DISPATCH_INTERVAL_MS);

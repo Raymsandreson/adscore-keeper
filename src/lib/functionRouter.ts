@@ -44,6 +44,8 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'referral-classify': 'railway',
   'referral-outreach': 'railway',
   'referral-backfill': 'railway',
+  'referral-success-scan': 'railway',
+  'referral-thanks-dispatch': 'railway',
   'sync-result-labels': 'railway',
   'sync-stage-labels': 'railway',
   'apply-stage-label': 'railway',

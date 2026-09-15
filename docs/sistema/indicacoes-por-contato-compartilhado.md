@@ -39,6 +39,10 @@ Volume medido em 11/09/2026 (banco Externo): 214 cartões recebidos em 10 dias,
 | `referral-classify` | `railway-server/src/functions/` | IA lê a conversa ao redor do cartão e **sugere** o assunto. |
 | `referral-outreach` | `railway-server/src/functions/` | `draft` escreve a apresentação; `send` envia. |
 | `referral-backfill` | `railway-server/src/functions/` | Recupera o histórico, dia a dia. |
+| `referral-success-scan` | `railway-server/src/functions/` | Casa indicação↔lead, acha desfecho e pede autorização ao indicado. Cron 6h. |
+| `referral-thanks-dispatch` | `railway-server/src/functions/` | Lê a resposta e avisa quem indicou. Cron 20min. |
+| `referral-sucesso.ts` | `railway-server/src/lib/` | A lógica pura do laço de volta: o que conta como desfecho, o que é um "sim", as travas. 23 testes. |
+| `referral-envio.ts` | `railway-server/src/lib/` | Envia pela MESMA instância de onde o cartão veio, casando o nome com `ilike`. |
 | Aba Indicações | `src/components/contacts/ReferralsInboxTab.tsx` | Fila, ranking de quem mais indica, ficha em Sheet. |
 | Tabela `referrals` | `supabase/migrations/20260911141500_…sql` | Banco **Externo**. |
 
@@ -53,6 +57,25 @@ cartão chega  →  novo
                   ↓
               convertido | descartado
 ```
+
+E, em paralelo, o **laço de volta** — que roda sozinho e não depende da esteira
+acima ter andado:
+
+```
+indicação  ──casa por telefone/contato──→  lead do indicado
+                                             ↓  INSS deferido | acordo | pagamento
+                                          desfecho detectado
+                                             ↓  perguntamos AO INDICADO
+                                     "posso contar pra quem te indicou?"
+                                    ↙            ↓              ↘
+                                 sim         sem resposta        não
+                                  ↓           (5 dias)            ↓
+                       aviso ao indicador      expira          nunca sai
+                       (privado, 8h-20h,
+                        1 por 30 dias)
+```
+
+Sentença cai em `thanks_status='revisar'` e espera um humano — ver "Decisões".
 
 ## Decisões que valem lembrar
 
@@ -82,6 +105,124 @@ dia responde em instantes.
 `assigned_user_id` escolhido na tela, casando `profiles.default_instance_id`
 com `whatsapp_instances.id`. O dono do número não responde "de quem é essa
 indicação".
+
+## Avisar quem indicou quando deu certo (15/09/2026)
+
+Quem passa um contato nunca descobre o que aconteceu. Indica o cunhado para o
+BPC, o cunhado recebe o benefício seis meses depois, e o indicador segue sem
+saber. A notícia boa já está no banco — só não chega a quem a provocou.
+
+### O elo que faltava
+
+A `referrals` guardava o telefone do indicado mas **nunca o lead que ele virou**.
+Sem isso não havia como perguntar "o caso dele deu certo?". A coluna
+`converted_lead_id` é esse elo, preenchida pelo scan por dois caminhos, nesta
+ordem:
+
+1. `indicated_contact_id` → `contact_leads` — o elo explícito, quando alguém já
+   disse que este contato é deste lead.
+2. Últimos 8 dígitos do telefone contra `leads.phone_match_key` — a **mesma**
+   coluna gerada que o resto do sistema usa. Casar por outro critério aqui
+   criaria dois universos de "mesma pessoa".
+
+**A ordem não é detalhe.** A primeira medição desta funcionalidade usou só o
+telefone e concluiu que o gatilho dispararia zero vez. Estava errada: os 6
+deferimentos que existem hoje aparecem **exclusivamente** por `contact_leads`, e
+nenhum pelo telefone. Cadastro com número antigo e cliente que trocou de chip são
+invisíveis para os 8 dígitos.
+
+Mais de um lead casando = `match_confidence='ambigua'`, lead nulo, nada
+automático. Avisar o indicador sobre o desfecho da pessoa errada é notícia falsa
+sobre um terceiro, e não tem desfazer.
+
+### O que conta como "deu certo"
+
+| Sinal | Fonte | Automático? |
+|---|---|---|
+| Pagamento / alvará | marco `pagamento` | sim |
+| INSS deferido | `inss_admin_processes.resultado='deferido'` | sim |
+| Acordo homologado | marco `acordo` | sim |
+| Sentença | marco `sentenca_1grau` | **não** — fila `revisar` |
+
+Empate: vence o mais forte, e pagamento ganha de tudo — dinheiro na mão não
+admite discussão.
+
+**Por que a sentença não dispara sozinha.** O marco não distingue procedente de
+improcedente, e não é limitação do parser, é do dado: das 287 sentenças gravadas
+(conferido em 15/09/2026), **284 não têm a palavra "procedente" em lugar nenhum
+da descrição** — a descrição é o cabeçalho da movimentação, não o teor. Das 3 que
+têm, 1 é improcedente. A outra fonte possível,
+`lead_processes.resultado_atingido_status='confirmado'`, tem 2 linhas na base
+inteira, e o rótulo vem do POP, que mapeia um resultado por marco — também não
+separa ganhou de perdeu. Então a sentença é **detector, não gatilho**: classifica,
+roteia para a fila e alguém confirma. Mesmo princípio de
+`conserto-estrutural-nao-pontual`.
+
+### Consentimento não é formalidade
+
+"O Zé que você indicou conseguiu o BPC" conta a um terceiro que o Zé é cliente,
+que tem um caso e qual foi o desfecho. Benefício assistencial é dado de saúde e
+de renda (LGPD art. 5º, II) e a relação cliente-escritório é coberta por sigilo
+profissional.
+
+Por isso o fluxo pergunta **ao próprio indicado** antes: "posso contar pra quem
+te indicou que deu certo?". Só o sim, gravado com data em `consent_status`,
+libera o aviso.
+
+**Silêncio não é consentimento**: pedido sem resposta expira em 5 dias e o aviso
+nunca sai. É o inverso do padrão de marketing, e é de propósito. A leitura da
+resposta é determinística primeiro (`interpretarResposta`) e só chama IA na
+dúvida; quando nem a regra nem a IA se decidem, fica em aberto e expira. **Não
+existe caminho em que a dúvida vira autorização.**
+
+Armadilha coberta por teste: *"não tem problema"* é **sim**, não recusa.
+
+### As travas do envio
+
+- **Sempre no privado.** 997 das 1.416 indicações vieram de grupo, e todas têm
+  `referrer_sender_phone`. O cliente autorizou contar a **quem o indicou**, não
+  ao grupo de 200 pessoas de onde o cartão saiu.
+- **Janela 8h–20h (BRT).** Ninguém recebe notícia de escritório às 3 da manhã.
+- **Uma mensagem por indicador a cada 30 dias**, cobrindo todos os desfechos do
+  período numa lista só. Um acolhedor com 188 indicações receberia 188 mensagens
+  numa semana ruim — vira spam, queima o número e queima quem mais indica.
+- **`thanks_enviado_at` trava o reenvio**, mesmo com duas rodadas em paralelo.
+- **A IA só reescreve.** Não decide quem recebe, não decide se recebe. Falhou?
+  Fica o texto determinístico, que já estava correto.
+
+### Ligar e desligar
+
+Publicar **não** liga o disparo. Os dois crons varrem, classificam e gravam, mas
+só mandam mensagem com `REFERRAL_AVISO=on` no Railway. Deploy acontece a cada
+merge em `main`, e um merge distraído não pode virar mensagem na casa de gente de
+verdade.
+
+Desligar = tirar a variável. **Não precisa de deploy** — é o rollback mais rápido
+que existe. Teto por rodada em `REFERRAL_AVISO_LIMITE` (padrão 20).
+
+### Estado no dia em que subiu
+
+Medido em 15/09/2026 — e a base é viva: subiu de 1.416 para 1.437 indicações
+durante a própria medição.
+
+| | |
+|---|---|
+| Indicações | 1.437 |
+| Casadas com um lead | 173 (141 por telefone, 97 por `contact_leads`, com sobreposição) |
+| Ambíguas (>1 lead pelo telefone) | 3 |
+| **Com INSS deferido** | **6** — todas por `contact_leads`, nenhuma pelo telefone |
+| Com acordo ou pagamento | 1 |
+| Com sentença (vai para revisão) | 1 |
+
+Ou seja: **7 avisos de verdade já na primeira rodada**, e é exatamente por isso
+que existe o teto de `REFERRAL_AVISO_LIMITE` por rodada — o backlog acumulado
+não pode virar rajada de mensagem no mesmo minuto.
+
+### Custo
+
+Uma chamada Gemini Flash por resposta ambígua de cliente e outra por aviso
+enviado — ambas raras por construção. A detecção e o casamento não usam IA.
+Ordem de grandeza: centavos por mês no volume atual.
 
 ## Estado (14/09/2026)
 

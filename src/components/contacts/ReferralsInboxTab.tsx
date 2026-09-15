@@ -26,7 +26,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Search, UserPlus, Sparkles, Send, Phone, Trophy, Smartphone, MessageSquareQuote,
-  CheckCircle2, XCircle, Loader2, UserCheck, Users, History,
+  CheckCircle2, XCircle, Loader2, UserCheck, Users, History, PartyPopper, ShieldQuestion,
 } from 'lucide-react';
 
 export interface Indicacao {
@@ -55,6 +55,22 @@ export interface Indicacao {
   outreach_draft: string | null;
   outreach_sent_at: string | null;
   notes: string | null;
+  // ===== "Deu certo" — migration 20260915190000 =====
+  converted_lead_id: string | null;
+  match_method: string | null;
+  match_confidence: string | null;
+  success_kind: string | null;
+  success_label: string | null;
+  success_at: string | null;
+  success_detected_at: string | null;
+  consent_status: string | null;
+  consent_asked_at: string | null;
+  consent_answered_at: string | null;
+  consent_reply_text: string | null;
+  thanks_status: string | null;
+  thanks_texto: string | null;
+  thanks_enviado_at: string | null;
+  thanks_erro: string | null;
 }
 
 interface Produto { id: string; name: string }
@@ -87,6 +103,36 @@ const STATUS_COR: Record<string, string> = {
   contatado: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200',
   convertido: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
   descartado: 'bg-muted text-muted-foreground',
+};
+
+/**
+ * Estado do aviso a quem indicou. Fica SEPARADO de `status` de propósito: a
+ * esteira da indicação ("já falaram com essa pessoa?") e o laço de retorno
+ * ("já contamos a quem indicou?") são perguntas diferentes, e juntá-las numa
+ * coluna só faria uma sobrescrever a outra.
+ */
+const AVISO_ROTULO: Record<string, string> = {
+  revisar: 'Conferir antes de avisar',
+  agendado: 'Aviso na fila',
+  enviado: 'Indicador avisado',
+  bloqueado: 'Segurado (1 aviso/30 dias)',
+  erro: 'Falha ao avisar',
+};
+
+const AVISO_COR: Record<string, string> = {
+  revisar: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200',
+  agendado: 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200',
+  enviado: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
+  bloqueado: 'bg-muted text-muted-foreground',
+  erro: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200',
+};
+
+const CONSENT_ROTULO: Record<string, string> = {
+  pedido: 'Perguntamos ao cliente, aguardando resposta',
+  sim: 'O cliente autorizou contar',
+  nao: 'O cliente pediu para não contar',
+  expirado: 'Sem resposta em 5 dias — não vamos contar',
+  dispensado: 'Aviso liberado sem identificar o cliente',
 };
 
 /** Telefone só-dígitos vira algo legível: 558699275467 → +55 (86) 9927-5467 */
@@ -398,6 +444,14 @@ function CartaoDeIndicacao({ indicacao, onAbrir }: { indicacao: Indicacao; onAbr
               <Badge className={`text-[10px] ${STATUS_COR[indicacao.status] || ''}`}>
                 {STATUS_ROTULO[indicacao.status] || indicacao.status}
               </Badge>
+              {/* O laço de volta aparece na lista: "conferir antes de avisar" é
+                  fila de trabalho, e fila que só existe dentro da ficha não é
+                  fila — é coisa esquecida. */}
+              {indicacao.thanks_status && (
+                <Badge className={`text-[10px] ${AVISO_COR[indicacao.thanks_status] || ''}`}>
+                  {AVISO_ROTULO[indicacao.thanks_status] || indicacao.thanks_status}
+                </Badge>
+              )}
               {indicacao.indicated_contact_id && (
                 <Badge variant="outline" className="text-[10px] gap-1">
                   <UserCheck className="h-3 w-3" />Já é contato
@@ -698,6 +752,9 @@ function FichaDaIndicacao({ indicacao, produtos, equipeDaInstancia, userId, onFe
             )}
           </div>
 
+          {/* Deu certo? — o laço de volta para quem indicou */}
+          <BlocoDoDesfecho ind={ind} gravar={gravar} ocupado={ocupado} />
+
           {/* Apresentação */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
@@ -770,6 +827,140 @@ function FichaDaIndicacao({ indicacao, produtos, equipeDaInstancia, userId, onFe
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/**
+ * O que aconteceu com o caso do indicado, e o que já contamos a quem indicou.
+ *
+ * Só mostra o que o banco tem. Enquanto a indicação não estiver ligada a um
+ * lead, a resposta honesta é "ainda não sei" — e é isso que aparece, em vez de
+ * um vazio que a pessoa lê como "não deu certo".
+ *
+ * A fila `revisar` é o ponto em que um humano decide. Ela existe porque nem
+ * todo desfecho é inequívoco: a sentença cai aqui sempre, porque o banco não
+ * registra se ela foi procedente ou improcedente (284 das 287 sentenças não têm
+ * a palavra em lugar nenhum). Botão "Liberar o aviso" é a confirmação de que
+ * alguém leu e viu que deu certo mesmo.
+ */
+function BlocoDoDesfecho({
+  ind,
+  gravar,
+  ocupado,
+}: {
+  ind: Indicacao;
+  gravar: (mudancas: Record<string, unknown>, etiqueta: string) => Promise<boolean>;
+  ocupado: string | null;
+}) {
+  const temDesfecho = !!ind.success_detected_at;
+  const precisaConferir = ind.thanks_status === 'revisar';
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+          <PartyPopper className="h-3.5 w-3.5" />O caso do indicado
+        </p>
+        {ind.thanks_status && (
+          <Badge className={`text-[10px] ${AVISO_COR[ind.thanks_status] || ''}`}>
+            {AVISO_ROTULO[ind.thanks_status] || ind.thanks_status}
+          </Badge>
+        )}
+      </div>
+
+      <div className="rounded-md border p-2.5 text-xs space-y-2">
+        {/* Elo com o lead */}
+        {ind.converted_lead_id ? (
+          <p className="text-muted-foreground">
+            Ligado ao cadastro do cliente{ind.match_method === 'phone8' ? ' pelo telefone' : ''}. O sistema acompanha o caso sozinho.
+          </p>
+        ) : ind.match_confidence === 'ambigua' ? (
+          <p className="text-amber-700 dark:text-amber-400">
+            Mais de um cadastro bate com esse telefone. Não dá para saber de qual caso a notícia seria — por isso nada é avisado automaticamente.
+          </p>
+        ) : (
+          <p className="text-muted-foreground">
+            Ainda não achei o cadastro dessa pessoa. Quando ela virar cliente, o sistema liga sozinho e passa a acompanhar.
+          </p>
+        )}
+
+        {temDesfecho && (
+          <>
+            <Separator />
+            <p>
+              <span className="font-medium">Desfecho:</span> {ind.success_label}
+              {ind.success_at && (
+                <span className="text-muted-foreground"> · {new Date(`${ind.success_at}T12:00:00`).toLocaleDateString('pt-BR')}</span>
+              )}
+            </p>
+            {ind.success_kind === 'sentenca_revisar' && (
+              <p className="text-amber-700 dark:text-amber-400">
+                Saiu sentença, mas o sistema não sabe se foi favorável — isso não está registrado na movimentação. Confira o processo antes de liberar.
+              </p>
+            )}
+          </>
+        )}
+
+        {/* Consentimento */}
+        {ind.consent_status && (
+          <>
+            <Separator />
+            <p className="flex items-start gap-1.5">
+              <ShieldQuestion className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
+              <span>{CONSENT_ROTULO[ind.consent_status] || ind.consent_status}</span>
+            </p>
+            {ind.consent_reply_text && (
+              <p className="text-muted-foreground italic">"{ind.consent_reply_text}"</p>
+            )}
+          </>
+        )}
+
+        {/* O aviso em si */}
+        {ind.thanks_enviado_at && (
+          <>
+            <Separator />
+            <p className="text-muted-foreground">
+              Avisamos quem indicou em {new Date(ind.thanks_enviado_at).toLocaleString('pt-BR')}
+            </p>
+            {ind.thanks_texto && <p className="whitespace-pre-wrap">{ind.thanks_texto}</p>}
+          </>
+        )}
+        {ind.thanks_erro && <p className="text-rose-600 dark:text-rose-400">{ind.thanks_erro}</p>}
+      </div>
+
+      {precisaConferir && (
+        <div className="flex flex-wrap gap-2 pt-0.5">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() =>
+              gravar(
+                // Volta para o começo da esteira do aviso: o pedido de
+                // autorização ao cliente sai na próxima varredura. Nunca pula o
+                // consentimento — liberar aqui é dizer "o desfecho é real",
+                // não "pode contar para qualquer um".
+                { thanks_status: null, thanks_erro: null },
+                'liberar-aviso',
+              )
+            }
+            disabled={ocupado === 'liberar-aviso'}
+          >
+            {ocupado === 'liberar-aviso' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+            Conferi, pode pedir autorização
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="gap-1.5 text-muted-foreground"
+            onClick={() => gravar({ thanks_status: 'bloqueado', consent_status: 'nao' }, 'nao-avisar')}
+            disabled={ocupado === 'nao-avisar'}
+          >
+            <XCircle className="h-3.5 w-3.5" />Não avisar
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
