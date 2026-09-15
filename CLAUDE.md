@@ -62,11 +62,11 @@ Pular etapas só vale para mudanças triviais (typo, remover `console.log`, reno
 - Sincronizar main no início de toda sessão — autorização durável do usuário (jul/2026): rodar `git fetch origin` + `git merge --ff-only origin/main` antes da primeira edição, sem pedir. Só fast-forward: se houver divergência ou conflito com o working tree, parar e avisar em vez de forçar.
 - Mergear a branch de feature em `main` e publicar — autorização durável do usuário (ago/2026): sem perguntar, desde que `npm run build` e `tsc --noEmit` passem e os testes existentes continuem verdes. Ordem obrigatória: `git fetch origin main` → se `main` avançou, mergear `origin/main` **na branch** primeiro, resolver conflitos e revalidar (build + testes) → só então subir. O push em `main` tem que ser fast-forward (`git push origin <branch>:main`); se não for, parar e avisar em vez de forçar. Mostrar no resumo o que subiu e o commit resultante. Lembrete: só o merge publica no Railway — push em branch não sobe nada.
   - Neste ambiente remoto o clone é **raso** (`--depth`), e o `main` **local** pode apontar para um histórico não relacionado ao `origin/main` — daí `git checkout main` + `merge --ff-only` falhar com `refusing to merge unrelated histories`. Não é divergência real: trabalhar sempre a partir de `origin/main` e publicar com `git push origin <branch>:main`, sem checkout do `main` local.
+- Deploy de edge function — autorização durável do usuário (set/2026): subir sem perguntar, e **não devolver a tarefa** por falta de `SUPABASE_PAT` (essa variável não existe no ambiente remoto; o MCP do Supabase já tem credencial). Obrigatório seguir o protocolo verificado da skill `deploy-edge-function-verificado`: conferir com `get_edge_function` o que está REALMENTE no ar (o espelho de rollback do repo já mentiu), subir numa canary, comparar `ezbr_sha256`, e fazer smoke test por `pg_net`. Mostrar no resumo a versão resultante e a evidência do teste.
 
 ### Sempre pedir confirmação explícita:
 - `git commit` incluindo arquivos que você não editou nesta sessão
 - SQL de escrita em produção (`INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`) — mostrar o SQL e quantas linhas serão afetadas
-- Deploy de edge function
 - Criar ou remover índice em tabela grande (usar `CONCURRENTLY` sempre)
 - Apagar arquivo
 - `npm install` de dependência nova

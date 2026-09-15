@@ -81,6 +81,23 @@ Rodado contra a produção, com corte na véspera de cada queda:
 Israel morreu 11h depois de marcar 62. Mateus, 11h depois de marcar 77. Nos dois
 cortes as instâncias que morreram ficaram em 1º e 2º do ranking.
 
+## Estado: tudo no ar desde 15/09/2026
+
+- `idx_wam_inst_lower_created` criado com `CONCURRENTLY` (74 MB, válido)
+- 4 tabelas com RLS, 3 funções, cron `wa-risco-tick` (jobid 5536) a cada 15 min
+- tick completo em **1,34 s** para 25 instâncias
+- edge `send-whatsapp` **v30** (version 57), `ezbr_sha256` idêntico ao da canary
+  `send-whatsapp-canary-v30` que foi testada antes — ver skill
+  `deploy-edge-function-verificado`
+
+Smoke test em produção, por `pg_net`:
+
+| Cenário | Resultado |
+|---|---|
+| body inválido | `{"success":false,"error":"phone/chat_id and message required"}` |
+| número novo por instância morta | `RITMO_INSTANCIA_FORA_DO_AR`, `instancia_sugerida: "Atendimento Processual"`, nada enviado |
+| conversa em andamento | `CONVERSA_EM_ANDAMENTO`, `permitido: true` |
+
 ## O que foi construído
 
 ### 1. Monitor vivo (`wa_risco_tick`, cron a cada 15 min)
