@@ -3782,3 +3782,110 @@ porque ainda é o caminho de aviso de pendência que **não** vira atividade.
 sozinha, e as 59 pendências de um dia normal caem todas no mesmo colo. A regra
 de urgência reduz o ruído, não o volume. Enquanto não houver mais gente
 cadastrada, o gargalo é esse — e ele não é de código.
+
+---
+
+## O Dom calou cinco dias, e ninguém viu (10–15/09/2026)
+
+### O que foi visto
+
+Em 15/09, ao abrir o relatório de intenções, a última decisão registrada era de
+**10/09 às 17:42 UTC** — cinco dias antes. Última pendência e última atividade:
+o mesmo minuto.
+
+### Duas coisas caíram juntas, e nenhuma dá erro
+
+1. **O tick sumiu.** O job `dom_rascunho_tick` (jobid 4817, 2.560 execuções,
+   todas `succeeded`) não estava mais em `cron.job`. Ele tinha sido criado à
+   mão, e **nunca existiu em migration** — nada no repositório o recriava.
+2. **Todos os grupos foram desativados.** Os 2.484 de `dom_grupos_piloto`
+   estavam `ativo = false`, inclusive os 1.146 operacionais. A RPC
+   `dom_grupos_para_olhar` exige `ativo and escopo_status = 'operacional'`:
+   com todos desligados, o cron roda, acerta, devolve zero e não produz nada.
+
+A tabela não tem `updated_at`, então não dá para datar a desativação.
+
+### O custo
+
+**7.430 mensagens de cliente em 323 grupos** do piloto entre 10/09 e 15/09.
+Nenhuma classificada, nenhuma virou pendência, nenhuma virou atividade.
+
+E a falha passou por todo verde: a edge não dá erro porque não é chamada,
+deploy passa, build passa, teste passa. A tela mostrava a fila antiga como se
+fosse do dia — que é o pior disfarce possível, porque parece movimento.
+
+### O conserto
+
+O cron voltou (`dom_rascunho_tick`, jobid 5598) e agora existe em migration
+(`20260915120000_cron_do_dom_no_repositorio.sql`). Os 1.146 grupos operacionais
+foram reativados à mão, com o número conferido antes e depois — de propósito
+fora da migration, porque quais grupos o Dom atende é decisão de operação, e
+migration que liga grupo em massa passa por cima de quem desligou um de caso.
+
+**Verificado em dado real**, 5 ticks depois de religar: 30 decisões, 6
+atividades, 2 pessoas no rodízio. E, de quebra, fechou a verificação que ficara
+pendente de 09/09 — as atividades nasceram como o desenho previa:
+
+```
+"cliente quer desistir"                  → urgente, prazo hoje
+"cliente sem condições de ir à perícia"  → alta,    prazo hoje
+"cliente desabafando"                    → alta,    prazo hoje
+todas com notificação ligada, campos escritos, grupo gravado e vínculo
+```
+
+Antes disso, entre 09/09 22:43 e 10/09 17:42: 21 atividades, 3 urgentes, 18
+altas, **0 normais**, 21 leads distintos (zero duplicata), 32 vínculos de
+mensagem. O prazo de três dias, a prioridade `normal` por omissão e a
+duplicação por título morreram todos ali.
+
+### O que ficou de fora
+
+`dom_cobranca_diaria` (0 13 * * 1-5) sumiu no mesmo minuto e **não** foi
+recriado. Aquele manda mensagem de cobrança para cliente: religar cobrança sem
+alguém decidir é diferente de religar a leitura da conversa.
+
+---
+
+## O relatório de intenções (15/09/2026)
+
+### A pergunta que não tinha onde ser feita
+
+O painel filtrava por intenção, mas só dentro da fila carregada: contava o que
+está pendente AGORA. Isso responde "o que falta fazer". Não responde "o que
+entrou" — nem "reclamação aumentou esta semana?", nem "quantos falaram em
+desistir no mês?".
+
+### A fonte é a decisão, não a fila
+
+`dom_decisoes` registra toda decisão do agente, **inclusive o silêncio**. Quem
+olha só a fila vê o que sobrou; quem olha as decisões vê o que chegou. Em 7
+dias: 1.292 decisões, das quais 411 são D12/D13 (bom-dia e obrigado) que o Dom
+calou de propósito. Sem isso na conta, o volume real de conversa some.
+
+### Duas funções, contas no banco
+
+| Função | Devolve |
+|---|---|
+| `dom_intencoes_resumo(p_dias)` | uma linha por intenção: total, grupos, e o desfecho (respondeu / precisou de gente / calou / pulou) |
+| `dom_intencoes_por_dia(p_dias)` | uma linha por dia e família, para o gráfico |
+
+Ambas `SECURITY INVOKER` — a RLS de `dom_decisoes` continua valendo — e nenhuma
+devolve `pergunta` ou `motivo`: relatório é contagem, não conversa de cliente.
+
+O dia sai **no fuso de Teresina**. Em UTC, tudo que a equipe atende depois das
+21h entra no dia seguinte e o gráfico mente sobre qual dia foi movimentado.
+
+A conta sai no Postgres porque entram ~200 decisões por dia: baixar tudo para
+somar no navegador funciona neste mês e corta a janela sem avisar no terceiro.
+
+### A tela
+
+`RelatorioDeIntencoes.tsx`, em **Agentes IA → Atendente virtual**, acima da
+fila e **aberta por padrão** — a configuração fica recolhida porque configurar
+é raro; esta é pergunta de toda semana, e coisa recolhida numa tela com duas
+camadas de aba é coisa que ninguém acha.
+
+Gráfico por **família** (seis), tabela por **código** (23): 23 séries num
+gráfico não se leem, mas "quantos E20 esta semana?" precisa do código. Os 23
+aparecem em português — a tela não pede que ninguém decore "E20". Vermelho é
+"precisa de gente", cinza é o ruído saudável, que não deve competir por atenção.
