@@ -45,6 +45,7 @@ import {
   Ear,
   Loader2,
   Users,
+  UserPlus,
   Link2,
   CheckCircle2,
   WifiOff,
@@ -61,6 +62,7 @@ import {
   suggestNextSequence,
   type InstanceConnStatus,
 } from '@/lib/leadWhatsappGroupFlow';
+import { GroupTeamMembersPicker } from '@/components/leads/GroupTeamMembersPicker';
 import { isTrabalhistaBoard } from '@/lib/trabalhistaAcolhedores';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
@@ -232,14 +234,17 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
   const [groupPrefix, setGroupPrefix] = useState('');
   const [groupAuthorId, setGroupAuthorId] = useState<string>(DEFAULT_GROUP_AUTHOR_INSTANCE_ID);
   const [groupNameInput, setGroupNameInput] = useState('');
+  // Telefones da equipe escolhidos na tela para entrar no grupo além do que o
+  // edge já adiciona (instâncias do funil + acolhedor).
+  const [groupExtraMembers, setGroupExtraMembers] = useState<string[]>([]);
   const groupNameTouched = useRef(false);
   const [connList, setConnList] = useState<InstanceConnStatus[]>([]);
   const [connLoading, setConnLoading] = useState(false);
   const [boardInstanceIds, setBoardInstanceIds] = useState<string[]>([]);
   const [showCreatorPicker, setShowCreatorPicker] = useState(false);
   const [addingLead, setAddingLead] = useState(false);
-  const [groupSteps, setGroupSteps] = useState<{ save: 'idle' | 'running' | 'done' | 'error'; group: 'idle' | 'running' | 'done' | 'error'; link: 'idle' | 'running' | 'done' | 'error' }>(
-    { save: 'idle', group: 'idle', link: 'idle' }
+  const [groupSteps, setGroupSteps] = useState<{ save: 'idle' | 'running' | 'done' | 'error'; group: 'idle' | 'running' | 'done' | 'error'; link: 'idle' | 'running' | 'done' | 'error'; members: 'idle' | 'running' | 'done' | 'error' }>(
+    { save: 'idle', group: 'idle', link: 'idle', members: 'idle' }
   );
 
   // Kanban boards hook
@@ -661,7 +666,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     if (!showAddLeadDialog || !boardIdForNewLead) return;
     let cancelled = false;
     groupNameTouched.current = false;
-    setGroupSteps({ save: 'idle', group: 'idle', link: 'idle' });
+    setGroupSteps({ save: 'idle', group: 'idle', link: 'idle', members: 'idle' });
     refreshConnStatus();
     fetchBoardInstanceIds(boardIdForNewLead).then(ids => { if (!cancelled) setBoardInstanceIds(ids); });
     setGroupSeq('');
@@ -760,7 +765,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     const firstStage = targetBoard?.stages[0]?.id || 'new';
 
     setAddingLead(true);
-    setGroupSteps({ save: 'running', group: 'idle', link: 'idle' });
+    setGroupSteps({ save: 'running', group: 'idle', link: 'idle', members: 'idle' });
 
     // Apply funnel naming pattern: "<prefix> <N> | <user-typed name>"
     // O nº vem do campo editável do dialog (sugerido por suggestNextSequence, que
@@ -876,6 +881,10 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
         boardId: targetBoardId,
         creationOrigin: 'adicionar_lead',
         creatorInstanceId,
+        // Nome resolvido aqui porque o proxy do Cloud que adiciona participante
+        // acha a instância pelo nome (é o caminho que a tela de membros já usa).
+        creatorInstanceName: connList.find(r => r.id === creatorInstanceId)?.instance_name || null,
+        extraParticipants: groupExtraMembers,
         forcedSequence: usedSequence,
         groupNameOverride: groupNameInput.trim() || null,
         phone: newLeadFormData.lead_phone || null,
@@ -910,6 +919,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
         onStep: (step, state) => {
           if (step === 'group') setGroupSteps(s => ({ ...s, group: state === 'error' ? 'error' : state }));
           if (step === 'link') setGroupSteps(s => ({ ...s, link: state === 'error' ? 'error' : state }));
+          if (step === 'members') setGroupSteps(s => ({ ...s, members: state === 'error' ? 'error' : state }));
         },
       });
 
@@ -924,6 +934,20 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       }
       if (outcome.introError) {
         toast.warning('Grupo criado, mas não consegui enviar o resumo automático.', { description: outcome.introError });
+      }
+      // A UazAPI recusa adicionar quem bloqueia entrada em grupo; nesse caso o
+      // certo é mandar o link de convite para a pessoa, não fingir que entrou.
+      if (outcome.membersError) {
+        toast.warning('Grupo criado, mas não consegui adicionar a equipe escolhida.', {
+          description: outcome.membersError, duration: 8000,
+        });
+      } else if (outcome.membersAttempted && (outcome.membersAdded ?? 0) < outcome.membersAttempted) {
+        toast.warning(
+          `${outcome.membersAdded ?? 0} de ${outcome.membersAttempted} da equipe entraram no grupo.`,
+          { description: 'Quem faltou provavelmente bloqueia ser adicionado — mande o link de convite.', duration: 8000 },
+        );
+      } else if (outcome.membersAttempted) {
+        toast.success(`${outcome.membersAdded} da equipe ${outcome.membersAdded === 1 ? 'entrou' : 'entraram'} no grupo.`);
       }
       fetchLeads();
     }
@@ -967,7 +991,8 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     setShowAddLeadDialog(false);
     groupNameTouched.current = false;
     setGroupNameInput('');
-    setGroupSteps({ save: 'idle', group: 'idle', link: 'idle' });
+    setGroupExtraMembers([]);
+    setGroupSteps({ save: 'idle', group: 'idle', link: 'idle', members: 'idle' });
   };
 
   const handleExtractedData = (data: ExtractedAccidentData) => {
@@ -1543,11 +1568,28 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
                   </p>
                 </div>
 
+                <div>
+                  <Label className="text-xs text-muted-foreground">Quem da equipe entra no grupo</Label>
+                  <GroupTeamMembersPicker
+                    value={groupExtraMembers}
+                    onChange={setGroupExtraMembers}
+                    disabled={addingLead}
+                    className="mt-1"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Entram pelo telefone do cadastro do membro (Equipe → perfil), mesmo sem instância de WhatsApp.
+                    As instâncias do funil e o acolhedor já entram sozinhos.
+                  </p>
+                </div>
+
                 <div className="flex gap-2 flex-wrap">
                   {([
                     [groupSteps.save, 'Salvar lead', <CheckCircle2 key="s" className="h-3 w-3 mr-1" />],
                     [groupSteps.group, 'Criar grupo', <Users key="g" className="h-3 w-3 mr-1" />],
                     [groupSteps.link, 'Obter link', <Link2 key="l" className="h-3 w-3 mr-1" />],
+                    ...(groupExtraMembers.length > 0
+                      ? [[groupSteps.members, 'Adicionar equipe', <UserPlus key="m" className="h-3 w-3 mr-1" />]] as const
+                      : []),
                   ] as const).map(([state, label, icon]) => (
                     <Badge
                       key={label}

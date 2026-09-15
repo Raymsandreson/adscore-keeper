@@ -275,7 +275,7 @@ export function composeGroupIntroMessage(
   return linhas.join('\n\n');
 }
 
-export type GroupFlowStep = 'group' | 'link' | 'intro';
+export type GroupFlowStep = 'group' | 'link' | 'members' | 'intro';
 export type GroupFlowState = 'running' | 'done' | 'error';
 
 export interface CreateLeadGroupParams {
@@ -284,6 +284,18 @@ export interface CreateLeadGroupParams {
   boardId: string;
   creationOrigin: string;
   creatorInstanceId?: string | null;
+  /**
+   * Nome da instância-autora (whatsapp_instances.instance_name). Só serve para
+   * adicionar os participantes extras: o proxy do Cloud resolve a instância pelo
+   * nome, que é o caminho que a tela de membros do grupo já usa em produção.
+   */
+  creatorInstanceName?: string | null;
+  /**
+   * Telefones da equipe (só dígitos) que entram no grupo além do que o edge já
+   * adiciona sozinho (instâncias do funil, acolhedor, obrigatórias). Quem não
+   * tem instância só chega ao grupo por aqui.
+   */
+  extraParticipants?: string[];
   forcedSequence?: number | null;
   groupNameOverride?: string | null;
   phone?: string | null;
@@ -299,6 +311,11 @@ export interface CreateLeadGroupResult {
   groupError?: string;
   linkError?: string;
   introError?: string;
+  /** Quantos dos telefones extras a UazAPI confirmou que entraram. */
+  membersAdded?: number;
+  /** Quantos foram pedidos (o resto ficou de fora: privacidade, número errado). */
+  membersAttempted?: number;
+  membersError?: string;
 }
 
 /**
@@ -359,7 +376,40 @@ export async function createLeadWhatsappGroup(p: CreateLeadGroupParams): Promise
     p.onStep?.('link', 'error', result.linkError);
   }
 
-  // Passo 3 — resumo automático no próprio grupo recém-criado. Usa a mesma
+  // Passo 3 — gente da equipe escolhida na tela. Vem depois da criação porque o
+  // edge monta a lista de participantes só a partir de instâncias; quem tem
+  // telefone no cadastro mas não tem instância (a maior parte da equipe) só
+  // entra por aqui. A instância que criou o grupo é admin dele, então ela mesma
+  // é quem pode adicionar. Roda ANTES do resumo, para quem entrou já achar a
+  // mensagem no grupo. Falha aqui não derruba o resto do fluxo.
+  const extras = [...new Set((p.extraParticipants || []).map((n) => String(n || '').replace(/\D/g, '')).filter((n) => n.length >= 10))];
+  if (extras.length > 0 && result.groupJid) {
+    p.onStep?.('members', 'running');
+    result.membersAttempted = extras.length;
+    try {
+      const { data, error } = await cloudFunctions.invoke('manage-whatsapp-group-participants', {
+        body: {
+          ...(p.creatorInstanceName
+            ? { instance_name: p.creatorInstanceName }
+            : { instance_id: p.creatorInstanceId }),
+          group_jid: result.groupJid,
+          action: 'add',
+          numbers: extras,
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.success === false) throw new Error((data as any)?.error || 'Falha ao adicionar participantes');
+      result.membersAdded = Number((data as any)?.ok_count ?? 0);
+      p.onStep?.('members', result.membersAdded > 0 ? 'done' : 'error', 'nenhum confirmado');
+    } catch (e: any) {
+      result.membersError = e?.message || String(e);
+      // Sem número no log: o que interessa para depurar é a falha, não quem.
+      console.warn('[leadGroupFlow] falha ao adicionar participantes da equipe', result.membersError);
+      p.onStep?.('members', 'error', result.membersError);
+    }
+  }
+
+  // Passo 4 — resumo automático no próprio grupo recém-criado. Usa a mesma
   // instância que criou o grupo (send-whatsapp resolve pela JID); sem
   // necessidade de "associar número" — o grupo já pertence a essa instância.
   if (p.introMessage) {

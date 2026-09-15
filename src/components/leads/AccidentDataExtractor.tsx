@@ -849,7 +849,15 @@ export function AccidentDataExtractor({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      {/* Cabeçalho, stepper e rodapé ficam FORA da área que rola. O DialogContent do
+          shadcn é um grid de coluna única: qualquer filho mais largo que a caixa
+          (uma imagem colada sem max-w, um valor extraído sem ponto de quebra)
+          estica a coluna inteira, e o rodapé — que é outro item do mesmo grid —
+          vai junto. Medido: um filho de 1000px levava o scrollWidth a 1048 contra
+          655 visíveis e deixava "Usar Dados Selecionados" 335px fora da tela, só
+          alcançável rolando pro lado. Com o rodapé como irmão da área rolável, a
+          largura do conteúdo não o alcança mais. */}
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
@@ -899,7 +907,11 @@ export function AccidentDataExtractor({
           </div>
         )}
 
-        <div className="space-y-4 mt-4">
+        {/* Área rolável. `min-w-0` impede que um filho largo estique este bloco;
+            se algo passar da largura, a rolagem lateral acontece aqui dentro,
+            sem levar o rodapé junto. */}
+        <div className="flex-1 min-h-0 min-w-0 overflow-y-auto pr-1">
+        <div className="space-y-4">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="link" className="flex items-center gap-2">
@@ -1171,7 +1183,7 @@ export function AccidentDataExtractor({
                   <img
                     src={URL.createObjectURL(uploadedImage)}
                     alt="Preview"
-                    className="max-h-48 mx-auto rounded object-contain"
+                    className="max-h-48 max-w-full mx-auto rounded object-contain"
                   />
                 </div>
               )}
@@ -1322,19 +1334,23 @@ export function AccidentDataExtractor({
               </div>
             )}
 
-            <DialogFooter className="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 bg-background border-t flex-col-reverse sm:flex-row gap-2 sm:gap-2 z-10">
-              <Button variant="outline" onClick={() => setExtractedData(null)} className="w-full sm:w-auto">
-                Tentar Novamente
-              </Button>
-              <Button
-                onClick={handleConfirm}
-                disabled={selectedCount === 0}
-                className="w-full sm:w-auto sm:ml-auto"
-              >
-                Usar Dados Selecionados {selectedCount > 0 && `(${selectedCount})`}
-              </Button>
-            </DialogFooter>
           </div>
+        )}
+        </div>
+
+        {extractedData && (
+          <DialogFooter className="shrink-0 min-w-0 border-t pt-4 flex-col-reverse sm:flex-row gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setExtractedData(null)} className="w-full sm:w-auto">
+              Tentar Novamente
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              disabled={selectedCount === 0}
+              className="w-full sm:w-auto sm:ml-auto"
+            >
+              Usar Dados Selecionados {selectedCount > 0 && `(${selectedCount})`}
+            </Button>
+          </DialogFooter>
         )}
       </DialogContent>
     </Dialog>
