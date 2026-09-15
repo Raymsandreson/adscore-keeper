@@ -91,6 +91,33 @@ outra pessoa, para descartar.
 **Custo real:** 37 créditos para 19 leads úteis ≈ **1,95 crédito por lead**.
 Extrapolando a fila inteira (12.245): ~12.000 créditos para ~4.600 leads com CPF.
 
+## Lote com `completo: true` (15/09/2026)
+
+Primeira rodada da ficha por CPF contra a API real, em 10 leads nunca
+consultados:
+
+```
+10 alvos → 10 buscas + 5 fichas = 15 chamadas · 13 créditos
+8 com dado · 2 sem retorno (não cobraram)
+5 gravados · 3 conflito de nome
+```
+
+**A ficha entrega o que o resumo não tinha.** Sem `completo`, o piloto gravava
+`cpf, city, state`. Com ele vieram 8 a 10 campos por lead: `cpf`, `birth_date`,
+`street`, `street_number`, `neighborhood`, `city`, `state`, `cep`, e `rg` em 2
+dos 5. Os CPFs saíram com 11 dígitos e **3 dos 5 começam com zero** — sem o
+`padStart` de `cpfDaResposta` seriam três CPFs de 10 dígitos gravados em ficha
+de cliente.
+
+**Custo: 13 créditos para 5 leads úteis ≈ 2,6 por lead** (contra 1,95 só com a
+busca). Extrapolando os 12.215 que faltam: ~15.900 créditos para ~6.100 leads.
+
+**A contabilidade fecha quando é a função que roda:** saldo B2C 828 → 815, e a
+tabela registrou os mesmos 13. As 2 buscas sem retorno deste lote custaram
+zero, confirmando a medição anterior. A diferença de 7 créditos do piloto (e
+mais 3 vistos depois) não vem daqui — sobra uso pelo painel, que divide a mesma
+conta e o mesmo limite de 100/dia.
+
 ## Fila de conferência
 
 `nome_confere` é carimbado para **todo** lead que teve nome conferido, com os
@@ -113,9 +140,11 @@ order by c.created_at desc;
 ```
 
 Ela tem duas populações, e é por isso que precisa de gente: o apelido do CRM
-(`ina` ← IVANIA, `sandriinh@` ← ALESSANDRA), que é o mesmo cliente e dá para
-aprovar, e o titular da linha (`Juliana` ← BRUNO, `Jaqueline` ← UBIRAJARA), que
-é outra pessoa e se descarta. Aprovar em bloco perderia a diferença.
+(`ina` ← IVANIA, `sandriinh@` ← ALESSANDRA, `Thaisinha` ← THAIS RODRIGUES
+PEREIRA DA SILVA), que é o mesmo cliente e dá para aprovar, e o titular da
+linha (`Juliana` ← BRUNO, `Adriana Francis` ← WILLIAN SOUZA NASCIMENTO), que é
+outra pessoa e se descarta. Aprovar em bloco perderia a diferença — no lote de
+15/09 com `completo`, 1 dos 3 conflitos era diminutivo de nome.
 
 ## Como rodar
 
