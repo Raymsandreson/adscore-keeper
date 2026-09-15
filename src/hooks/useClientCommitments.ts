@@ -86,15 +86,23 @@ export function useClientCommitments({
     try {
       // A pendência pode ter nascido antes do lead existir (conversa em
       // captação), por isso o OR: casa por lead OU por telefone+instância.
+      //
+      // Com conversa aberta, porém, o lead só vale para pendência SEM telefone.
+      // Casar por lead solto misturava CLIENTES: em 15/09/2026 o grupo da
+      // Nilzete (PRE 2244) e o da Monique (PREV 2010) carregavam o mesmo
+      // `lead_id`, e a perícia da Nilzete aparecia como pendência vencida da
+      // Monique — data certa, cliente errado. Eram 379 pendências em 76 leads.
+      // Sem telefone (tela do lead), o lead continua sendo tudo o que temos.
       const filters: string[] = [];
-      if (leadId) filters.push(`lead_id.eq.${leadId}`);
-      if (phone) {
-        filters.push(
-          instanceName
-            ? `and(phone.eq.${phone},instance_name.eq.${instanceName})`
-            : `phone.eq.${phone}`
-        );
+      if (leadId) {
+        filters.push(phone ? `and(lead_id.eq.${leadId},phone.is.null)` : `lead_id.eq.${leadId}`);
       }
+      // Telefone SOZINHO, sem a instância. O telefone é o JID do grupo: ele
+      // identifica a conversa, e a mesma conversa é vista por várias instâncias
+      // (o grupo da Monique tem pendência gravada por "João Manoel- Acolhedor"
+      // e por "Raym"). Filtrar por telefone+instância escondia da tela as
+      // pendências gravadas pelas outras instâncias do MESMO grupo.
+      if (phone) filters.push(`phone.eq.${phone}`);
 
       const { data, error } = await (db as any)
         .from('vw_client_commitments_owner')
