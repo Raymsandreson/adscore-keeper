@@ -339,7 +339,8 @@ type AbaContada = 'fila' | 'enviadas' | 'humano' | 'respondida' | 'silencio';
  *  pelo nome que está escrito na tela: mandar alguém para "silencio" é mandar
  *  procurar uma palavra que não aparece em lugar nenhum. */
 const NOME_DA_ABA: Record<AbaContada, string> = {
-  fila: 'Na fila', enviadas: 'Enviadas', humano: 'Com humano', silencio: 'Silenciadas',
+  fila: 'Na fila', enviadas: 'Enviadas', humano: 'Com humano',
+  respondida: 'Já respondidas', silencio: 'Silenciadas',
 };
 
 /** Teto da consulta de contagem. Ela traz uma coluna só (`intencao`), então
@@ -1842,7 +1843,8 @@ ${corpo}`,
             agente estava certo. E o botão devolve para a fila em um clique,
             para quando a fala do colega for sobre outro assunto. */}
         <TabsContent value="respondida" className="space-y-2 pt-3">
-          {respondidasF.length === 0 && vazio('Nada por aqui — o que está na fila ainda espera revisão de verdade.')}
+          {respondidasF.length === 0 && vazioDaAba('respondida',
+            'Nada por aqui — o que está na fila ainda espera revisão de verdade.')}
           {respondidasF.length > 0 && (
             <p className="text-[10px] text-muted-foreground">
               O time respondeu no grupo antes de alguém revisar o rascunho. Elas saíram da
