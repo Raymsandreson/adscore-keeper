@@ -110,6 +110,8 @@ import { handler as transcodeAudioOpus } from './functions/transcode-audio-opus'
 import { handler as extractActivityFromDocument } from './functions/extract-activity-from-document';
 import { handler as dictateActivity } from './functions/dictate-activity';
 import { handler as chatToActivity } from './functions/chat-to-activity';
+import { handler as createActivity } from './functions/create-activity';
+import { handler as checkTimeOff } from './functions/check-time-off';
 import { handler as detectClientCommitments } from './functions/detect-client-commitments';
 import { handler as detectGroupCaseReports } from './functions/detect-group-case-reports';
 import { handler as callToActivities } from './functions/call-to-activities';
@@ -221,6 +223,8 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'extract-activity-from-document': extractActivityFromDocument,
   'dictate-activity': dictateActivity,
   'chat-to-activity': chatToActivity,
+  'create-activity': createActivity, // criação com as 3 regras do servidor: dedup entre aparelhos, ausência e vínculo
+  'check-time-off': checkTimeOff, // leitura pura — o adiar do app pergunta antes de gravar pelo cliente
   'detect-client-commitments': detectClientCommitments,
   'detect-group-case-reports': detectGroupCaseReports, // IA lê grupos marcados e acha gente relatando acidente
   'call-to-activities': callToActivities,
