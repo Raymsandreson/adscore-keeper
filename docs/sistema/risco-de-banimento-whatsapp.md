@@ -217,15 +217,43 @@ E o conteúdo em `wa_texto_usado` é quase todo **aviso interno para a equipe** 
 diário de 40 números novos, que existe para limitar **abordagem a estranho**,
 está sendo consumido por robô avisando colega de trabalho.
 
-Não é urgente (16 de 40), e cada colega custa uma vaga só na primeira vez que
-aquela instância fala com ele — depois é `CONVERSA_EM_ANDAMENTO` e passa livre.
-Mas está errado em princípio, e num dia de muita atividade pode barrar envio de
-cliente por causa de notificação interna.
+Cada colega custa uma vaga só na primeira vez que aquela instância fala com ele
+— depois é `CONVERSA_EM_ANDAMENTO` e passa livre. Mas são 25 instâncias, e num
+dia cheio isso barra envio de cliente por causa de notificação interna.
 
-**Conserto proposto, ainda não feito:** os disparos automáticos de notificação
-(`notify-activity-created` e companhia) passarem `ignore_ritmo: true`, que já
-existe na v30 e deixa rastro no log. Alternativa mais estrutural: o gate não
-contar destino que seja telefone de membro da equipe.
+### Consertado no gate, não em cada caller
+
+A saída óbvia era `ignore_ritmo: true` em cada disparo automático. Foi escrita e
+depois **descartada**, por três motivos:
+
+1. **Band-aid por definição:** são N funções que precisam lembrar da flag, e a
+   próxima que alguém escrever vai esquecer.
+2. **Duas delas moram no projeto Cloud** (`monitor-campaign-status`,
+   `expense-form-reminders`), fora do alcance desta sessão — ficariam sem efeito.
+3. **A flag polui o log:** o caminho `ignore_ritmo` emite
+   `FREIO DE RITMO IGNORADO` a cada chamada. `dom-rascunho` dispara a cada
+   mensagem de cliente — seria alarme constante para tráfego rotineiro.
+
+O gate saber quem é da casa resolve tudo de uma vez, inclusive as futuras:
+
+- `wa_telefone_equipe` — tabela de chaves canônicas (`wa_optout_key`), alimentada
+  de `dom_atendentes.whatsapp`, `profiles.phone` e `whatsapp_instances.owner_phone`
+- `wa_refresh_telefones_equipe()` — cron `wa-telefones-equipe`, de hora em hora
+- `wa_telefone_da_equipe(text)` — busca por chave primária
+- `wa_gate_envio` devolve `codigo: 'INTERNO'` **antes de qualquer contador**
+
+**Verificado antes de existir:** das 29 chaves de equipe, **zero** aparecem em
+`leads.phone_match_key` e **zero** em `contacts.phone_match_key`. Isentar este
+conjunto não isenta nenhum cliente. Se um dia um número de cliente entrar em
+`profiles` ou `dom_atendentes`, essa garantia cai — refazer a conferência.
+
+**Custo medido, porque isto roda em TODO envio:** a primeira versão consultava
+as três tabelas direto e custava **9,7 ms por envio** — `profiles` tem 6.661
+linhas (só 13 com telefone) e o `wa_optout_key` rodava em todas. Com a tabela
+materializada e busca por chave: **0,4 ms**. 24× mais rápido.
+
+Preço de materializar: telefone novo de colega leva até 1h para ser reconhecido.
+Custo de errar nessa janela: uma vaga do teto. Aceito.
 
 ## O que este sistema NÃO faz
 

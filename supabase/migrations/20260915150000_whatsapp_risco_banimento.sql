@@ -20,11 +20,15 @@
 --
 -- ROLLBACK (< 1 min, testado na ordem):
 --   select cron.unschedule('wa-risco-tick');
+--   select cron.unschedule('wa-telefones-equipe');
 --   drop function if exists public.wa_risco_tick();
---   drop function if exists public.wa_gate_envio(text,text,text);
+--   drop function if exists public.wa_gate_envio(text,text,text,boolean);
 --   drop function if exists public.wa_instancia_alternativa(text,text);
+--   drop function if exists public.wa_telefone_da_equipe(text);
+--   drop function if exists public.wa_refresh_telefones_equipe();
 --   drop table if exists public.wa_instancia_risco, public.wa_envio_contador,
---                        public.wa_texto_usado, public.wa_risco_config;
+--                        public.wa_texto_usado, public.wa_telefone_equipe,
+--                        public.wa_risco_config;
 --   e remover a chamada do gate na edge function (ver v30 do send-whatsapp).
 -- Sem isso tudo, o sistema volta exatamente ao comportamento de hoje: envia
 -- sem freio nenhum.
@@ -516,6 +520,109 @@ as $$
 $$;
 
 -- ----------------------------------------------------------------------------
+-- 5b. TELEFONE DA CASA — quem não é abordagem a estranho
+--
+-- No dia do deploy os contadores apareceram cheios de "📌 Nova atividade sua" e
+-- "🚨 Um cliente precisa de você agora": robô avisando colega de trabalho
+-- gastando o teto diário que existe para proteger a conversa com CLIENTE.
+-- Cada par (instância, colega) queimava uma vaga na primeira vez — e são 25
+-- instâncias.
+--
+-- Poderia ser resolvido com `ignore_ritmo: true` em cada disparo automático,
+-- e isso também foi feito nos que dava. Mas flag por caller é band-aid: são N
+-- funções que precisam lembrar, duas delas moram no projeto Cloud (fora do
+-- alcance deste banco), e a próxima que alguém escrever vai esquecer. O gate
+-- saber quem é da casa é estrutural — vale para todas, inclusive as futuras.
+--
+-- Fontes, todas do próprio banco: atendente do DOM, perfil de usuário e número
+-- dono de instância. Normalizadas por `wa_optout_key`, a mesma forma canônica
+-- que o gate de opt-out usa (55 + DDD + 8 dígitos), porque o mesmo número
+-- aparece com e sem o nono dígito.
+--
+-- VERIFICADO antes de existir (15/09/2026): das 29 chaves de equipe, ZERO
+-- aparecem em `leads.phone_match_key` e ZERO em `contacts.phone_match_key`.
+-- Isentar este conjunto não isenta nenhum cliente. Se algum dia um número de
+-- cliente entrar em `profiles` ou `dom_atendentes`, esta garantia cai — refazer
+-- a conferência antes de confiar.
+--
+-- CUSTO — a lição aqui é que isto roda em TODO envio.
+-- A primeira versão consultava as três tabelas direto, e custava 9,7 ms por
+-- envio: `profiles` tem 6.661 linhas (só 13 com telefone) e o `wa_optout_key`
+-- rodava em cada uma delas. Materializando as chaves numa tabela própria e
+-- buscando por chave primária: 0,4 ms. 24× mais rápido, medido com
+-- `explain analyze` sobre 50 chamadas.
+--
+-- Preço de materializar: telefone novo de colega leva até 1h (o cron abaixo)
+-- para ser reconhecido. Custo de errar nessa janela: uma vaga do teto. Aceito.
+-- ----------------------------------------------------------------------------
+create table if not exists public.wa_telefone_equipe (
+  chave text primary key,
+  fonte text not null,
+  atualizado_em timestamptz not null default now()
+);
+alter table public.wa_telefone_equipe enable row level security;
+drop policy if exists wa_telefone_equipe_leitura on public.wa_telefone_equipe;
+create policy wa_telefone_equipe_leitura on public.wa_telefone_equipe
+  for select using (auth.role() in ('authenticated','service_role'));
+drop policy if exists wa_telefone_equipe_escrita on public.wa_telefone_equipe;
+create policy wa_telefone_equipe_escrita on public.wa_telefone_equipe
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
+
+create or replace function public.wa_refresh_telefones_equipe()
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare n int;
+begin
+  create temp table _eq on commit drop as
+  select public.wa_optout_key(a.whatsapp) as chave, 'dom_atendentes' as fonte
+    from public.dom_atendentes a where a.whatsapp is not null
+  union
+  select public.wa_optout_key(pr.phone), 'profiles'
+    from public.profiles pr where pr.phone is not null
+  union
+  select public.wa_optout_key(i.owner_phone), 'whatsapp_instances'
+    from public.whatsapp_instances i where i.owner_phone is not null;
+
+  -- Quem saiu da equipe volta a contar no teto — sair da tabela é o certo.
+  delete from public.wa_telefone_equipe t
+   where not exists (select 1 from _eq e where e.chave = t.chave);
+
+  insert into public.wa_telefone_equipe (chave, fonte)
+  select distinct on (chave) chave, fonte from _eq where chave is not null
+  on conflict (chave) do update set fonte = excluded.fonte, atualizado_em = now();
+
+  select count(*) into n from public.wa_telefone_equipe;
+  return n;
+end;
+$$;
+
+create or replace function public.wa_telefone_da_equipe(p_phone text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.wa_telefone_equipe
+     where chave = public.wa_optout_key(p_phone)
+  );
+$$;
+
+grant execute on function public.wa_telefone_da_equipe(text) to authenticated, service_role;
+grant execute on function public.wa_refresh_telefones_equipe() to service_role;
+
+select cron.unschedule('wa-telefones-equipe') where exists (
+  select 1 from cron.job where jobname = 'wa-telefones-equipe'
+);
+select cron.schedule('wa-telefones-equipe', '7 * * * *',
+                     'select public.wa_refresh_telefones_equipe()');
+select public.wa_refresh_telefones_equipe();
+
+-- ----------------------------------------------------------------------------
 -- 6. O GATE — roda antes de cada envio
 --
 -- Regra que sustenta tudo: CONVERSA EM ANDAMENTO NUNCA É FREADA. Se o número
@@ -560,6 +667,13 @@ begin
   -- Grupo não passa pelo freio: mensagem em grupo do cliente não é abordagem.
   if p_phone like '%@g.us' or p_phone like '120363%' or length(v_phone) > 15 then
     return jsonb_build_object('permitido', true, 'codigo', 'GRUPO');
+  end if;
+
+  -- Gente da casa também não: aviso para colega não é abordagem a estranho, e
+  -- não pode gastar o teto nem entrar na conta de texto repetido. Sai ANTES de
+  -- qualquer contador — ver a seção 5b.
+  if public.wa_telefone_da_equipe(v_phone) then
+    return jsonb_build_object('permitido', true, 'codigo', 'INTERNO', 'e_numero_novo', false);
   end if;
 
   select not exists (
