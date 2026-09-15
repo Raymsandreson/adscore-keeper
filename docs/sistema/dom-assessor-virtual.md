@@ -3907,8 +3907,49 @@ camadas de aba é coisa que ninguém acha.
 
 Gráfico por **família** (seis), tabela por **código** (23): 23 séries num
 gráfico não se leem, mas "quantos E20 esta semana?" precisa do código. Os 23
-aparecem em português — a tela não pede que ninguém decore "E20". Vermelho é
-"precisa de gente", cinza é o ruído saudável, que não deve competir por atenção.
+aparecem em português — a tela não pede que ninguém decore "E20".
+
+### O que mudou na leitura (15/09/2026, à tarde)
+
+A primeira versão despejava as 23 intenções abertas, em seis colunas, com sete
+cores de família disputando a mesma atenção. Cabia tudo na tela e não se lia
+nada. Três consertos, nenhum deles tirando dado:
+
+| Antes | Agora |
+|---|---|
+| Sete matizes com o mesmo peso (vermelho, laranja, azul, teal, roxo, dois cinzas) | **Vermelho** para o que custa cliente se demorar, **verde da marca** para o que o Dom resolveu, **cinza** para o resto |
+| As 23 linhas abertas, sempre | Uma seção por família; só "precisa de gente" e "cobrança" abrem sozinhas, o resto mostra o total e guarda o detalhe |
+| Seis colunas | Três — "Grupos", "Dom respondeu" e "Calou" foram para o cabeçalho da aba lateral |
+| Nenhuma linha clicável | Clicar num pedido abre `DecisoesDaIntencaoSheet` |
+
+Rótulos, famílias e cores moram em `agent-monitor/intencoes.ts`, usados pelo
+relatório e pela aba lateral — rótulo duplicado entre dois painéis é rótulo que
+diverge no terceiro mês. Os valores de cor são literais tirados do `index.css`,
+e não `hsl(var(--token))`: o recharts escreve a cor no atributo `fill` do SVG, e
+atributo com `var()` já falhou em cliente embutido — barra preta que build
+nenhum acusa.
+
+### A aba lateral: do número para a conversa
+
+`DecisoesDaIntencaoSheet.tsx`. Clicar em "Dinheiro ou prazo: 18" abre, por cima
+do relatório, as decisões daquela intenção na mesma janela de dias: grupo, o que
+o cliente escreveu, o que o atendente virtual fez e por quê, e a etiqueta "virou
+fila" quando gerou pendência. Clicar numa decisão empilha a conversa do grupo
+(`openWhatsAppChatSheet`, painel de baixo pra cima) — ninguém sai da tela.
+
+Ao contrário das RPCs do relatório, esta consulta lê `pergunta` e `motivo`: aqui
+a pergunta deixou de ser "quanto" e passou a ser "quais", e sem o texto não há
+como decidir nada. A leitura é direta em `dom_decisoes`, sob a RLS da tabela
+(`dom_decisoes_rw`, `authenticated`), coberta pelo índice `idx_dom_decisoes_data`.
+
+Dois cuidados para quem mexer nela:
+
+- **O filtro por decisão vai ao banco.** Filtrar as 200 já carregadas
+  responderia "quantos calaram *entre os 200 mais recentes*" — outra pergunta,
+  sem avisar que é outra.
+- **`(sem classificação)` é `is null`, não `eq`.** É o rótulo que a RPC inventa
+  para `intencao` nula; comparar a string traria zero linhas e pareceria "não
+  tem nada", quando são 86.
 
 ---
 
