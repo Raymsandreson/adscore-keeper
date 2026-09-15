@@ -85,6 +85,28 @@ export function carregarInstanciasCloud(): Promise<void> {
 }
 
 /**
+ * Qual linha Cloud a caixa travada no canal (menu WhatsApp API) abre por padrão.
+ *
+ * `nomeAlvo` é o marcador de canal passado em `lockInstanceName` — hoje `abraci`,
+ * a linha com 87% do movimento. Abrir em "Todas as linhas" jogava Abraci,
+ * Prudencio Advogados e Quitepay na mesma lista.
+ *
+ * Devolve `'all'` quando a linha do nome não está entre as disponíveis (foi
+ * renomeada, desativada ou o usuário não tem acesso): é o fallback que mostra o
+ * que existe em vez de uma caixa vazia sem explicação.
+ */
+export function linhaCloudPadrao<T extends { id: string; instance_name?: string | null }>(
+  instancias: T[],
+  nomeAlvo?: string | null,
+): string {
+  const cloud = instancias.filter((i) => ehInstanciaCloud(i.instance_name));
+  const alvo = normalizar(nomeAlvo);
+  const preferida = alvo ? cloud.find((i) => normalizar(i.instance_name) === alvo) : undefined;
+  if (preferida) return preferida.id;
+  return cloud.length === 1 ? cloud[0].id : 'all';
+}
+
+/**
  * Nome da linha como a equipe lê: `prudencio_advogados` → "Prudencio Advogados".
  * `whatsapp_instances` não tem coluna de rótulo, então o nome interno é tudo que
  * temos — mas ele não precisa aparecer cru na tela.

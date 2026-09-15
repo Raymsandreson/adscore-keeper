@@ -1054,25 +1054,45 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setBulkResyncProgress(null);
   };
 
-  // Auto-sync de áudios criptografados em conversas do WhatsApp API (cloud_gerencia).
+  // Auto-sync de mídia pendente nas conversas da linha oficial (Cloud API).
   // Dispara silenciosamente em background ao abrir/atualizar a conversa, com throttle,
   // sem toasts e sem bloquear a UI. Cada mensagem é tentada no máximo 1x por sessão.
+  //
+  // Cobria só áudio, e foto/vídeo/PDF ficavam esperando alguém clicar. Hoje pega
+  // os quatro tipos, e serve a dois casos que a tela não distingue:
+  //  - o arquivo JÁ existe no banco e a bolha é que está velha: a lista de
+  //    mensagens nasce de um Realtime que só escuta INSERT, então o UPDATE que
+  //    grava `media_url` segundos depois nunca chega à tela. Aqui a chamada
+  //    volta `already_synced` com a URL pronta e a bolha se conserta.
+  //  - o arquivo não existe mesmo: aí baixa de verdade.
   const autoSyncAttemptedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const instName = (conversation.instance_name || '').trim().toLowerCase();
     if (!ehInstanciaCloud(instName)) return;
-    const pending = (conversation.messages || []).filter(
-      (m: any) =>
-        m?.message_type === 'audio' &&
-        m?.external_message_id &&
-        isMissingMedia(m) &&
-        !autoSyncAttemptedRef.current.has(m.id),
-    );
+    const TIPOS_COM_ARQUIVO = ['audio', 'image', 'video', 'document'];
+    // Teto por passagem: conversa antiga cheia de pendência não vira enxurrada.
+    const TETO = 12;
+    const pending = (conversation.messages || [])
+      .filter(
+        (m: any) =>
+          TIPOS_COM_ARQUIVO.includes(m?.message_type) &&
+          m?.external_message_id &&
+          isMissingMedia(m) &&
+          !autoSyncAttemptedRef.current.has(m.id),
+      )
+      .slice(-TETO);
     if (pending.length === 0) return;
     let cancelled = false;
     (async () => {
       for (const msg of pending) {
         if (cancelled) return;
+        // A ingestão baixa a mídia em ~3s. Chegar antes dela só faz o servidor
+        // baixar a mesma foto duas vezes — esperar o resto do tempo é mais barato.
+        const idadeMs = Date.now() - new Date((msg as any).created_at || Date.now()).getTime();
+        if (idadeMs >= 0 && idadeMs < 6000) {
+          await new Promise((r) => setTimeout(r, 6000 - idadeMs));
+          if (cancelled) return;
+        }
         autoSyncAttemptedRef.current.add(msg.id);
         try {
           const { data, error } = await cloudFunctions.invoke('whatsapp-download-media', {
