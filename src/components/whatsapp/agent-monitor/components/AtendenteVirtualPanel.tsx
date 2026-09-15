@@ -335,6 +335,13 @@ const FILTROS: Filtro[] = [...FAMILIAS, ...OLHO_NELAS];
  *  uma lista grupos, a outra é resultado de pesquisa. */
 type AbaContada = 'fila' | 'enviadas' | 'humano' | 'respondida' | 'silencio';
 
+/** Como cada aba se chama na fita. A frase da aba vazia precisa citar a aba
+ *  pelo nome que está escrito na tela: mandar alguém para "silencio" é mandar
+ *  procurar uma palavra que não aparece em lugar nenhum. */
+const NOME_DA_ABA: Record<AbaContada, string> = {
+  fila: 'Na fila', enviadas: 'Enviadas', humano: 'Com humano', silencio: 'Silenciadas',
+};
+
 /** Teto da consulta de contagem. Ela traz uma coluna só (`intencao`), então
  *  5.000 linhas custam alguns KB — mas o teto existe para o dia em que a fila
  *  crescer: passando disso, o total da aba continua exato (vem do `count` do
@@ -1436,6 +1443,44 @@ ${corpo}`,
 
   const vazio = (txt: string) => <p className="text-xs text-muted-foreground py-6 text-center">{txt}</p>;
 
+  /**
+   * O vazio que diz ONDE a coisa está.
+   *
+   * Chip marcado com 371 e a aba aberta escrita "Nada esperando revisão" leem
+   * como filtro quebrado. Não está: toda intenção "Não pede resposta" vira
+   * silêncio, e por isso a fila nunca teve nenhuma — as 371 estão inteiras na
+   * aba do lado. A frase seca não conta isso, e quem lê conclui que o clique
+   * não fez efeito.
+   *
+   * Então a aba esvaziada PELO FILTRO passa a nomear as abas onde as linhas
+   * estão, com o número de cada uma, e o botão leva para lá: a resposta e o
+   * caminho no mesmo lugar, sem tirar ninguém da tela. Sem filtro — ou com o
+   * filtro zerado nas quatro abas — continua a frase de sempre, porque aí o
+   * vazio é vazio mesmo.
+   */
+  const vazioDaAba = (k: AbaContada, txt: string) => {
+    const outras = familia === 'todas' ? [] : (Object.keys(NOME_DA_ABA) as AbaContada[])
+      .filter(o => o !== k && contagemDaAba[o] > 0);
+    if (outras.length === 0) return vazio(txt);
+    return (
+      <div className="py-6 text-center space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Nenhuma conversa de <strong>{casa.rotulo}</strong> nesta aba. O filtro está
+          valendo — o que ele encontrou está em outra aba.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-1">
+          {outras.map(o => (
+            <Button key={o} size="sm" variant="outline" className="h-6 px-2 text-[10px]"
+              onClick={() => setAba(o)}>
+              {NOME_DA_ABA[o]}
+              <span className="ml-1 opacity-60">{contagemDaAba[o]}</span>
+            </Button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
@@ -1673,7 +1718,7 @@ ${corpo}`,
               )}
             </div>
           )}
-          {filaF.length === 0 && vazio('Nada esperando revisão.')}
+          {filaF.length === 0 && vazioDaAba('fila', 'Nada esperando revisão.')}
           {filaF.map(p => (
             <LinhaPendente key={p.id} p={p}
               marcada={marcadas.has(p.id)}
@@ -1762,7 +1807,7 @@ ${corpo}`,
         </TabsContent>}
 
         <TabsContent value="enviadas" className="space-y-2 pt-3">
-          {enviadasF.length === 0 && vazio('Nenhuma mensagem chegou ao cliente ainda.')}
+          {enviadasF.length === 0 && vazioDaAba('enviadas', 'Nenhuma mensagem chegou ao cliente ainda.')}
           {/* Clicável como na fila, e pelo mesmo motivo: conferir de onde saiu a
               resposta só vale se der para conferir DEPOIS que ela saiu. Sem
               isto, a única aba onde a pergunta "em que ele se baseou?" aparece
@@ -1779,7 +1824,7 @@ ${corpo}`,
         </TabsContent>
 
         <TabsContent value="humano" className="space-y-2 pt-3">
-          {comHumanoF.length === 0 && vazio('Nada foi encaminhado para atendente.')}
+          {comHumanoF.length === 0 && vazioDaAba('humano', 'Nada foi encaminhado para atendente.')}
           {comHumanoF.map(p => (
             <LinhaPendente key={p.id} p={p}
               onClick={() => { setAberto(p); setTexto(p.resposta_final || p.resposta_sugerida); }}
@@ -1814,7 +1859,7 @@ ${corpo}`,
         </TabsContent>
 
         <TabsContent value="silencio" className="space-y-2 pt-3">
-          {silenciadasF.length === 0 && vazio('Ele ainda não decidiu calar em nenhuma conversa.')}
+          {silenciadasF.length === 0 && vazioDaAba('silencio', 'Ele ainda não decidiu calar em nenhuma conversa.')}
           {silenciadasF.map(d => (
             <Card key={d.id}>
               <CardContent className="p-3 space-y-1">

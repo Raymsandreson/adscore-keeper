@@ -214,6 +214,26 @@ No painel, estas cinco (as quatro novas mais E16) ganharam chips **por código**
 na fileira "Olho nelas" — filtrar por letra E devolvia a desistência misturada
 com quem só perguntou de prazo.
 
+### O filtro que parecia quebrado (15/09/2026)
+
+Marcar "Não pede resposta" com a aba **Na fila** aberta devolve "Nada esperando
+revisão" — está certo, mas lê como clique sem efeito. A letra **D é a que manda
+calar**: ela nunca vira rascunho na fila, vira decisão de silêncio. Medido no
+Externo em 15/09/2026: **449 na fila, nenhuma delas D**; **371 decisões de
+silêncio, todas D**.
+
+Duas coisas se somavam:
+
+1. O chip contava só as 100 linhas carregadas e dizia **97** onde o banco tinha
+   371 — consertado em `9c4dac776`, que passou a contar com `count: 'exact'` e a
+   mostrar em cada aba o número do banco com o filtro aplicado.
+2. A aba vazia não dizia onde as linhas estavam. Agora a aba esvaziada **pelo
+   filtro** nomeia as abas que têm o que ele encontrou, com o número de cada
+   uma, e o botão leva para lá (`vazioDaAba`, em `AtendenteVirtualPanel.tsx`).
+   Sem filtro, continua a frase seca: aba vazia é aba vazia.
+
+Travado por `AtendenteVirtualPanel.filtro-diz-onde-esta.test.tsx`.
+
 ## Cron: `dom_rascunho_tick`, de 2 em 2 minutos
 
 Agendado no Externo em 04/09/2026, de 5 em 5 minutos; apertado para 2 em 2 em
