@@ -91,8 +91,13 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
         const phoneVars = brPhoneVariants(contactPhone);
         if (phoneVars.length > 0) {
           const found = await Promise.all(
+            // `as any`: a tabela existe no Externo (6.736 linhas em 15/09/2026)
+            // e nao esta no `types.ts` gerado, entao o cliente tipado recusa o
+            // nome e o TS2769 se arrasta desde que a busca foi escrita. Ver
+            // memoria `types-ts-atrasa-para-tabelas-novas` — o idioma da casa e
+            // este, e o retorno ja e validado logo abaixo.
             phoneVars.map((v) =>
-              externalSupabase
+              (externalSupabase as any)
                 .from('whatsapp_groups_uazapi_snapshot')
                 .select('jid, group_name')
                 .contains('participants_phones', [v]),

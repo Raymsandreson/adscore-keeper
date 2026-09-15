@@ -105,3 +105,30 @@ export function funilDoNome(nome: string | null | undefined): string | null {
 export function ehPrev(nome: string | null | undefined): boolean {
   return funilDoNome(nome) !== null;
 }
+/**
+ * Board que CAPTA lead — é o universo que esta aba mede.
+ *
+ * Casar o nome de um funil não basta. Dois tipos de board passavam pelo
+ * `funilDoNome` e não deviam contar:
+ *
+ *  - **desativado / descontinuado / antigo**: não recebe lead novo, e só polui o
+ *    rótulo do escopo na tela ("BPC JUDICIAL (desativado — unificado no POP
+ *    BPC)").
+ *
+ *  - **POP**: é o fluxo do processo DEPOIS que o caso existe, não a porta de
+ *    entrada. "POP - BPC (Administrativo e Judicial)" casa `BPC` e entrava no
+ *    escopo. Medido em 15/09/2026: 174 leads no board e **zero** com id da Meta
+ *    ou origem de planilha — os 10 da janela vieram todos de `whatsapp`. Contá-los
+ *    inflava o total orgânico e fazia o cabeçalho anunciar um POP como se fosse
+ *    funil de captação.
+ *
+ * Como o corte é pelo PREFIXO, board novo de POP sai sozinho e nenhum funil de
+ * captação é atingido: nenhum dos 27 boards do Externo começa com "POP" sem ser
+ * um POP.
+ */
+export function ehBoardDeCaptacao(nome: string | null | undefined): boolean {
+  const n = String(nome || '');
+  if (/desativad|descontinuad|\bantig/i.test(n)) return false;
+  if (/^\s*POP\b/i.test(n)) return false;
+  return true;
+}

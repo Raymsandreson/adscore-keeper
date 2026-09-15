@@ -392,3 +392,77 @@ separa sem lista negra:
 | `[ANALYNE][ACD. DE TRABALHO]` | — | — |
 
 Há teste para cada uma dessas linhas.
+
+## O escopo valia só para metade da conta (15/09/2026)
+
+O recorte de 14/09 deixou o **lado do CRM** em PREV e esqueceu o **lado do
+dinheiro**: o gasto continuava vindo das contas inteiras. A tela dizia "esta aba
+cobre só PREV" no cabeçalho e, logo abaixo, exibia um investimento que somava
+Trabalhista e venda de curso.
+
+Medido no dia, janela de 30 dias:
+
+| | |
+|---|---:|
+| As contas gastaram | R$ 25.604,91 |
+| Campanha de PREV | R$ 21.539,97 |
+| Outro negócio | **R$ 4.064,94 (15,9%)** |
+| Custo por lead publicado | R$ 9,13 |
+| Custo por lead do mesmo escopo | R$ 7,68 |
+
+`[ANALYNE][ACD. DE TRABALHO]` sozinha punha R$ 1.656,82 no numerador de um CPL
+cujo denominador não tem um único lead de Trabalhista.
+
+Numerador de um universo dividido por denominador de outro não é um número
+conservador — é um número que não existe. Agora `investimento.na_janela` é só
+campanha do escopo, e o resto vai inteiro para `investimento.fora_do_escopo`,
+agrupado por campanha no card **"Fora do escopo desta aba"**. Sair da conta não
+é sumir da tela: é a mesma carteira, e quem olha precisa saber que ela gastou
+mais do que o card de cima mostra.
+
+Efeito colateral bom: o card "Investimento que não alimenta o CRM" deixou de
+misturar duas coisas. Ele listava R$ 4.166 somando campanha de curso (que nunca
+teve roteamento para o CRM, e nem deveria) com conjunto do próprio funil que
+gastou e não trouxe lead. Só o segundo é lista de conserto, e agora só ele está
+lá.
+
+### "Entraram no funil" contava o banco inteiro
+
+`contaEntradas` nunca recebeu `idsPrev` — só filtrava board quando havia funil
+pedido. Publicava **7.325** ao lado de **3.018 leads**, e os 7.325 incluíam
+Trabalhista e todo board que não é desta aba. Com o escopo aplicado: **4.188**.
+
+A diferença que sobra é a que o número existe para mostrar — lead que entrou no
+CRM agora com formulário de semanas atrás — e não mais a mistura de dois
+universos dentro do mesmo card.
+
+### POP não é funil de captação
+
+`funilDoNome` casa pelo nome, e `POP - BPC (Administrativo e Judicial)` tem
+"BPC". O board entrava no escopo e aparecia no rótulo da tela como se fosse
+porta de entrada. Medido: **174 leads no board, zero** com id da Meta ou origem
+de planilha; os 10 da janela vieram todos de `whatsapp`.
+
+`ehBoardDeCaptacao` (puro, com teste) recusa board desativado e board cujo nome
+**começa** com POP. Pelo prefixo: "BPC POPULAR" e "Auxílio Acidente (migrado do
+POP em 2026)" continuam entrando, e POP novo sai sozinho.
+
+## Conjunto sem acolhedor deixou de sumir (15/09/2026)
+
+`ACOLHEDORES` é lista fixa de propósito — comparar token inteiro contra uma lista
+conhecida é o que impede "KAROLINA" de entrar calada no número da Karolyne. O
+preço era o conjunto de nome novo não casar ninguém e **sumir da tabela**.
+
+`CONJUNTO 7 - TAFFAREL` nasceu em 11/09 e em quatro dias já trazia **61 leads e
+R$ 383,23** que não apareciam em linha nenhuma: a coluna "leads" somava 2.745
+contra 2.806 pagos, e nada na tela dizia onde estavam os 61 que faltavam.
+
+A tabela ganhou a linha **"Sem acolhedor identificado"**, com os conjuntos
+nomeados embaixo. Ela não é clicável — não existe chave para filtrar por
+"ninguém" — e existe para que a soma da tabela feche com os cards de cima. É a
+classe do problema que fica resolvida: conjunto novo aparece no dia em que gasta
+o primeiro real, pedindo cadastro, em vez de virar diferença inexplicada.
+
+**Taffarel não entrou na lista de acolhedores**: não existe perfil com esse nome
+no roster do Externo, e inventar o vínculo seria pior que mostrá-lo como
+pendente.
