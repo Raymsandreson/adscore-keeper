@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { linksDoTexto, midiasDaMensagem, rotuloDaMidia, midiaCriptografada } from '../midiaDaConversa';
+import { linksDoTexto, midiasDaMensagem, rotuloDaMidia, rotuloMensagemSemConteudo, midiaCriptografada } from '../midiaDaConversa';
 import { termoParaFiltro } from '../vinculoDaAtividade';
 
 describe('linksDoTexto', () => {
@@ -90,6 +90,25 @@ describe('rotuloDaMidia', () => {
 
   it('mensagem sem mídia não ganha rótulo', () => {
     expect(rotuloDaMidia({ message_text: 'certo' })).toBe('');
+  });
+});
+
+describe('rotuloMensagemSemConteudo', () => {
+  it('diz o tipo da mensagem que chegou sem conteúdo', () => {
+    // O caso real: resposta `interactive` que o webhook da Cloud API gravou com
+    // texto vazio (14/09/2026). Sem rótulo, a bolha era só o horário.
+    expect(rotuloMensagemSemConteudo({ message_type: 'interactive' }))
+      .toBe('Mensagem sem conteúdo registrado (tipo: interactive)');
+  });
+
+  it('sem tipo conhecido, ainda avisa que existe mensagem ali', () => {
+    expect(rotuloMensagemSemConteudo({})).toBe('Mensagem sem conteúdo registrado');
+  });
+
+  it('com arquivo que não dá para desenhar, aponta o anexo, não o conteúdo', () => {
+    // Quem lê precisa saber onde procurar: aqui falta o arquivo, não o texto.
+    expect(rotuloMensagemSemConteudo({ message_type: 'sticker', media_url: 'https://x/y.enc' }))
+      .toBe('Anexo não exibível (tipo: sticker)');
   });
 });
 

@@ -135,6 +135,8 @@ import { handler as referralBackfill } from './functions/referral-backfill';
 import { handler as testimonialToInstagramPost } from './functions/testimonial-to-instagram-post';
 import { handler as publishInstagramTestimonial } from './functions/publish-instagram-testimonial';
 import { handler as externalSession } from './functions/external-session';
+import { handler as datastoneApitest } from './functions/datastone-apitest';
+import { handler as datastoneConsulta } from './functions/datastone-consulta';
 
 
 
@@ -242,6 +244,8 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'update-profile-avatar': updateProfileAvatar, // foto de perfil — RLS do Externo barra o navegador, precisa de service role
   'testimonial-to-instagram-post': testimonialToInstagramPost, // testemunho do WhatsApp vira rascunho de post (sharp + fonte embutida)
   'publish-instagram-testimonial': publishInstagramTestimonial, // publica rascunho aprovado via Graph API (só por clique humano)
+  'datastone-apitest': datastoneApitest, // sonda da Data Stone: 0 créditos, revela o IP de saída a liberar na whitelist
+  'datastone-consulta': datastoneConsulta, // telefone -> cadastro, com cache, teto diário e gate de nome
 };
 
 const app = express();
@@ -383,6 +387,9 @@ app.get('/health', (_req, res) => {
     // significa tabela de negócio nova que ninguém liberou pro relatório ainda.
     // Só contagens — nome de tabela não sai daqui, /health é rota pública.
     schema_catalog: diagnosticoDoCatalogo(),
+    // Data Stone: só presença. Sem isso não dá pra distinguir "token não setado"
+    // de "token setado depois do último deploy" olhando de fora.
+    datastone: { token: !!(process.env.DATASTONE_TOKEN || '').trim() },
     functions: Object.keys(functionHandlers),
     gmailKeys,
   });

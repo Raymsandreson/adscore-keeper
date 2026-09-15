@@ -50,7 +50,7 @@ import { AgendarMensagemDialog } from './AgendarMensagemDialog';
 import { descreverRepeticao, regraDaLinha } from '@/lib/mensagemAgendada';
 import { useMensagensAgendadas } from '@/hooks/useMensagensAgendadas';
 import { ContagemAteEnvio } from './ContagemAteEnvio';
-import { midiasDaMensagem, rotuloDaMidia, type MidiaDaMensagem } from '@/lib/midiaDaConversa';
+import { midiasDaMensagem, rotuloDaMidia, rotuloMensagemSemConteudo, type MidiaDaMensagem } from '@/lib/midiaDaConversa';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
@@ -4917,6 +4917,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             ? separarPrefixoRemetente(msg.message_text)
             : null;
           const textoDaBolha = autoriaEnviada?.nome ? autoriaEnviada.corpo : msg.message_text;
+          // Bolha muda: sem texto, sem mídia que dê para desenhar e sem o aviso
+          // de mídia criptografada (esse só cobre image/video/audio/document).
+          // Sobrava um retângulo com o horário e mais nada — a mensagem existe e
+          // some da leitura. Aconteceu com a resposta `interactive` da Cloud API
+          // gravada sem texto; vale para qualquer tipo que o webhook ainda não
+          // conheça.
+          const bolhaSemConteudo =
+            !textoDaBolha &&
+            !(msg.media_url && !isEncUrl(msg.media_url)) &&
+            !isMissingMedia(msg);
           // Nome de quem enviou: o registrado no banco (cobre áudio e mídia)
           // vem antes da assinatura no texto, que só existe em mensagem escrita.
           const nomeDeQuemEnviou = msg.direction === 'outbound'
@@ -5302,6 +5312,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       <span className="text-[10px] font-medium text-muted-foreground block mb-0.5">🎤 Transcrição:</span>
                     )}
                     {renderMessageText(textoDaBolha, msg.direction === 'outbound')}
+                  </p>
+                )}
+                {bolhaSemConteudo && (
+                  <p className="text-xs italic opacity-70">
+                    {rotuloMensagemSemConteudo(msg)}
                   </p>
                 )}
                 {/* Barra de ações da bolha. Ficava dentro do `message_text`, e
