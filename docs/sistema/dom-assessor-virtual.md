@@ -3850,7 +3850,10 @@ no rodapé da migration `20260915180000`.
 
 ### O que isto NÃO conserta
 
-**O Dom está calado desde 10/09/2026.** Não existe cron de `dom-rascunho` no
-banco — o último rascunho é daquele dia. A fila de 32 que sobrou está
-congelada porque ninguém está escrevendo rascunho novo, não porque a equipe
-ficou em dia.
+Nada da fila voltar a encher. Quando o backfill rodou, a fila de 32 estava
+**congelada** — o `dom_rascunho_tick` tinha sumido de `cron.job` em 10/09 e o
+Dom passou cinco dias sem escrever uma linha (ver a migration
+`20260915120000_cron_do_dom_no_repositorio`, que recriou o job no mesmo dia).
+Com o tick de volta, a fila volta a crescer no ritmo de sempre — e é aí que a
+varredura de dez em dez minutos passa a valer todo dia, em vez de ter sido só
+uma faxina de uma vez.
