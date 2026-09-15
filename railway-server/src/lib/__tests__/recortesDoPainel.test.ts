@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { acolhedorDoConjunto, funilDoNome, ehPrev } from '../recortesDoPainel';
+import { acolhedorDoConjunto, funilDoNome, ehPrev, ehBoardDeCaptacao } from '../recortesDoPainel';
 
 describe('acolhedorDoConjunto', () => {
   // Os 30 formatos que existem hoje em leads.adset_name (medido em 10/09/2026).
@@ -85,5 +85,30 @@ describe('ehPrev', () => {
     expect(ehPrev('Acidente de Trabalho')).toBe(false);
     expect(ehPrev('Auxílio-Maternidade Administrativo (INSS)')).toBe(false);
     expect(ehPrev('Notícias ')).toBe(false);
+  });
+});
+
+describe('ehBoardDeCaptacao', () => {
+  // Os nomes reais dos 27 boards do Externo, medidos em 15/09/2026.
+  it('aceita o board que recebe lead', () => {
+    expect(ehBoardDeCaptacao('BPC - Autismo')).toBe(true);
+    expect(ehBoardDeCaptacao('Auxílio Acidente')).toBe(true);
+  });
+
+  it('recusa o POP — é o fluxo do processo, não a porta de entrada', () => {
+    // 174 leads no board, ZERO com id da Meta ou origem de planilha.
+    expect(ehBoardDeCaptacao('POP - BPC (Administrativo e Judicial)')).toBe(false);
+    expect(ehBoardDeCaptacao('POP — Fluxo do Processo Judicial de Aposentadoria (Idade, Tempo de Contribuição e Especial)')).toBe(false);
+  });
+
+  it('recusa board desativado', () => {
+    expect(ehBoardDeCaptacao('BPC JUDICIAL (desativado — unificado no POP BPC em 30/08/2026)')).toBe(false);
+    expect(ehBoardDeCaptacao('Trabalhistas judicial (fases antigas — desativado)')).toBe(false);
+  });
+
+  it('não confunde POP no meio do nome com board de POP', () => {
+    // O corte é pelo prefixo: "POPULAR" e citação a POP no meio não podem sair.
+    expect(ehBoardDeCaptacao('BPC POPULAR')).toBe(true);
+    expect(ehBoardDeCaptacao('Auxílio Acidente (migrado do POP em 2026)')).toBe(true);
   });
 });
