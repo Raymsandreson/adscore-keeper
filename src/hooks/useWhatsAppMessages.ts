@@ -291,7 +291,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       // Externo é só pra buscar os DADOS das instâncias, filtradas pelos IDs do Cloud.
       const allowedIds = await getMyAllowedInstanceIds(user.id);
 
-      if (allowedIds.length === 0 && !forcedName) {
+      // Sem acesso nenhum não há o que mostrar. No canal Cloud isto vale
+      // TAMBÉM com nome forçado: a trava do menu WhatsApp API é de canal, não
+      // um passe livre para as linhas de lá.
+      if (allowedIds.length === 0 && (forcandoCloud || !forcedName)) {
         setInstances([]);
         return;
       }
@@ -304,7 +307,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       if (forcandoCloud) {
         // SÓ linhas Cloud: misturar as instâncias UazAPI do usuário aqui faria
         // "Todas as linhas" trazer conversa de outro canal para dentro da caixa.
-        query = query.eq('instance_token', TOKEN_CLOUD_API);
+        // E SÓ as liberadas: até 15/09/2026 este ramo não cruzava com
+        // `allowedIds`, então qualquer usuário logado abria Abraci, Prudencio
+        // Advogados e Quitepay no menu WhatsApp API — o que a matriz de Equipe
+        // › WhatsApp dizia sobre essas linhas não valia nada aqui.
+        query = query.eq('instance_token', TOKEN_CLOUD_API).in('id', allowedIds);
       } else if (forcedName && allowedIds.length > 0) {
         // Inclui IDs permitidos OU a instância forçada (por nome, case-insensitive)
         query = query.or(`id.in.(${allowedIds.join(',')}),instance_name.ilike.${forcedName}`);

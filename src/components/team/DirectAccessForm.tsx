@@ -16,11 +16,12 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { MODULE_DEFINITIONS, AccessLevel } from '@/hooks/useModulePermissions';
 import { generateTempPassword, validateTempPassword } from '@/lib/tempPassword';
 import { applyAccessProfile, AccessProfileLike } from '@/lib/applyAccessProfile';
+import { comAcessoCloudPadrao, ehRegistroCloud } from '@/lib/cloudApiInstances';
 import { TempPasswordDialog } from './TempPasswordDialog';
 
 interface Props {
   accessProfiles: AccessProfileLike[];
-  whatsappInstances: Array<{ id: string; instance_name: string }>;
+  whatsappInstances: Array<{ id: string; instance_name: string; instance_token?: string | null }>;
   onCreated: () => void;
 }
 
@@ -51,7 +52,10 @@ export function DirectAccessForm({ accessProfiles, whatsappInstances, onCreated 
       mods[mp.module_key] = mp.access_level as AccessLevel;
     });
     setModules(mods);
-    setInstances(p?.whatsapp_instance_ids || []);
+    // Mostra marcada a linha que o sistema vai conceder de qualquer jeito
+    // (a Abraci, padrão do canal WhatsApp API). Deixar desmarcada aqui e
+    // conceder no salvamento fazia a tela mentir sobre o acesso criado.
+    setInstances(comAcessoCloudPadrao(p?.whatsapp_instance_ids || [], whatsappInstances));
     setShowPermissions(false);
   };
 
@@ -237,7 +241,12 @@ export function DirectAccessForm({ accessProfiles, whatsappInstances, onCreated 
                         )
                       }
                     />
-                    <span className="text-sm">{inst.instance_name}</span>
+                    <span className="text-sm">
+                      {inst.instance_name}
+                      {ehRegistroCloud(inst) && (
+                        <span className="ml-1 text-[10px] text-sky-700 dark:text-sky-400">API</span>
+                      )}
+                    </span>
                   </label>
                 ))}
               </div>

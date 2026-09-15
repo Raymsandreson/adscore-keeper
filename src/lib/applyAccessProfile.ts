@@ -1,4 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
+import { comAcessoCloudPadrao } from '@/lib/cloudApiInstances';
 
 export interface AccessProfileLike {
   id: string;
@@ -49,13 +51,25 @@ export async function applyAccessProfile(userId: string, profile: AccessProfileL
       if (error) throw error;
     }
 
+    // Perfil que não marca NENHUMA linha da WhatsApp API recebe a Abraci: é o
+    // acesso padrão do canal. Sem isto o usuário novo nascia sem linha nenhuma
+    // e a caixa /whatsapp-api abria vazia no primeiro dia.
+    const { data: instancias } = await db
+      .from('whatsapp_instances')
+      .select('id, instance_name, instance_token')
+      .eq('is_active', true);
+    const instanceIds = comAcessoCloudPadrao(
+      profile.whatsapp_instance_ids || [],
+      (instancias || []) as Array<{ id: string; instance_name: string | null; instance_token: string | null }>,
+    );
+
     const { data: accessResp, error: accessErr } = await supabase.functions.invoke(
       'admin-whatsapp-instance',
       {
         body: {
           action: 'replace_user_instance_accesses',
           user_id: userId,
-          instance_ids: profile.whatsapp_instance_ids || [],
+          instance_ids: instanceIds,
         },
       }
     );
