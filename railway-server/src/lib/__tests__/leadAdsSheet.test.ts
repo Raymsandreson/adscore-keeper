@@ -58,6 +58,9 @@ describe('helpers compartilhados entre planilha e API da Meta', () => {
     expect(casaOperador('AUXÍLIO - ACIDENTE [EDILAN-3]')).toBe('Edilan');
     expect(casaOperador('KAROL - BPC')).toBe('Karolyne');
     expect(casaOperador('1LEADS EDILAN')).toBe('Edilan');
+    // Acrescentado em 15/09/2026: este formulário existia e não casava com
+    // keyword nenhuma — 61 leads em 4 dias entraram no board sem dono.
+    expect(casaOperador('TAFFAREL - BPC')).toBe('Taffarel');
   });
 
   it('formulário que não é de atendente devolve null, para virar decisão', () => {
