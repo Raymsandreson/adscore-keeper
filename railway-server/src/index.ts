@@ -136,6 +136,7 @@ import { handler as testimonialToInstagramPost } from './functions/testimonial-t
 import { handler as publishInstagramTestimonial } from './functions/publish-instagram-testimonial';
 import { handler as externalSession } from './functions/external-session';
 import { handler as datastoneApitest } from './functions/datastone-apitest';
+import { handler as datastoneConsulta } from './functions/datastone-consulta';
 
 
 
@@ -244,6 +245,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'testimonial-to-instagram-post': testimonialToInstagramPost, // testemunho do WhatsApp vira rascunho de post (sharp + fonte embutida)
   'publish-instagram-testimonial': publishInstagramTestimonial, // publica rascunho aprovado via Graph API (só por clique humano)
   'datastone-apitest': datastoneApitest, // sonda da Data Stone: 0 créditos, revela o IP de saída a liberar na whitelist
+  'datastone-consulta': datastoneConsulta, // telefone -> cadastro, com cache, teto diário e gate de nome
 };
 
 const app = express();
