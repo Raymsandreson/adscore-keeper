@@ -3782,3 +3782,75 @@ porque ainda é o caminho de aviso de pendência que **não** vira atividade.
 sozinha, e as 59 pendências de um dia normal caem todas no mesmo colo. A regra
 de urgência reduz o ruído, não o volume. Enquanto não houver mais gente
 cadastrada, o gargalo é esse — e ele não é de código.
+
+---
+
+## A fila estava mentindo de tamanho (15/09/2026)
+
+A tela do atendente virtual dizia **449 esperando revisão**. Dessas, **417 já
+tinham sido respondidas por um colega no grupo** — 202 delas em menos de seis
+horas. Uma pendência real a cada catorze cartões.
+
+O retrato: **PREV 661 | nildoleonidodasilva**. O cliente perguntou por áudio em
+**10/09 14:42** ("como é que tá os movimento por aí?"). O **Atendimento
+Previdenciário 2** respondeu, também por áudio, em **11/09 09:41**. Em 15/09 o
+rascunho continuava na fila, com o cronômetro correndo, como se ninguém tivesse
+falado com o homem.
+
+### Por que acontecia
+
+A `dom-rascunho` **já sabe** o que é a equipe — `dom_numeros_equipe` mais a
+regra `daEquipe` (`fromMe`, ou remetente na lista) — e por isso pula o grupo
+quando "equipe falou por último" (`index.ts`, linha 1775). Só que essa
+conferência acontece **uma vez, no instante em que o rascunho nasce**. Depois
+disso ninguém reavalia: o grupo anda, o colega responde, e o rascunho continua
+`pendente` para sempre.
+
+### O que passou a existir
+
+| Peça | O que faz |
+|---|---|
+| `status = 'respondida_por_humano'` | sexto valor do CHECK de `dom_respostas_pendentes` |
+| `respondido_humano_em / _por / _texto / _msg_id` | a prova: quando, quem, o quê, e a linha de `whatsapp_messages` que serviu de base |
+| `dom_marcar_respondidas_por_humano(interval)` | a varredura — devolve quantas marcou |
+| cron `dom-respondida-por-humano`, `*/10 * * * *` | roda com janela de 24h |
+| aba **Já respondidas** no painel | os cartões, com a fala do colega e o caminho de volta |
+
+**A regra de "quem é equipe" é a MESMA da edge**, de propósito: duas definições
+para a mesma pergunta divergiriam na primeira troca de chip. Conferido em
+15/09/2026: das 933 mensagens com `fromMe` em grupo nos últimos três dias,
+**zero** ficam fora de `dom_numeros_equipe`.
+
+**Custo**: 905 ms com janela de 24h, medido com `EXPLAIN (ANALYZE)`. A varredura
+parte das MENSAGENS do período (`idx_whatsapp_messages_created_at`) e não da
+tabela inteira — **nenhum índice novo** foi criado na `whatsapp_messages`, que
+tem 1,8 milhão de linhas e 8 GB.
+
+### Detector, não filtro
+
+Nada é escondido na renderização. O rascunho muda de estado **no banco**, e
+aparece na aba própria com o nome de quem respondeu, o intervalo desde a
+pergunta ("19h depois") e o trecho do que foi dito. A varredura acha a fala do
+colega; ela **não lê** o que foi dito — quando ele falou de outro assunto
+("mandei o boleto" enquanto o cliente perguntava do processo), o botão
+**devolver para a fila** volta o `status` para `pendente` e apaga a prova junto,
+em um clique.
+
+O agendamento pendente é encerrado junto (`encerrado_motivo = 'respondida'`, o
+mesmo motivo que a `wa_agendadas_disparar` já usa). Hoje isso não muda nada — os
+rascunhos da fila têm zero agendamentos ativos —, mas marcar como respondido e
+deixar o envio vivo seria escrever uma coisa no painel e fazer outra no grupo.
+
+### Backfill e rollback
+
+O backfill rodou uma vez com janela de 20 dias: **417 marcados**, todos com
+evidência preenchida; a fila caiu para **32**. Os ids de antes ficaram em
+`zz_dom_status_antes_20260915` (449 linhas), e o rollback completo está escrito
+no rodapé da migration `20260915180000`.
+
+### O que isto NÃO conserta
+
+**O Dom está calado desde 10/09/2026.** Não existe cron de `dom-rascunho` no
+banco — o último rascunho é daquele dia. A fila de 32 que sobrou está
+congelada porque ninguém está escrevendo rascunho novo, não porque a equipe
+ficou em dia.

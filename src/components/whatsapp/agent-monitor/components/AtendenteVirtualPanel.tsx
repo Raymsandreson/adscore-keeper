@@ -6,14 +6,23 @@
  * operação vivia escondida atrás de um lápis de edição. Aqui fica só o que
  * aconteceu.
  *
- * Quatro colunas, e a quarta é a que ninguém pensa em pedir:
- *   Na fila     — escreveu e está esperando alguém olhar
- *   Enviadas    — chegou ao cliente, com data e hora
- *   Com humano  — virou reclamação/dinheiro/prazo e foi para um atendente
- *   Silenciadas — decidiu NÃO responder, e por quê
+ * Cinco colunas, e as duas últimas são as que ninguém pensa em pedir:
+ *   Na fila        — escreveu e está esperando alguém olhar
+ *   Enviadas       — chegou ao cliente, com data e hora
+ *   Com humano     — virou reclamação/dinheiro/prazo e foi para um atendente
+ *   Já respondidas — o time respondeu no grupo antes de alguém revisar
+ *   Silenciadas    — decidiu NÃO responder, e por quê
  *
  * A última existe porque um atendente que nunca fala parece estar funcionando.
  * Sem ver o silêncio, não dá para saber se ele está calando demais ou de menos.
+ *
+ * A quarta existe porque a fila estava mentindo de tamanho. Em 15/09/2026, 417
+ * dos 449 cartões "esperando revisão" eram de conversas em que o colega já
+ * tinha respondido o cliente — alguns cinco dias antes. Quem abria a tela via
+ * 449 pendências e uma delas era real a cada catorze. A marcação é feita no
+ * banco (dom_marcar_respondidas_por_humano, de dez em dez minutos), não na
+ * renderização: a tela desenha o que está lá, e o que saiu da fila continua
+ * visível aqui, com a fala do colega e o caminho de volta.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -31,7 +40,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, X, Loader2, MessagesSquare, SendHorizonal, Volume2, Search, AlertTriangle, UserX, Link2, ClipboardList } from 'lucide-react';
+import { Inbox, Send, UserCheck, VolumeX, RefreshCw, Check, CheckCheck, X, Loader2, MessagesSquare, SendHorizonal, Volume2, Search, AlertTriangle, UserX, Link2, ClipboardList, Undo2 } from 'lucide-react';
 import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
 import { remapToCloud } from '@/integrations/supabase/uuid-remap';
 import type { ActivityDraft } from '@/components/activities/ActivityFullSheet';
@@ -83,6 +92,21 @@ interface Pendente {
   resposta_sugerida: string; resposta_final: string | null; intencao: string | null;
   motivo_revisao: string | null; status: string; criado_em: string; enviado_em: string | null;
   atendente_id: string | null;
+  /**
+   * A FALA DA EQUIPE QUE TORNOU ESTE RASCUNHO VELHO.
+   *
+   * Preenchidos pela `dom_marcar_respondidas_por_humano` (migration
+   * 20260915180000) quando alguém do time escreveu no grupo DEPOIS do
+   * rascunho. Nulos em tudo que ainda espera revisão de verdade.
+   *
+   * Os quatro vêm juntos de propósito: "já respondido" sem dizer quem, quando
+   * e o quê obrigaria a abrir a conversa e caçar a bolha para conferir — e
+   * quem não confere acaba confiando numa marca que não dá para auditar.
+   */
+  respondido_humano_em: string | null;
+  respondido_humano_por: string | null;
+  respondido_humano_texto: string | null;
+  respondido_humano_msg_id: string | null;
   /** O que a dom_contexto_processual devolveu e virou prompt. Nulo nos
    *  rascunhos anteriores a 07/09/2026, quando ninguem guardava a fonte. */
   contexto_usado: ContextoUsado | null;
@@ -307,9 +331,9 @@ const OLHO_NELAS: Filtro[] = [
 
 const FILTROS: Filtro[] = [...FAMILIAS, ...OLHO_NELAS];
 
-/** As quatro abas que contam linha de banco. "Sem ficha" e "busca" não entram:
+/** As cinco abas que contam linha de banco. "Sem ficha" e "busca" não entram:
  *  uma lista grupos, a outra é resultado de pesquisa. */
-type AbaContada = 'fila' | 'enviadas' | 'humano' | 'silencio';
+type AbaContada = 'fila' | 'enviadas' | 'humano' | 'respondida' | 'silencio';
 
 /** Teto da consulta de contagem. Ela traz uma coluna só (`intencao`), então
  *  5.000 linhas custam alguns KB — mas o teto existe para o dia em que a fila
@@ -366,6 +390,51 @@ function processosDoRascunho(p: Pendente): string[] {
   return (p.contexto_usado?.processos || [])
     .map(pr => (pr?.numero || '').trim())
     .filter(Boolean);
+}
+
+/**
+ * QUANTO TEMPO O CLIENTE ESPEROU até o colega responder.
+ *
+ * "11/09 09:41" sozinho não responde a pergunta que quem revisa faz — o
+ * cliente ficou esperando ou foi atendido na hora? O intervalo responde, e é
+ * ele que separa "o Dom chegou atrasado numa conversa que andou" de "este
+ * rascunho ficou 5 dias parado enquanto o cliente já tinha sido atendido".
+ */
+function depoisDe(criado: string, respondido: string): string {
+  const min = Math.round((new Date(respondido).getTime() - new Date(criado).getTime()) / 60000);
+  if (!Number.isFinite(min) || min < 0) return '';
+  if (min < 60) return `${min} min depois`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `${h}h depois`;
+  const d = Math.round(h / 24);
+  return d === 1 ? '1 dia depois' : `${d} dias depois`;
+}
+
+/**
+ * A FALA DO COLEGA, no cartão e no painel.
+ *
+ * Esta é a prova de que o rascunho saiu da fila com razão. Sem ela, "já
+ * respondida" é uma marca que ninguém consegue conferir sem abrir a conversa
+ * e caçar a bolha — e marca que não dá para auditar é marca em que a equipe
+ * para de confiar na primeira vez que erra.
+ */
+function FalaDoTime({ p }: { p: Pendente }) {
+  if (!p.respondido_humano_em) return null;
+  const intervalo = depoisDe(p.criado_em, p.respondido_humano_em);
+  return (
+    <div className="rounded border border-emerald-600/30 bg-emerald-600/5 p-1.5 space-y-0.5">
+      <p className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+        <CheckCheck className="h-3 w-3 shrink-0" />
+        {p.respondido_humano_por || 'alguém do time'} respondeu em {quando(p.respondido_humano_em)}
+        {intervalo && <span className="font-normal opacity-80">· {intervalo}</span>}
+      </p>
+      {p.respondido_humano_texto && (
+        <p className="text-[10px] text-muted-foreground line-clamp-2">
+          {p.respondido_humano_texto}
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** Linha comum das três listas que saem de dom_respostas_pendentes. */
@@ -426,11 +495,13 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
   const [fila, setFila] = useState<Pendente[]>([]);
   const [enviadas, setEnviadas] = useState<Pendente[]>([]);
   const [comHumano, setComHumano] = useState<Pendente[]>([]);
+  /** O que o time já respondeu no grupo antes de alguém revisar o rascunho. */
+  const [respondidas, setRespondidas] = useState<Pendente[]>([]);
   const [silenciadas, setSilenciadas] = useState<Decisao[]>([]);
   /**
    * O que EXISTE no banco, separado do que coube na tela.
    *
-   * As quatro listas param nas 100 mais recentes porque desenhar centenas de
+   * As cinco listas param nas 100 mais recentes porque desenhar centenas de
    * cartões de conversa de uma vez trava a tela. O número da aba, porém, não é
    * do desenho — é do banco: aba escrita "100" quando há 449 na fila não está
    * abreviando uma lista, está dizendo um número errado, e quem lê decide em
@@ -442,9 +513,9 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
    * resposta de cada uma.
    */
   const [totais, setTotais] = useState<Record<AbaContada, number>>(
-    { fila: 0, enviadas: 0, humano: 0, silencio: 0 });
+    { fila: 0, enviadas: 0, humano: 0, respondida: 0, silencio: 0 });
   const [intencoes, setIntencoes] = useState<Record<AbaContada, (string | null)[]>>(
-    { fila: [], enviadas: [], humano: [], silencio: [] });
+    { fila: [], enviadas: [], humano: [], respondida: [], silencio: [] });
   const [grupos, setGrupos] = useState<GrupoPiloto[]>([]);
   const [semFicha, setSemFicha] = useState<SemFicha[]>([]);
   const [vinculando, setVinculando] = useState<GrupoSemFicha | null>(null);
@@ -599,7 +670,7 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
       };
       setAberto(novo);
       const trocar = (lista: Pendente[]) => lista.map(x => (x.id === novo.id ? novo : x));
-      setFila(trocar); setEnviadas(trocar); setComHumano(trocar);
+      setFila(trocar); setEnviadas(trocar); setComHumano(trocar); setRespondidas(trocar);
 
       if (j.audio_url) {
         toast.success(
@@ -651,16 +722,16 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
     // [])`: cinco viagens ao banco para trazer nada. As listas são zeradas
     // porque o painel não é remontado quando a ficha aberta troca.
     if (noLead && jidsDoLead.length === 0) {
-      setFila([]); setEnviadas([]); setComHumano([]);
+      setFila([]); setEnviadas([]); setComHumano([]); setRespondidas([]);
       setSilenciadas([]); setGrupos([]); setSemFicha([]); setSaiEm({});
-      setTotais({ fila: 0, enviadas: 0, humano: 0, silencio: 0 });
-      setIntencoes({ fila: [], enviadas: [], humano: [], silencio: [] });
+      setTotais({ fila: 0, enviadas: 0, humano: 0, respondida: 0, silencio: 0 });
+      setIntencoes({ fila: [], enviadas: [], humano: [], respondida: [], silencio: [] });
       return;
     }
     setCarregando(true);
     try {
       await ensureExternalSession();
-      const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, audio_velocidade, audio_estabilidade, audio_estilo, audio_pausa_ms, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, lead_id, contexto_usado, dom_atendentes(nome, user_id, escopo)';
+      const sel = 'id, group_jid, instance_name, agendamento_id, audio_url, audio_voz, audio_erro, audio_velocidade, audio_estabilidade, audio_estilo, audio_pausa_ms, group_name, pergunta, pergunta_autor, resposta_sugerida, resposta_final, intencao, motivo_revisao, status, criado_em, enviado_em, atendente_id, lead_id, contexto_usado, respondido_humano_em, respondido_humano_por, respondido_humano_texto, respondido_humano_msg_id, dom_atendentes(nome, user_id, escopo)';
       /**
        * O recorte da ficha, aplicado a toda consulta que tem `group_jid`.
        *
@@ -673,10 +744,10 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
        */
       const escopo = (q: any) => (noLead ? q.in('group_jid', jidsDoLead ?? []) : q);
 
-      const [f, e, h, s, gp, sf] = await Promise.all([
+      const [f, e, h, rh, s, gp, sf] = await Promise.all([
         // "Na fila" é tudo que AINDA NÃO SAIU — inclusive o que alguém já
         // aprovou. Filtrar só por 'pendente' fazia a resposta aprovada sumir
-        // das quatro abas: não estava mais na fila, nunca chegou em enviadas,
+        // das cinco abas: não estava mais na fila, nunca chegou em enviadas,
         // e ficava parada para sempre sem ninguém ver.
         escopo(dbAny.from('dom_respostas_pendentes').select(sel)
           .in('status', ['pendente', 'aprovada', 'editada']).is('atendente_id', null))
@@ -687,6 +758,13 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
         escopo(dbAny.from('dom_respostas_pendentes').select(sel)
           .not('atendente_id', 'is', null))
           .order('criado_em', { ascending: false }).limit(100),
+        // O time já respondeu no grupo antes de alguém revisar. Ordenada pela
+        // FALA do colega e não pela criação do rascunho: o que interessa aqui é
+        // o que foi dito ao cliente mais recentemente, não qual rascunho é mais
+        // novo.
+        escopo(dbAny.from('dom_respostas_pendentes').select(sel)
+          .eq('status', 'respondida_por_humano'))
+          .order('respondido_humano_em', { ascending: false }).limit(100),
         escopo(dbAny.from('dom_decisoes')
           .select('id, group_name, group_jid, intencao, decisao, motivo, pergunta, criado_em')
           .eq('decisao', 'silencio'))
@@ -718,18 +796,20 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
        * A lista de cima traz 100 linhas inteiras — pergunta, resposta, contexto,
        * atendente. Contar em cima dela dava o número do `limit`, não o do banco:
        * 449 na fila apareciam como 100, e o painel dizia que o dia estava sob
-       * controle. Estas quatro consultas repetem exatamente os mesmos filtros e
+       * controle. Estas cinco consultas repetem exatamente os mesmos filtros e
        * o mesmo recorte de ficha, mas pedem só `intencao` — o bastante para os
        * chips — e o `count: 'exact'`, que é o número de verdade.
        */
       const contar = (q: any) => escopo(q).limit(TETO_CONTAGEM);
-      const [cf, ce, ch, cs] = await Promise.all([
+      const [cf, ce, ch, crh, cs] = await Promise.all([
         contar(dbAny.from('dom_respostas_pendentes').select('intencao', { count: 'exact' })
           .in('status', ['pendente', 'aprovada', 'editada']).is('atendente_id', null)),
         contar(dbAny.from('dom_respostas_pendentes').select('intencao', { count: 'exact' })
           .eq('status', 'enviada')),
         contar(dbAny.from('dom_respostas_pendentes').select('intencao', { count: 'exact' })
           .not('atendente_id', 'is', null)),
+        contar(dbAny.from('dom_respostas_pendentes').select('intencao', { count: 'exact' })
+          .eq('status', 'respondida_por_humano')),
         contar(dbAny.from('dom_decisoes').select('intencao', { count: 'exact' })
           .eq('decisao', 'silencio')),
       ]);
@@ -737,16 +817,17 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
         ((r.data as { intencao: string | null }[] | null) || []).map(x => x.intencao);
       setTotais({
         fila: cf.count ?? 0, enviadas: ce.count ?? 0,
-        humano: ch.count ?? 0, silencio: cs.count ?? 0,
+        humano: ch.count ?? 0, respondida: crh.count ?? 0, silencio: cs.count ?? 0,
       });
       setIntencoes({
         fila: soIntencao(cf), enviadas: soIntencao(ce),
-        humano: soIntencao(ch), silencio: soIntencao(cs),
+        humano: soIntencao(ch), respondida: soIntencao(crh), silencio: soIntencao(cs),
       });
 
       setFila((f.data as unknown as Pendente[]) || []);
       setEnviadas((e.data as unknown as Pendente[]) || []);
       setComHumano((h.data as unknown as Pendente[]) || []);
+      setRespondidas((rh.data as unknown as Pendente[]) || []);
       setSilenciadas((s.data as unknown as Decisao[]) || []);
       setGrupos((gp.data as unknown as GrupoPiloto[]) || []);
       setSemFicha((sf.data as unknown as SemFicha[]) || []);
@@ -817,6 +898,37 @@ export function AtendenteVirtualPanel({ leadId }: { leadId?: string } = {}) {
     if (error) { toast.error('Não salvou: ' + error.message); return; }
     setAberto(null);
     toast.success(status === 'descartada' ? 'Descartada' : 'Marcada como boa');
+    carregar();
+  };
+
+  /**
+   * O CAMINHO DE VOLTA — e é ele que torna a marcação automática aceitável.
+   *
+   * A varredura acha a primeira fala da equipe depois do rascunho; ela não lê
+   * o que foi dito. Quando o colega falou de outro assunto ("mandei o boleto"
+   * enquanto o cliente perguntava do processo), o rascunho ainda tem que ser
+   * respondido — e aqui ele volta para a fila com um clique, não por uma
+   * consulta SQL feita por alguém de fora.
+   *
+   * A evidência é apagada junto: mantê-la faria o cartão da fila continuar
+   * dizendo "já respondida", e a próxima varredura tem 24h de janela para
+   * remarcar o que for do dia. Rascunho velho não é remarcado — é isso que
+   * faz "devolver" durar.
+   */
+  const devolverParaFila = async (p: Pendente) => {
+    const { error } = await dbAny.from('dom_respostas_pendentes')
+      .update({
+        status: 'pendente',
+        respondido_humano_em: null,
+        respondido_humano_por: null,
+        respondido_humano_texto: null,
+        respondido_humano_msg_id: null,
+        motivo_revisao: 'devolvido à fila à mão — o que o time disse não respondia isto',
+      } as never)
+      .eq('id', p.id);
+    if (error) { toast.error('Não devolveu: ' + error.message); return; }
+    setAberto(null);
+    toast.success('De volta à fila — esperando revisão');
     carregar();
   };
 
@@ -1266,10 +1378,11 @@ ${corpo}`,
   const filaF = fila.filter(p => casa.casa(p.intencao));
   const enviadasF = enviadas.filter(p => casa.casa(p.intencao));
   const comHumanoF = comHumano.filter(p => casa.casa(p.intencao));
+  const respondidasF = respondidas.filter(p => casa.casa(p.intencao));
   const silenciadasF = silenciadas.filter(d => casa.casa(d.intencao));
 
   /**
-   * Quanto cada chip tem, somando as quatro abas — contando o BANCO.
+   * Quanto cada chip tem, somando as cinco abas — contando o BANCO.
    *
    * Sem o número, chip zerado e chip cheio são idênticos até você clicar — e a
    * pergunta "cadê a desistência?" não tem resposta na tela. Com o número, zero
@@ -1282,9 +1395,10 @@ ${corpo}`,
   const contagens = useMemo(() => {
     const todas = [
       ...intencoes.fila, ...intencoes.enviadas,
-      ...intencoes.humano, ...intencoes.silencio,
+      ...intencoes.humano, ...intencoes.respondida, ...intencoes.silencio,
     ];
-    const tudo = totais.fila + totais.enviadas + totais.humano + totais.silencio;
+    const tudo = totais.fila + totais.enviadas + totais.humano
+      + totais.respondida + totais.silencio;
     const mapa: Record<string, number> = {};
     for (const f of FILTROS) {
       mapa[f.chave] = f.chave === 'todas' ? tudo : todas.filter(i => f.casa(i)).length;
@@ -1298,7 +1412,7 @@ ${corpo}`,
    * sobre a coluna `intencao` de todas as linhas.
    */
   const contagemDaAba = useMemo(() => {
-    const chaves: AbaContada[] = ['fila', 'enviadas', 'humano', 'silencio'];
+    const chaves: AbaContada[] = ['fila', 'enviadas', 'humano', 'respondida', 'silencio'];
     const mapa = {} as Record<AbaContada, number>;
     for (const k of chaves) {
       mapa[k] = familia === 'todas'
@@ -1454,7 +1568,7 @@ ${corpo}`,
         <p className="text-[10px] text-muted-foreground">
           As de cima são as cinco famílias — a letra que decide o que o Dom faz. As de
           baixo são falas específicas que não podem passar batido, e o número diz quantas
-          existem no banco, somando as quatro abas — não só as que couberam na tela.
+          existem no banco, somando as cinco abas — não só as que couberam na tela.
         </p>
       </div>
 
@@ -1463,7 +1577,7 @@ ${corpo}`,
             grupos com rascunho na fila — dentro de um cliente devolveria
             conversa de outro. E "Sem ficha" é a lista de grupos órfãos: esta
             ficha, por definição, não está lá. */}
-        <TabsList className={`grid w-full ${noLead ? 'grid-cols-4' : 'grid-cols-5'}`}>
+        <TabsList className={`grid w-full ${noLead ? 'grid-cols-5' : 'grid-cols-6'}`}>
           <TabsTrigger value="fila" className="text-xs gap-1">
             <Inbox className="h-3.5 w-3.5" />Na fila
             {contagemDaAba.fila > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{contagemDaAba.fila}</Badge>}
@@ -1475,6 +1589,14 @@ ${corpo}`,
           <TabsTrigger value="humano" className="text-xs gap-1">
             <UserCheck className="h-3.5 w-3.5" />Com humano
             {contagemDaAba.humano > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{contagemDaAba.humano}</Badge>}
+          </TabsTrigger>
+          {/* A que esvazia a fila. Não é "resolvida pelo Dom": é o time tendo
+              respondido no grupo antes de alguém revisar o rascunho — em
+              15/09/2026, 417 dos 449 que estavam na fila. Elas ficam AQUI, com
+              a fala do colega à vista e o caminho de volta, em vez de sumirem. */}
+          <TabsTrigger value="respondida" className="text-xs gap-1">
+            <CheckCheck className="h-3.5 w-3.5" />Já respondidas
+            {contagemDaAba.respondida > 0 && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{contagemDaAba.respondida}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="silencio" className="text-xs gap-1">
             <VolumeX className="h-3.5 w-3.5" />Silenciadas
@@ -1668,6 +1790,29 @@ ${corpo}`,
           {rodapeDaLista(comHumanoF.length, contagemDaAba.humano)}
         </TabsContent>
 
+        {/* ── Já respondidas ─────────────────────────────────────────────
+            O rascunho continua inteiro; o que mudou é que ele deixou de ser
+            pendência. O cartão mostra os DOIS textos — o que o colega disse e
+            o que o Dom tinha escrito — porque é essa comparação que diz se o
+            agente estava certo. E o botão devolve para a fila em um clique,
+            para quando a fala do colega for sobre outro assunto. */}
+        <TabsContent value="respondida" className="space-y-2 pt-3">
+          {respondidasF.length === 0 && vazio('Nada por aqui — o que está na fila ainda espera revisão de verdade.')}
+          {respondidasF.length > 0 && (
+            <p className="text-[10px] text-muted-foreground">
+              O time respondeu no grupo antes de alguém revisar o rascunho. Elas saíram da
+              fila sozinhas, mas nada foi apagado: confira a fala do colega e, se ela não
+              respondia o cliente, use <strong>devolver para a fila</strong>.
+            </p>
+          )}
+          {respondidasF.map(p => (
+            <LinhaPendente key={p.id} p={p}
+              onClick={() => { setAberto(p); setTexto(p.resposta_final || p.resposta_sugerida); }}
+              rodape={<FalaDoTime p={p} />} />
+          ))}
+          {rodapeDaLista(respondidasF.length, contagemDaAba.respondida)}
+        </TabsContent>
+
         <TabsContent value="silencio" className="space-y-2 pt-3">
           {silenciadasF.length === 0 && vazio('Ele ainda não decidiu calar em nenhuma conversa.')}
           {silenciadasF.map(d => (
@@ -1777,6 +1922,16 @@ ${corpo}`,
                   {aberto.pergunta_autor} · intenção {aberto.intencao || '—'} · {quando(aberto.criado_em)}
                 </p>
               </div>
+              {/* Vem ANTES da resposta sugerida, ao contrário das fontes: quem
+                  abriu este cartão precisa saber que o cliente já foi atendido
+                  antes de ler — e eventualmente aprovar — um texto escrito para
+                  uma conversa que já andou. */}
+              {aberto.respondido_humano_em && (
+                <div className="space-y-1">
+                  <Label className="text-xs">O time já respondeu isto no grupo</Label>
+                  <FalaDoTime p={aberto} />
+                </div>
+              )}
               {aberto.motivo_revisao && (
                 <div className="space-y-1">
                   <Label className="text-xs">Por que parou aqui</Label>
@@ -2053,6 +2208,30 @@ ${corpo}`,
                     Esta tela é só para conferir o que foi dito e de onde saiu.
                   </p>
                 </div>
+              ) : aberto.status === 'respondida_por_humano' ? (
+                // O cliente JÁ FOI ATENDIDO. "Aprovar e enviar" continua
+                // existindo, mas a um clique de distância, atrás do "devolver
+                // para a fila": mandar o rascunho por cima da resposta do
+                // colega tem que ser uma decisão, não um botão na mão de quem
+                // está passando os olhos em 417 cartões.
+                <>
+                  <div className="rounded border border-emerald-600/40 bg-emerald-600/5 p-2">
+                    <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400 flex items-start gap-1">
+                      <CheckCheck className="h-3.5 w-3.5 mt-px shrink-0" />
+                      Saiu da fila porque o time respondeu no grupo
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Nada foi enviado e nada foi apagado: este rascunho continua inteiro
+                      aqui. Se o que o colega disse não respondia o cliente, devolva para a
+                      fila — aí os botões de aprovar e enviar voltam.
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" className="w-full text-xs gap-1"
+                    onClick={() => devolverParaFila(aberto)}>
+                    <Undo2 className="h-3.5 w-3.5" />
+                    Devolver para a fila — isto não foi respondido
+                  </Button>
+                </>
               ) : aberto.agendamento_id && naoChegou[aberto.agendamento_id] ? (
                 // NÃO CHEGOU, e isso precisa ser dito antes de qualquer botão.
                 //
