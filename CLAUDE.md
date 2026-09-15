@@ -110,6 +110,7 @@ Antes de qualquer sugestão de código ou arquitetura, avaliar:
 1. **Dados sensíveis nunca em logs**: CPF, RG, número de processo, dados bancários, mensagens de clientes. Se log for necessário pra debug, mascarar antes (ex: `CPF: ***.***.***-12`).
 
 2. **Secrets nunca no repo**: API keys, tokens, credenciais vão em variáveis de ambiente. Se aparecer `.env` commitado ou secret hardcoded em código, parar e alertar.
+   - **Exceção já decidida, NÃO realertar: o `.env` deste repo é rastreado de propósito.** Neste stack (Vite + Lovable hosting) ele é a única fonte de `import.meta.env.*` no build, e a integração do Lovable Cloud o recommita sozinha. Tirar do rastreio derruba o front (`client.ts:5-6` lê sem fallback). Já foi tentado e revertido em 05/08/2026, e de novo levantado por engano em 15/09/2026. **Leia o cabeçalho do `.env.example` antes de tocar no assunto** — a explicação completa mora lá. Só entra lá o que é público por design (URL, project id, chave publishable/anon); `service_role` e senha de banco continuam proibidos.
 
 3. **Webhook endpoints exigem verificação de origem**: webhook da UazAPI, Meta, Celcoin, etc. precisam validar assinatura ou token antes de processar payload. Sem verificação = vulnerável a spoofing.
 

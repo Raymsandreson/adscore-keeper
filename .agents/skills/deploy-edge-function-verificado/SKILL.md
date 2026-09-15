@@ -91,6 +91,24 @@ bloqueio — assim o teste não polui contador nem manda nada:
 select public.wa_gate_envio('<instancia morta>', '<numero>', 'teste', false);
 ```
 
+## Limpe a canary no mesmo dia — ela é porta dos fundos
+
+Uma canary do `send-whatsapp` é uma **cópia completa do enviador com
+`verify_jwt = false`**: qualquer pessoa com a chave anon (que é pública, vai no
+bundle) pode chamá-la e mandar WhatsApp pelos números do escritório, sem
+autoria e sem ninguém monitorando.
+
+O MCP **não tem delete de edge function**, e a Management API exige PAT (que
+não existe no ambiente). Então, terminado o deploy:
+
+1. Redeploy a canary com um stub inerte (`Deno.serve` devolvendo 410) e
+   `verify_jwt: true`. Assim ela para de ser porta, mesmo ficando listada.
+2. Avise o usuário que a remoção definitiva é um clique no dashboard:
+   Edge Functions → `<slug>` → Delete.
+
+**Pendência aberta:** `send-whatsapp-canary-v26` está no ar com o enviador
+completo e `verify_jwt = false` desde abril/2026. Mesmo tratamento.
+
 ## Rollback
 
 Cada versão tem espelho em
