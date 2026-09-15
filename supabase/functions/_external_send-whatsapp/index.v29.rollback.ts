@@ -1,22 +1,4 @@
-// send-whatsapp v30 (projeto externo kmedldlepwiityjsdahz)
-//
-// v30: FREIO DE ABORDAGEM A NÚMERO NOVO. Antes desta versão não existia
-// NENHUM limite de ritmo em lugar nenhum do envio — `grep` por sleep, delay,
-// throttle e rate limit nesta função e nos dois enviadores do Railway dava
-// zero. Se a tela mandasse 100, saíam 100 o mais rápido que a rede permitisse.
-// Foi assim que perdemos três instâncias em 2026: ISRAEL ATENDIMENTO (morreu
-// 11/08 às 10:48 depois de dias de 50 a 111 números novos), Karolyne (rajada
-// de 96 novos em 10/08) e Mateus (99 novos em 10/09, morto em 11/09 às 10:53).
-// Intervalo mínimo medido entre abordar um desconhecido e o próximo: 5,3s,
-// 6,0s e 6,9s. Nenhum humano no aplicativo faz isso.
-//
-// O freio chama `wa_gate_envio` no banco externo e só age em ABORDAGEM A
-// NÚMERO NOVO. Conversa em andamento passa direto, sempre: frear resposta a
-// cliente seria quebrar o atendimento para resolver um problema que o
-// atendimento não causa.
-// `ignore_ritmo: true` no body pula o freio e deixa rastro no log, como o
-// `ignore_optout` da v26.
-// ROLLBACK: index.v29.rollback.ts (espelho fiel da v29 deployada).
+// send-whatsapp v29 (projeto externo kmedldlepwiityjsdahz)
 //
 // v29: NOTA DE VOZ NÃO LEVA LEGENDA. A guarda de caption em send_media era
 // `sb.type !== 'audio'` — mas nota de voz tem type 'ptt', então passava. Quem
@@ -142,36 +124,6 @@ function getTarget(p, c) {
  * 30 dias) — sem normalizar, quem pediu para sair por uma forma continuaria
  * recebendo pela outra.
  */
-/**
- * Freio de abordagem a número novo (v30).
- *
- * Pergunta ao banco se este envio pode sair. A conta toda mora em
- * `wa_gate_envio` porque é lá que estão os contadores O(1) — fazer count() em
- * `whatsapp_messages` (7,8 GB, 1,76 M linhas) a cada envio seria o remédio
- * matando o paciente.
- *
- * Conservador para o lado de ENTREGAR: se o gate falhar, o envio sai. Banco
- * fora do ar não pode virar parada de atendimento.
- */
-async function gateDeRitmo(extClient, instanceName, target, texto) {
-  try {
-    const { data, error } = await extClient.rpc('wa_gate_envio', {
-      p_instancia: instanceName,
-      p_phone: target,
-      p_texto: typeof texto === 'string' ? texto : null,
-      p_registrar: true
-    });
-    if (error) {
-      console.warn('[send-whatsapp] freio de ritmo indisponível, seguindo com o envio:', error.message);
-      return null;
-    }
-    return data;
-  } catch (e) {
-    console.warn('[send-whatsapp] freio de ritmo falhou, seguindo com o envio:', e?.message);
-    return null;
-  }
-}
-
 function optoutKey(raw) {
   let v = String(raw ?? '').replace(/@.*$/, '').replace(/\D/g, '');
   if (!v) return null;
@@ -956,41 +908,6 @@ Deno.serve(async (req)=>{
       instance_name: body.instance_name || null
     });
     const base = inst.base_url || 'https://abraci.uazapi.com';
-    // === v30: FREIO DE ABORDAGEM A NÚMERO NOVO ===
-    if (body.ignore_ritmo === true) {
-      console.warn('[send-whatsapp] FREIO DE RITMO IGNORADO (ignore_ritmo=true):', {
-        phone: `***${String(target).replace(/\D/g, '').slice(-4)}`,
-        instance_name: inst.instance_name,
-        motivo: body.ignore_ritmo_reason || 'não informado'
-      });
-    } else {
-      const freio = await gateDeRitmo(extClient, inst.instance_name, target, body.message);
-      if (freio && freio.permitido === false) {
-        console.log('[send-whatsapp] envio barrado pelo freio de ritmo:', {
-          phone: `***${String(target).replace(/\D/g, '').slice(-4)}`,
-          instance_name: inst.instance_name,
-          codigo: freio.codigo
-        });
-        return jsonResp({
-          success: false,
-          error: freio.motivo || 'Abordagem a número novo freada para não queimar a instância.',
-          error_code: `RITMO_${freio.codigo}`,
-          retryable: freio.codigo === 'RITMO',
-          instance_name: inst.instance_name,
-          instancia_sugerida: freio.instancia_sugerida || null,
-          esperar_segundos: freio.esperar_segundos || null,
-          variar_texto: freio.variar_texto === true,
-          texto_repetido_em: freio.texto_repetido_em || 0
-        });
-      }
-      if (freio && freio.avisar_texto_repetido) {
-        console.warn('[send-whatsapp] texto repetido em conversa em andamento:', {
-          instance_name: inst.instance_name,
-          destinos: freio.texto_repetido_em
-        });
-      }
-    }
-    // === END FREIO DE RITMO ===
     const sendBody = {
       number: target,
       text: body.message

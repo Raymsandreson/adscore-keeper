@@ -21,6 +21,7 @@ import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
 import { WebhookLogsViewer } from './WebhookLogsViewer';
 import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
 import { WhatsAppInstanceManager } from './WhatsAppInstanceManager';
+import { RiscoBanimentoPanel } from './RiscoBanimentoPanel';
 import { WhatsAppNotificationSettings } from './WhatsAppNotificationSettings';
 import { PushNotificationSettings } from '@/components/chat/PushNotificationSettings';
 import { SoundSettings } from '@/components/settings/SoundSettings';
@@ -291,7 +292,14 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             </div>
 
             {activeTab === 'organization' && <OrganizationSettings />}
-            {activeTab === 'instances' && <WhatsAppInstanceManager />}
+            {activeTab === 'instances' && (
+              <div className="space-y-6">
+                {/* Risco antes da lista: quem abre esta aba precisa ver PRIMEIRO
+                    qual instância está prestes a cair, não a lista alfabética. */}
+                <RiscoBanimentoPanel />
+                <WhatsAppInstanceManager />
+              </div>
+            )}
             
             {activeTab === 'commands' && <WhatsAppCommandConfig />}
             {activeTab === 'notifications' && (
