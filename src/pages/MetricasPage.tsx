@@ -65,7 +65,12 @@ interface Painel {
   };
   investimento: {
     disponivel: boolean; erro?: string | null;
+    // `na_janela` é o gasto DESTA aba (campanha de PREV); `nas_contas` é tudo
+    // que saiu da carteira no período. Os dois aparecem: dividir lead de PREV
+    // por gasto de curso dá um custo por lead que não existe.
     na_janela: number; hoje: number | null;
+    nas_contas?: number; fora_do_escopo?: number;
+    campanhas_fora_do_escopo?: Array<{ campanha: string; gasto: number; conjuntos: number; leads_meta: number }>;
     contas: Array<{ conta: string; valor: number }>;
   };
   leads: {
@@ -89,6 +94,11 @@ interface Painel {
     chave: string; rotulo: string; conjuntos: number; gasto: number; leads: number; fechados: number;
     custo_por_lead: number | null; custo_por_fechamento: number | null; taxa_fechamento: number | null;
   }>;
+  /** Conjunto cujo nome não casa nenhum acolhedor conhecido. Sem esta linha, ele some da tabela. */
+  sem_acolhedor?: {
+    conjuntos: number; gasto: number; leads: number; fechados: number; custo_por_lead: number | null;
+    nomes: Array<{ nome: string; gasto: number | null; leads: number; fechados: number }>;
+  } | null;
   funil_pago: {
     total: number; sem_resposta: number; em_atendimento: number; fechados: number;
     inviaveis: number; recusados: number;
@@ -384,12 +394,12 @@ function GastoSemLead({ custo }: { custo: Painel['custo'] }) {
           ))}
         </div>
         <p className="text-[11px] text-muted-foreground mt-3 border-t pt-2">
-          Campanha que vende outro produto (curso, guia, seguro) não deveria mesmo aparecer no funil — o
-          que ela distorce é o custo por lead da visão "todos os funis", porque o gasto dela entra no
-          numerador e os leads dela não entram no denominador. Filtrar por funil resolve.
+          Só campanha deste funil. Verba que saiu e não devolveu lead ao CRM: ou o anúncio não entrega
+          formulário, ou o formulário existe e não chega — e a diferença vale dinheiro.
           {formulariosPerdidos > 0 && (
-            <> Já os {num(formulariosPerdidos)} formulários registrados na Meta e ausentes do CRM são
-            outra coisa: ou é roteamento faltando, ou é lead de produto que não usa o CRM.</>
+            <> Os {num(formulariosPerdidos)} formulários registrados na Meta e ausentes do CRM são o
+            segundo caso: é roteamento faltando no <code>meta-leads-sync</code> ou aba de planilha que
+            ninguém lê.</>
           )}
         </p>
       </CardContent>
@@ -397,12 +407,66 @@ function GastoSemLead({ custo }: { custo: Painel['custo'] }) {
   );
 }
 
+/**
+ * Gasto de campanha que NÃO é desta aba.
+ *
+ * Existe porque o painel cobre só PREV e as contas de anúncio não: elas pagam
+ * também curso, guia, seguro e Trabalhista. Esse dinheiro saiu do numerador do
+ * custo por lead em 15/09/2026 — antes ele dividia gasto de venda de curso por
+ * lead jurídico, e o CPL publicado (R$ 9,13) era um número que não existia.
+ *
+ * Sair da conta não é sumir da tela: continua sendo a mesma carteira, e quem
+ * olha o painel precisa saber que ela gastou mais do que o card de cima mostra.
+ */
+function ForaDoEscopo({ inv, area }: { inv: Painel['investimento']; area: string }) {
+  const campanhas = inv?.campanhas_fora_do_escopo || [];
+  if (!inv?.disponivel || !(inv.fora_do_escopo ?? 0) || !campanhas.length) return null;
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Wallet className="h-4 w-4" />Fora do escopo desta aba
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Saiu das mesmas contas no período, mas é de outro negócio — não entra no custo por lead de {area}
+          porque os leads dele também não entram.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold tabular-nums">{brl(inv.fora_do_escopo)}</div>
+        <p className="text-xs text-muted-foreground mt-1">
+          de {brl(inv.nas_contas)} que as contas gastaram no período
+        </p>
+        <div className="mt-3 space-y-1.5">
+          {campanhas.map((c) => (
+            <div key={c.campanha} className="flex items-baseline justify-between gap-3 text-sm">
+              <span className="truncate" title={c.campanha}>
+                {c.campanha}
+                <span className="text-xs text-muted-foreground ml-2">{num(c.conjuntos)} conjunto(s)</span>
+              </span>
+              <span className="shrink-0 tabular-nums">
+                {brl(c.gasto)}
+                {c.leads_meta > 0 && (
+                  <span className="text-xs text-muted-foreground ml-2">{num(c.leads_meta)} na Meta</span>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 /** A mesma tabela de conjuntos, somada por pessoa. É a leitura que a operação faz. */
-function PorAcolhedor({ itens, ativo, onEscolher, aviso }: {
+function PorAcolhedor({ itens, ativo, onEscolher, aviso, orfaos }: {
   itens: Painel['por_acolhedor']; ativo: string | null; onEscolher: (v: string | null) => void;
   // A coluna de contratos desta tabela é a mais afetada pela data carimbada na
   // importação — é aqui que alguém conclui "fulano parou de fechar".
   aviso?: string | null;
+  // O que não caiu em ninguém. Sem esta linha a tabela fecha uma soma menor que
+  // a dos cards de cima e nada na tela diz o que ficou de fora.
+  orfaos?: Painel['sem_acolhedor'];
 }) {
   if (!itens?.length) return null;
   return (
@@ -446,6 +510,24 @@ function PorAcolhedor({ itens, ativo, onEscolher, aviso }: {
                   <td className="py-2 text-right tabular-nums">{pct(a.taxa_fechamento)}</td>
                 </tr>
               ))}
+              {/* NÃO É CLICÁVEL de propósito: não há chave para filtrar por
+                  "ninguém". A linha existe para que a soma da tabela feche com
+                  os cards de cima — e para que o conjunto novo apareça no dia em
+                  que gasta o primeiro real, em vez de sumir. */}
+              {orfaos && (
+                <tr className="border-t bg-muted/30">
+                  <td className="py-2">
+                    <span className="text-muted-foreground italic">Sem acolhedor identificado</span>
+                    <span className="text-xs text-muted-foreground ml-2">{num(orfaos.conjuntos)} conjunto(s)</span>
+                  </td>
+                  <td className="py-2 text-right tabular-nums">{brl(orfaos.gasto)}</td>
+                  <td className="py-2 text-right tabular-nums">{num(orfaos.leads)}</td>
+                  <td className="py-2 text-right tabular-nums">{brl(orfaos.custo_por_lead)}</td>
+                  <td className="py-2 text-right tabular-nums">{num(orfaos.fechados)}</td>
+                  <td className="py-2 text-right tabular-nums">—</td>
+                  <td className="py-2 text-right tabular-nums">—</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -453,6 +535,13 @@ function PorAcolhedor({ itens, ativo, onEscolher, aviso }: {
           "Custo/contrato" fica vazio para quem ainda não fechou na janela: dividir por zero e escrever
           R$ 0,00 mentiria, e "infinito" não ajuda a decidir nada.
         </p>
+        {orfaos && (
+          <p className="text-[11px] text-muted-foreground mt-2 border-t pt-2">
+            O acolhedor sai do <strong>nome do conjunto</strong>, então conjunto com nome novo não casa
+            ninguém até ser cadastrado:{' '}
+            {orfaos.nomes.map((n) => `${n.nome} (${num(n.leads)} leads, ${brl(n.gasto)})`).join(' · ')}.
+          </p>
+        )}
         {aviso && (
           <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
             <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
@@ -850,6 +939,14 @@ export default function MetricasPage() {
                     ? typeof inv.hoje === 'number' ? `${brl(inv.hoje)} hoje` : 'período fechado, sem hoje'
                     : inv?.erro || 'sem acesso à conta de anúncios'
                 }
+                // O valor grande é o gasto DESTA aba. O que as contas gastaram
+                // além disso não some — aparece aqui embaixo e detalhado no card
+                // "Fora do escopo desta aba", porque é a mesma carteira.
+                rodape={
+                  inv?.disponivel && (inv.fora_do_escopo ?? 0) > 0
+                    ? `campanha de ${dados.escopo?.area || 'PREV'} · as contas gastaram ${brl(inv.nas_contas)} no período, ${brl(inv.fora_do_escopo)} em campanha de outro negócio`
+                    : undefined
+                }
                 icone={<Wallet className="h-3.5 w-3.5" />}
               />
               <Kpi
@@ -882,11 +979,12 @@ export default function MetricasPage() {
                     custo?.por_fechamento_pago
                       ? `${brl(custo.por_fechamento_pago)} por contrato fechado`
                       : 'sem fechamento pago no período para o custo por contrato',
-                    // Os dois números, nunca só o mais bonito: o de cima divide
-                    // TODO o investimento, inclusive o de campanha que vende
-                    // outro produto e não alimenta o CRM.
+                    // Desde 15/09/2026 o numerador é o gasto desta aba, então os
+                    // dois lados da divisão vêm do mesmo universo. O que sobra a
+                    // nomear é o gasto de conjunto DESTE funil que não trouxe
+                    // lead — esse sim distorce, e tem conserto.
                     (custo?.gasto_sem_lead_no_crm ?? 0) > 0
-                      ? `inclui ${brl(custo!.gasto_sem_lead_no_crm)} de campanha que não alimenta o CRM — sem elas, ${brl(custo!.por_lead_pago_so_do_que_gerou)} por lead`
+                      ? `inclui ${brl(custo!.gasto_sem_lead_no_crm)} de conjunto deste funil que não trouxe lead — sem eles, ${brl(custo!.por_lead_pago_so_do_que_gerou)} por lead`
                       : null,
                   ].filter(Boolean).join(' · ')
                 }
@@ -920,11 +1018,13 @@ export default function MetricasPage() {
                 {/* O alerta abre a aba padrão de propósito: é dinheiro saindo, e
                     dentro de uma aba secundária ninguém o encontraria. */}
                 <GastoSemLead custo={dados.custo} />
+                <ForaDoEscopo inv={dados.investimento} area={dados.escopo?.area || 'PREV'} />
                 <PorAcolhedor
                   itens={dados.por_acolhedor || []}
                   ativo={acolhedor}
                   onEscolher={setAcolhedor}
                   aviso={dados.fechamentos.concentracao?.aviso}
+                  orfaos={dados.sem_acolhedor}
                 />
                 <DesempenhoPorConjunto itens={dados.desempenho_por_conjunto || []} />
                 {inv?.disponivel && inv.contas.length > 0 && (
