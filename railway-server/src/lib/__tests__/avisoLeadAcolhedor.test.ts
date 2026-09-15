@@ -17,6 +17,7 @@ import {
   montarMensagemInicial,
   telefoneParaLink,
   telefoneLegivel,
+  valorLegivel,
   linkWaMe,
   montarAviso,
   dentroDoHorario,
@@ -33,7 +34,7 @@ const NOTES_DA_API = [
   '• qual o nome da criança: JOÃO PEDRO DA SILVA',
   '• seu filho recebe o bpc: Não',
   '• possui laudo médico ou relatório escolar: Sim',
-  '• qual a renda da família: Até 1 salário mínimo',
+  '• qual a renda da família: até_1_salário_mínimo',
   '• você tem cad único: Sim',
   '• você tem advogado: Não',
   '• quantas pessoas moram na casa: 4',
@@ -159,6 +160,15 @@ describe('telefoneLegivel', () => {
   });
 });
 
+describe('valorLegivel', () => {
+  it('desfaz o underscore que a Meta grava na opção escolhida', () => {
+    // Valor real, lead de 15/09/2026: "até_r$_2.000,00".
+    expect(valorLegivel('até_r$_2.000,00')).toBe('Até r$ 2.000,00');
+    expect(valorLegivel('não')).toBe('Não');
+    expect(valorLegivel('')).toBe('');
+  });
+});
+
 describe('montarAviso', () => {
   const lead = {
     lead_id: 'abc',
@@ -176,7 +186,7 @@ describe('montarAviso', () => {
     expect(a.texto).toContain('Fernanda Souza');
     expect(a.texto).toContain('(86) 99999-8888');
     expect(a.texto).toContain('Já recebe BPC: Não');
-    expect(a.texto).toContain('Renda da família: Até 1 salário mínimo');
+    expect(a.texto).toContain('Renda da família: Até 1 salário mínimo'); // underscore da Meta desfeito
     expect(a.texto).toContain('CadÚnico: Sim');
     expect(a.texto).toContain('https://wa.me/5586999998888?text=');
     expect(a.falta_telefone).toBe(false);

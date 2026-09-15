@@ -180,6 +180,20 @@ export function telefoneLegivel(bruto: string | null | undefined): string {
   return bruto || '—';
 }
 
+/**
+ * Valor de resposta como gente lê.
+ *
+ * A Meta grava a opção escolhida com underscore no lugar do espaço
+ * (`até_r$_2.000,00`, visto em lead real de 15/09/2026) e em caixa baixa
+ * (`não`). Cru, isso chega no WhatsApp do acolhedor parecendo dado de máquina
+ * vazado na tela. Só formatação: o valor não é alterado nem interpretado.
+ */
+export function valorLegivel(bruto: string): string {
+  const limpo = String(bruto || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!limpo) return '';
+  return limpo.charAt(0).toUpperCase() + limpo.slice(1);
+}
+
 /** Data e hora em Brasília, sem depender do TZ do container. */
 export function horaBrasilia(iso: string | null | undefined): string {
   if (!iso) return '';
@@ -253,7 +267,7 @@ export function montarAviso(
   linhas.push(`*Telefone:* ${telefoneLegivel(lead.telefone)}`);
 
   const qualificacao = QUALIFICACAO.map(({ rotulo, pedacos }) => {
-    const v = respostaPor(respostas, pedacos);
+    const v = valorLegivel(respostaPor(respostas, pedacos));
     return v ? `• ${rotulo}: ${v}` : '';
   }).filter(Boolean);
   if (qualificacao.length) linhas.push('', ...qualificacao);
