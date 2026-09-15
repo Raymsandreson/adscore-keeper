@@ -29,6 +29,8 @@ import {
   isJunkName,
   casaOperador,
   normalizaLeadIdMeta,
+  motivoDeNomeRecusado,
+  motivoDeTelefoneRecusado,
 } from '../lib/leadAdsSheet';
 
 /**
@@ -131,6 +133,8 @@ interface LeadDaMeta {
   formulario: string;
   operador: string | null;
   telefone_divergente: boolean;
+  /** Celula de telefone como veio, so para classificar a recusa. Nunca gravado. */
+  telefone_bruto: string;
   respostas: Record<string, string>;
 }
 
@@ -209,6 +213,11 @@ async function leadsDoFormulario(
         pegaCampo(campos, [], ['contato', 'whats', 'telefone', 'phone', 'celular'], NAO_E_O_TITULAR),
       );
       const telefone = telPrefill || telPergunta;
+      // O bruto so existe para CLASSIFICAR a recusa: sem ele, "sem telefone"
+      // nao separa celula vazia de celular sem DDD. Nao e gravado em lugar nenhum.
+      const telefoneBruto =
+        pegaCampo(campos, ['phone_number', 'telefone', 'celular'], []) ||
+        pegaCampo(campos, [], ['contato', 'whats', 'telefone', 'phone', 'celular'], NAO_E_O_TITULAR);
       // Os dois campos existem no mesmo formulário. Quando divergem, a planilha
       // pode ter gravado um e a API o outro — e aí a mesma pessoa entra duas
       // vezes, porque a chave de dedup são os 8 últimos dígitos.
@@ -230,6 +239,7 @@ async function leadsDoFormulario(
         email: pegaCampo(campos, ['email'], ['e-mail', 'email']),
         cidade: pegaCampo(campos, ['city', 'cidade'], ['cidade', 'municipio', 'município']),
         telefone_divergente: telefoneDivergente,
+        telefone_bruto: telefoneBruto,
         campaign_id: l.campaign_id,
         campaign_name: l.campaign_name,
         adset_id: l.adset_id,
@@ -302,6 +312,27 @@ export const handler: RequestHandler = async (req, res) => {
       const tokenPagina = tokens.get(f.page_id)!;
       const { leads, paginas, erro } = await leadsDoFormulario(f.id, f.nome, tokenPagina, desdeUnix);
       const validos = leads.filter((l) => l.telefone.length >= 10 && !isJunkName(l.nome));
+      // POR QUE cada um caiu, e nao so quantos.
+      //
+      // "45 descartados" nao diz se a Meta entregou lead sem telefone ou se o
+      // leitor esta recusando dado aproveitavel — e sao consertos opostos. Este
+      // caminho contava junto o que o `bpc-sheet-sync` ja separa desde 11/09.
+      // Nenhum valor de cliente sai daqui: so o motivo e a contagem de digitos.
+      const motivosNome: Record<string, number> = {};
+      const motivosTelefone: Record<string, number> = {};
+      for (const l of leads) {
+        const nomeRuim = isJunkName(l.nome);
+        const foneRuim = l.telefone.length < 10;
+        if (!nomeRuim && !foneRuim) continue;
+        if (nomeRuim) {
+          const m = motivoDeNomeRecusado(l.nome);
+          motivosNome[m] = (motivosNome[m] || 0) + 1;
+        }
+        if (foneRuim) {
+          const m = motivoDeTelefoneRecusado(l.telefone_bruto, l.telefone);
+          motivosTelefone[m] = (motivosTelefone[m] || 0) + 1;
+        }
+      }
       // Formulario que le linha e aproveita ZERO nao e "sem lead novo": e
       // mapeamento de campo quebrado. Foi assim que os dois formularios do
       // Israel (817 leads) quase entraram como perda silenciosa. Devolve os
@@ -315,6 +346,8 @@ export const handler: RequestHandler = async (req, res) => {
         lidos: leads.length,
         validos: validos.length,
         descartados_sem_telefone_ou_nome: leads.length - validos.length,
+        motivos_nome_recusado: motivosNome,
+        motivos_telefone_recusado: motivosTelefone,
         telefone_divergente: validos.filter((l) => l.telefone_divergente).length,
         paginas,
         ...(campoQuebrado

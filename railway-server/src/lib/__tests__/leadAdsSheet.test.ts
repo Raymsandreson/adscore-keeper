@@ -12,6 +12,7 @@ import {
   celulaDeTelefone, celulaDeStatusDaEquipe,
   celulaDeNome, celulaDaMeta, celulaDeIdDaMeta, dataDaPlanilha,
   celulaDeDataDoFormulario, celulaDeDataDeFechamento,
+  motivoDeNomeRecusado, motivoDeTelefoneRecusado,
 } from '../leadAdsSheet';
 
 describe('normalizaLeadIdMeta', () => {
@@ -365,5 +366,27 @@ describe('achaCabecalho na planilha traduzida', () => {
       CABECALHO_BPC_TRADUZIDO,
     ];
     expect(achaCabecalho(valores).linha).toBe(1);
+  });
+});
+
+
+describe('motivoDeNomeRecusado', () => {
+  it('separa os motivos que pedem consertos opostos', () => {
+    expect(motivoDeNomeRecusado('')).toBe('celula vazia');
+    expect(motivoDeNomeRecusado('  ')).toBe('celula vazia');
+    expect(motivoDeNomeRecusado('Jo')).toBe('menos de 3 caracteres');
+    expect(motivoDeNomeRecusado('<test lead>')).toBe('placeholder <test');
+    expect(motivoDeNomeRecusado('...')).toBe('so pontos');
+    // Telefone na coluna do nome: o caso que valeu 1.851 linhas em 09/09.
+    expect(motivoDeNomeRecusado('5511988887777')).toBe('sem letra latina');
+  });
+});
+
+describe('motivoDeTelefoneRecusado', () => {
+  it('distingue dado ausente de dado incompleto', () => {
+    expect(motivoDeTelefoneRecusado('', '')).toBe('celula vazia');
+    expect(motivoDeTelefoneRecusado('sem numero', '')).toBe('sem digito nenhum');
+    // Celular sem DDD: dado que existe e nao foi aproveitado.
+    expect(motivoDeTelefoneRecusado('988887777', '988887777')).toBe('9 digitos');
   });
 });

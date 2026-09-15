@@ -24,6 +24,8 @@ import {
   celulaDeDataDoFormulario,
   celulaDeDataDeFechamento,
   dataDaPlanilha,
+  motivoDeNomeRecusado,
+  motivoDeTelefoneRecusado,
   COLUNAS_DE_STATUS_PARA_DIAGNOSTICO,
 } from '../lib/leadAdsSheet';
 
@@ -274,17 +276,9 @@ async function fetchTab(
       descNome += 1;
       if (naJanela) descartadasNaJanela += 1;
       // QUAL das regras de isJunkName reprovou. Classificacao pura: nenhum
-      // valor de cliente sai daqui, so o motivo e um tamanho.
-      const t = String(name || '').trim();
-      const motivo = !t
-        ? 'celula vazia'
-        : t.length < 3
-          ? 'menos de 3 caracteres'
-          : t.startsWith('<test')
-            ? 'placeholder <test'
-            : /^\.+$/.test(t)
-              ? 'so pontos'
-              : 'sem letra latina';
+      // valor de cliente sai daqui, so o motivo e um tamanho. A funcao mora em
+      // `leadAdsSheet` porque o caminho da API da Meta faz a mesma pergunta.
+      const motivo = motivoDeNomeRecusado(name);
       preenchidas[motivo] = (preenchidas[motivo] || 0) + 1;
       for (const [coluna, valor] of Object.entries(o)) {
         const v = String(valor || '').trim();
@@ -304,12 +298,7 @@ async function fetchTab(
       // dado na origem, o outro e aceitar DDD sem o 55.
       //
       // Nenhum numero de cliente sai daqui, so a contagem de digitos.
-      const bruto = String(rawPhone || '').trim();
-      const motivoFone = !bruto
-        ? 'celula vazia'
-        : phone.length === 0
-          ? 'sem digito nenhum'
-          : `${phone.length} digitos`;
+      const motivoFone = motivoDeTelefoneRecusado(rawPhone, phone);
       motivosSemTelefone[motivoFone] = (motivosSemTelefone[motivoFone] || 0) + 1;
       // TELEFONE E EXIGENCIA DE CRIAR, NAO DE IDENTIFICAR.
       //

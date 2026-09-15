@@ -450,3 +450,42 @@ export function celulaDeDataDeFechamento(o: Record<string, string>): string {
   }
   return '';
 }
+
+
+// ============================================================
+// POR QUE A LINHA CAIU
+// ============================================================
+//
+// `isJunkName` e o filtro de telefone dizem SE a linha serve. Nao dizem por que
+// nao serve, e os consertos sao opostos: `<test lead>` e ruido que deve cair,
+// celular sem DDD e dado recuperavel, celula vazia e pedido na origem. Um
+// contador unico ("45 descartados") esconde os tres.
+//
+// O `bpc-sheet-sync` ja classificava assim desde 11/09/2026 — foi o que revelou
+// que as 114 linhas recusadas por telefone eram 45 celulares sem DDD e 42
+// celulas vazias, e nao lixo. O caminho da API da Meta nao classificava, e por
+// isso a mesma pergunta la nao tinha resposta. Estas funcoes servem aos dois.
+
+/** Por que este nome foi recusado. Classificacao pura: nenhum valor sai daqui. */
+export function motivoDeNomeRecusado(nome: string | undefined | null): string {
+  const t = String(nome ?? '').trim();
+  if (!t) return 'celula vazia';
+  if (t.length < 3) return 'menos de 3 caracteres';
+  if (t.startsWith('<test')) return 'placeholder <test';
+  if (/^\.+$/.test(t)) return 'so pontos';
+  return 'sem letra latina';
+}
+
+/**
+ * Por que este telefone foi recusado. So a contagem de digitos sai daqui.
+ *
+ * `9 digitos` e celular sem DDD e `10 digitos` e fixo sem DDI — os dois sao
+ * dado que existe e nao foi aproveitado. `celula vazia` e `sem digito nenhum`
+ * sao pedido na origem. Ver [[grupo-incerto-nao-manda-avisa]]: a saida NUNCA e
+ * adivinhar o DDD.
+ */
+export function motivoDeTelefoneRecusado(bruto: string | undefined | null, normalizado: string): string {
+  if (!String(bruto ?? '').trim()) return 'celula vazia';
+  if (!normalizado.length) return 'sem digito nenhum';
+  return `${normalizado.length} digitos`;
+}
