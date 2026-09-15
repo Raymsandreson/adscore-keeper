@@ -47,6 +47,7 @@ import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { comAcessoCloudPadrao } from '@/lib/cloudApiInstances';
 import { MemberOpenActivities } from './MemberOpenActivities';
 
 interface MemberDetailSheetProps {
@@ -101,7 +102,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   const [oabUf, setOabUf] = useState('');
   const [oabEntries, setOabEntries] = useState<Array<{ id?: string; oab_number: string; oab_uf: string }>>([]);
   const [defaultInstanceId, setDefaultInstanceId] = useState('');
-  const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
+  const [instances, setInstances] = useState<{ id: string; instance_name: string; instance_token?: string | null }[]>([]);
   const [voiceId, setVoiceId] = useState('');
   const [voiceName, setVoiceName] = useState('');
   const [voices, setVoices] = useState<{ id: string; name: string }[]>([]);
@@ -130,7 +131,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   useEffect(() => {
     const fetchInstances = async () => {
       const [instRes, profilesRes] = await Promise.all([
-        db.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+        db.from('whatsapp_instances').select('id, instance_name, instance_token').eq('is_active', true).order('instance_name'),
         supabase.from('access_profiles').select('id, name, description, module_permissions, whatsapp_instance_ids').eq('is_active', true).order('name'),
       ]);
       setInstances(instRes.data || []);
@@ -200,11 +201,13 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
         }
 
         // Update WhatsApp instance permissions in the External DB via admin function.
+        // Mesma regra da criação de acesso (`applyAccessProfile`): perfil sem
+        // nenhuma linha da WhatsApp API marcada recebe a Abraci, o padrão do canal.
         const { data: accessResp, error: accessErr } = await supabase.functions.invoke('admin-whatsapp-instance', {
           body: {
             action: 'replace_user_instance_accesses',
             user_id: member.user_id,
-            instance_ids: profile.whatsapp_instance_ids,
+            instance_ids: comAcessoCloudPadrao(profile.whatsapp_instance_ids, instances),
           },
         });
         if (accessErr || (accessResp as any)?.success === false) {

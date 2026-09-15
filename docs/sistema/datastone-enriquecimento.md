@@ -91,6 +91,32 @@ outra pessoa, para descartar.
 **Custo real:** 37 créditos para 19 leads úteis ≈ **1,95 crédito por lead**.
 Extrapolando a fila inteira (12.245): ~12.000 créditos para ~4.600 leads com CPF.
 
+## Fila de conferência
+
+`nome_confere` é carimbado para **todo** lead que teve nome conferido, com os
+três vereditos (`ok`, `conflito`, `sem_base`). O carimbo acontece antes da
+decisão de gravar, então vale inclusive em `gravar: false`.
+
+Até 15/09/2026 o veredito só era gravado junto do `gravou: true`: o único que
+chegava ao banco era o `ok`, e os 22 conflitos do piloto ficavam com a coluna
+nula — indistinguíveis de uma consulta que nunca conferiu nome. Sem eles não
+havia fila para ninguém revisar, que é o desfecho que o gate pressupõe.
+
+A fila sai daqui:
+
+```sql
+select l.lead_name, c.resposta->0->>'name' as nome_datastone, c.chave_mascarada
+from public.datastone_consultas c
+join public.leads l on l.id = c.lead_id
+where c.nome_confere = 'conflito'
+order by c.created_at desc;
+```
+
+Ela tem duas populações, e é por isso que precisa de gente: o apelido do CRM
+(`ina` ← IVANIA, `sandriinh@` ← ALESSANDRA), que é o mesmo cliente e dá para
+aprovar, e o titular da linha (`Juliana` ← BRUNO, `Jaqueline` ← UBIRAJARA), que
+é outra pessoa e se descarta. Aprovar em bloco perderia a diferença.
+
 ## Como rodar
 
 ```bash
