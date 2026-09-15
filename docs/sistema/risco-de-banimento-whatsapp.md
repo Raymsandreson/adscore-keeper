@@ -147,7 +147,38 @@ menor risco com folga de cota e viva nas últimas 24h. Nunca devolve instância
 muda — trocar um número queimado por outro morto é empurrar o problema para
 debaixo do tapete.
 
-### 4. Painel em tempo real (`RiscoBanimentoPanel`)
+### 4. Painel do freio, com variação de texto pela IA (`FreioDeRitmoSheet`)
+
+Envio barrado não vira toast vermelho: abre painel lateral com a **saída**, que
+muda conforme o motivo.
+
+| Código do gate | O que o painel oferece |
+|---|---|
+| `RITMO_TEXTO_REPETIDO` | 3 variações pela IA (`ai-text-editor`, action `custom`), ou reescrever à mão ali |
+| `RITMO_TETO_DIARIO` | mandar pela instância que o gate sugeriu |
+| `RITMO_INSTANCIA_FORA_DO_AR` | idem |
+| `RITMO_RITMO` | contagem regressiva e envio ao zerar |
+
+Detalhes que não são enfeite:
+
+- **Variação idêntica ao original é descartada.** O `ai-text-editor` devolve o
+  texto de entrada quando a IA está sobrecarregada (`AI_UNAVAILABLE`);
+  oferecê-la mandaria o operador bater na mesma porta, porque o gate barra pelo
+  hash do texto. Nesse caso o painel diz para reescrever à mão.
+- **O botão de enviar fica travado enquanto o texto for o original**, com o
+  motivo escrito na tela.
+- **Falha no reenvio não fecha o painel** — o gate pode barrar de novo por
+  outro motivo, e fechar apagaria o texto que a pessoa acabou de escolher.
+- A instrução de variação repete as proibições da apresentação de indicação
+  (`referral-outreach.ts`): nada de invenção de dado, nada de promessa de
+  resultado, e abertura de telemarketing proibida. Sem isso a IA devolve
+  exatamente o que estamos tentando evitar.
+- O painel mora no `WhatsAppInbox`, onde a abordagem é digitada e onde o
+  listener do evento de reconexão já vivia. Telas que enviam por outro caminho
+  (ficha do lead, formulário de atividade) recebem `showFreioToast`, com o
+  motivo por extenso.
+
+### 5. Painel em tempo real (`RiscoBanimentoPanel`)
 
 Lê o snapshot e assina Realtime (não `setInterval`). Clique abre painel lateral
 por cima, sem redirecionar.
@@ -171,6 +202,31 @@ Edge function: `index.v29.rollback.ts` é o espelho fiel da v29 deployada.
 Sem tudo isso, o sistema volta exatamente ao comportamento de hoje: envia sem
 freio nenhum.
 
+## Achado em produção: o teto está sendo gasto por notificação interna
+
+Olhando `wa_envio_contador` e `wa_texto_usado` no dia do deploy:
+
+| Instância | Números novos hoje | Envios |
+|---|---|---|
+| Luiz Abraci | 16 | 16 |
+| Atendimento Previdenciário 2 | 9 | 9 |
+| Raym | 7 | 7 |
+
+E o conteúdo em `wa_texto_usado` é quase todo **aviso interno para a equipe** —
+`📌 Nova atividade sua`, `🚨 Um cliente precisa de você agora`. Ou seja: o teto
+diário de 40 números novos, que existe para limitar **abordagem a estranho**,
+está sendo consumido por robô avisando colega de trabalho.
+
+Não é urgente (16 de 40), e cada colega custa uma vaga só na primeira vez que
+aquela instância fala com ele — depois é `CONVERSA_EM_ANDAMENTO` e passa livre.
+Mas está errado em princípio, e num dia de muita atividade pode barrar envio de
+cliente por causa de notificação interna.
+
+**Conserto proposto, ainda não feito:** os disparos automáticos de notificação
+(`notify-activity-created` e companhia) passarem `ignore_ritmo: true`, que já
+existe na v30 e deixa rastro no log. Alternativa mais estrutural: o gate não
+contar destino que seja telefone de membro da equipe.
+
 ## O que este sistema NÃO faz
 
 - Não confirma banimento. Só a UazAPI/WhatsApp sabe; aqui se mede silêncio e
@@ -178,8 +234,9 @@ freio nenhum.
 - Não distingue mensagem enviada do celular da enviada pelo sistema no freio.
   O campo existe (`metadata->'message'->>'source'`: `web` = sistema,
   `android` = celular do operador) e ainda não é usado na pontuação.
-- Não sugere texto novo sozinho. O gate acusa a repetição e devolve o aviso;
-  quem reescreve é a tela, pelo `ai-text-editor`.
+- Não reescreve sozinho. A IA propõe 3 variações e **quem escolhe é a pessoa** —
+  nada sai sem alguém clicar. O gate só acusa a repetição; quem redige é o
+  `ai-text-editor` chamado pelo painel (ver seção 4).
 - Todo o outbound do Mateus tem assinatura de origem `unknown` (id de 20
   caracteres), diferente de todas as outras instâncias. Não sei o que gera
   isso. Investigação em aberto.

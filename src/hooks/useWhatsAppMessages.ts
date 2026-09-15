@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { traceHook } from '@/utils/hookTracer';
 import { requestWhatsAppReconnect } from '@/lib/whatsappReconnectEvent';
+import { abrirFreioDeRitmo, isFreioDeRitmoError } from '@/lib/whatsappFreioRitmo';
 import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { ehInstanciaCloud, TOKEN_CLOUD_API } from '@/lib/cloudApiInstances';
 
@@ -981,6 +982,39 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
           showDisconnectedToast(fallbackInstanceId || data.instance_id || '', data.instance_name || targetInstanceName);
           return false;
 
+        }
+        // Freio de abordagem a número novo (edge v30). Não pode virar toast
+        // vermelho genérico: o operador tentaria de novo no mesmo texto, pelo
+        // mesmo número. Abre o painel com a saída — variar o texto, trocar de
+        // instância ou esperar — levando a função de reenvio já amarrada aos
+        // mesmos lead/contato/citação desta chamada.
+        if (isFreioDeRitmoError(data)) {
+          abrirFreioDeRitmo({
+            codigo: String(data.error_code),
+            motivo: String(data.error || 'Abordagem a número novo freada.'),
+            texto: message,
+            telefone: conversationPhone,
+            instanceName: conversationInstanceName || targetInstanceName,
+            instanciaSugerida: data.instancia_sugerida ?? null,
+            esperarSegundos: data.esperar_segundos ?? null,
+            variarTexto: data.variar_texto === true,
+            textoRepetidoEm: data.texto_repetido_em ?? 0,
+            reenviar: (novoTexto, novaInstancia) => sendMessage(
+              phone,
+              novoTexto,
+              contactId,
+              leadId,
+              novaInstancia ?? conversationInstanceName,
+              identifySender,
+              chatId,
+              treatmentOverride,
+              nameFormatOverride,
+              nicknameOverride,
+              mentions,
+              extra,
+            ),
+          });
+          return false;
         }
         if (data?.error_code === 'INVALID_TOKEN' || data?.graph_code === 190) {
           toast.error('Token da Meta inválido ou expirado. Atualize o WHATSAPP_CLOUD_TOKEN no Railway e aplique o deploy.');

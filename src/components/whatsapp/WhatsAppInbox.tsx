@@ -74,6 +74,7 @@ import { LEAD_FIELD_REGISTRY } from '@/components/leads/leadFormFields';
 import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
 import { ehInstanciaCloud, carregarInstanciasCloud, rotuloDaLinha } from '@/lib/cloudApiInstances';
+import { FreioDeRitmoSheet } from './FreioDeRitmoSheet';
 
 const FIELD_LABELS: Record<string, string> = {
   lead_name: 'Nome do Lead', victim_name: 'Nome da Vítima', lead_email: 'E-mail', lead_phone: 'Telefone',
@@ -2869,6 +2870,11 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Painel do freio de abordagem a número novo. Mora aqui, e não no App,
+          porque é aqui que se digita a abordagem — e é aqui que o listener do
+          evento de reconexão já vive. Enquanto fechado não renderiza nada. */}
+      <FreioDeRitmoSheet />
     </div>
   );
 }
