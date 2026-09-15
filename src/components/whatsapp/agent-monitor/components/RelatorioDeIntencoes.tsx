@@ -23,87 +23,47 @@
  * Vinte e três séries num gráfico não se leem. A visualização usa as seis
  * famílias; quem precisa do código exato tem a tabela embaixo, que é onde a
  * pergunta fica específica ("quantos E20 esta semana?").
+ *
+ * TRÊS DECISÕES DE LEITURA (15/09/2026)
+ *
+ * A primeira versão despejava as 23 intenções abertas, em seis colunas, com
+ * sete cores de família disputando a mesma atenção. Cabia tudo na tela e não
+ * se lia nada. O conserto foi tirar peso, não tirar dado:
+ *
+ * 1. COR SÓ ONDE DÓI. Vermelho para o que custa cliente se demorar, verde da
+ *    marca para o que o Dom resolveu, cinza para o resto (ver `../intencoes`).
+ * 2. A TABELA NASCE DOBRADA. Uma seção por família, e só "precisa de gente" e
+ *    "cobrança" abrem sozinhas — as outras ficam com o total à vista e o
+ *    detalhe a um clique. Quem procura E20 abre "precisa de gente"; quem só
+ *    quer saber se tem fogo lê as duas primeiras linhas e vai embora.
+ * 3. TRÊS COLUNAS, NÃO SEIS. "Grupos", "Dom respondeu" e "Calou" saíram da
+ *    grade e entraram no cabeçalho da aba lateral, que é onde a pergunta deixa
+ *    de ser "quanto" e passa a ser "quais".
+ *
+ * E a linha virou clicável: abre `DecisoesDaIntencaoSheet` com as decisões
+ * daquela intenção, por cima do relatório, sem tirar ninguém da tela.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { BarChart3, Loader2, RefreshCw, TriangleAlert } from 'lucide-react';
+import { BarChart3, ChevronRight, Loader2, RefreshCw, TriangleAlert } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { db, ensureExternalSession } from '@/integrations/supabase';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { COR, FAMILIA_DE, ORDEM_FAMILIAS, rotuloDaIntencao } from '../intencoes';
+import { DecisoesDaIntencaoSheet, SEM_CLASSIFICACAO, type ResumoDaIntencao } from './DecisoesDaIntencaoSheet';
 
 const dbAny = db as unknown as {
   rpc: (fn: string, args?: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }>;
 };
 
 /**
- * As 23 intenções em português. O código é o que o modelo devolve; o rótulo é
- * o que a pessoa lê. Manter os dois juntos evita a tela pedir que alguém
- * decore "E20".
- *
- * Esta lista tem um par na `dom-rascunho` (o prompt de classificação). Intenção
- * nova lá precisa entrar aqui, senão aparece como o código cru — que é feio,
- * mas não quebra: o fallback é mostrar o próprio código.
+ * As que abrem sozinhas. São as duas em que demorar custa dinheiro — e as
+ * únicas que alguém precisa ver sem pedir. O resto abre com um clique e some
+ * com outro.
  */
-const ROTULOS: Record<string, string> = {
-  A1: 'Andamento do processo',
-  A2: 'Explicar algo já dito',
-  A3: 'Problema prático (app, acesso)',
-  A4: 'O que ELE precisa fazer',
-  B5: 'Desabafo, ansiedade',
-  B6: 'Notícia boa',
-  B7: 'Notícia ruim, dificuldade',
-  B23: 'Elogio',
-  C8: 'Entregando dado pedido',
-  C9: 'Mandando documento',
-  C10: 'Agendamento',
-  C11: 'Fato novo do caso',
-  D12: 'Só cumprimento',
-  D13: 'Agradecimento, fechamento',
-  D14: 'Assunto fora do caso',
-  D15: 'Mensagem da equipe',
-  E16: 'Reclamação',
-  E17: 'Dinheiro ou prazo',
-  E18: 'Quer falar com alguém',
-  E19: 'Assunto jurídico novo',
-  E20: 'Fala em desistir',
-  E21: 'Pede dinheiro adiantado',
-  E22: 'Indica cliente novo',
-  COBRANCA: 'Cobrança',
-};
-
-/** A letra do código é a família. Serve para cor, ordem e para o gráfico. */
-const FAMILIA_DE = (codigo: string): string => {
-  if (codigo === 'COBRANCA') return 'cobrança';
-  if (codigo.startsWith('A')) return 'perguntou algo';
-  if (codigo.startsWith('B')) return 'desabafo';
-  if (codigo.startsWith('C')) return 'entregou algo';
-  if (codigo.startsWith('D')) return 'não pede resposta';
-  if (codigo.startsWith('E')) return 'precisa de gente';
-  return 'sem classificação';
-};
-
-/**
- * Cores por família. "Precisa de gente" é o vermelho porque é a única em que
- * demorar custa cliente; "não pede resposta" é o cinza porque é ruído saudável
- * (bom-dia, obrigado) e não deve competir por atenção no gráfico.
- */
-const COR: Record<string, string> = {
-  'precisa de gente': '#dc2626',
-  'cobrança': '#ea580c',
-  'perguntou algo': '#2563eb',
-  'entregou algo': '#0d9488',
-  'desabafo': '#7c3aed',
-  'não pede resposta': '#94a3b8',
-  'sem classificação': '#cbd5e1',
-};
-
-/** Ordem fixa no gráfico: o que exige gente em cima, o ruído embaixo. */
-const ORDEM_FAMILIAS = [
-  'precisa de gente', 'cobrança', 'perguntou algo',
-  'entregou algo', 'desabafo', 'não pede resposta', 'sem classificação',
-];
+const FAMILIAS_ABERTAS = new Set(['precisa de gente', 'cobrança']);
 
 const PERIODOS = [
   { dias: 7, rotulo: '7 dias' },
@@ -131,6 +91,8 @@ export function RelatorioDeIntencoes() {
   const [serie, setSerie] = useState<LinhaDia[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+  const [alternadas, setAlternadas] = useState<Set<string>>(new Set());
+  const [intencaoAberta, setIntencaoAberta] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -184,20 +146,57 @@ export function RelatorioDeIntencoes() {
     return t;
   }, [resumo]);
 
-  /** As de gente primeiro, e dentro delas o volume. É a leitura de quem age. */
-  const linhasOrdenadas = useMemo(() => {
-    return [...resumo].sort((a, b) => {
-      const ga = FAMILIA_DE(a.intencao) === 'precisa de gente' ? 0 : 1;
-      const gb = FAMILIA_DE(b.intencao) === 'precisa de gente' ? 0 : 1;
-      if (ga !== gb) return ga - gb;
-      return Number(b.total) - Number(a.total);
-    });
+  /**
+   * A tabela em seções: uma por família, na ordem fixa, e dentro dela as
+   * intenções por volume. É a leitura de quem age — o que exige gente em cima.
+   */
+  const secoes = useMemo(() => {
+    const porFamilia = new Map<string, LinhaResumo[]>();
+    for (const l of resumo) {
+      const f = FAMILIA_DE(l.intencao);
+      const atual = porFamilia.get(f) || [];
+      atual.push(l);
+      porFamilia.set(f, atual);
+    }
+    return ORDEM_FAMILIAS
+      .filter(f => porFamilia.has(f))
+      .map(familia => {
+        const linhas = [...(porFamilia.get(familia) || [])]
+          .sort((a, b) => Number(b.total) - Number(a.total));
+        return {
+          familia,
+          linhas,
+          vezes: linhas.reduce((s, l) => s + Number(l.total), 0),
+          gente: linhas.reduce((s, l) => s + Number(l.precisou_gente), 0),
+        };
+      });
   }, [resumo]);
 
-  const maiorTotal = useMemo(
-    () => Math.max(1, ...resumo.map(l => Number(l.total))),
-    [resumo],
-  );
+  /** O cabeçalho da aba lateral sem recarregar o que a tabela já sabe. */
+  const resumoDaAberta = useMemo<ResumoDaIntencao | null>(() => {
+    const l = resumo.find(x => x.intencao === intencaoAberta);
+    if (!l) return null;
+    return {
+      total: Number(l.total),
+      grupos: Number(l.grupos),
+      precisou_gente: Number(l.precisou_gente),
+      respondeu: Number(l.respondeu),
+      calou: Number(l.calou),
+    };
+  }, [resumo, intencaoAberta]);
+
+  const alternar = (familia: string) => {
+    setAlternadas(atual => {
+      const novo = new Set(atual);
+      if (novo.has(familia)) novo.delete(familia);
+      else novo.add(familia);
+      return novo;
+    });
+  };
+
+  /** Aberta por decisão de quem clicou, ou por nascer assim. */
+  const estaAberta = (familia: string) =>
+    alternadas.has(familia) ? !FAMILIAS_ABERTAS.has(familia) : FAMILIAS_ABERTAS.has(familia);
 
   return (
     <div className="space-y-3">
@@ -245,16 +244,17 @@ export function RelatorioDeIntencoes() {
 
       {resumo.length > 0 && (
         <>
-          {/* Quatro números que resumem o período. */}
+          {/* Quatro números que resumem o período. Só um é vermelho: o que
+              vira trabalho da equipe. */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
               { rotulo: 'mensagens lidas', valor: totais.total, cor: '' },
               { rotulo: 'precisou de gente', valor: totais.precisouGente, cor: 'text-destructive' },
-              { rotulo: 'o Dom respondeu', valor: totais.respondeu, cor: 'text-emerald-600 dark:text-emerald-400' },
+              { rotulo: 'o Dom respondeu', valor: totais.respondeu, cor: 'text-primary' },
               { rotulo: 'não pediam resposta', valor: totais.calou, cor: 'text-muted-foreground' },
             ].map(c => (
-              <div key={c.rotulo} className="rounded-md border bg-muted/30 p-2">
-                <p className={cn('text-lg font-semibold leading-none', c.cor)}>{c.valor}</p>
+              <div key={c.rotulo} className="rounded-md border bg-card p-2">
+                <p className={cn('text-lg font-semibold leading-none tabular-nums', c.cor)}>{c.valor}</p>
                 <p className="text-[10px] text-muted-foreground mt-1">{c.rotulo}</p>
               </div>
             ))}
@@ -288,73 +288,113 @@ export function RelatorioDeIntencoes() {
             </div>
           </div>
 
-          {/* O relatório: uma linha por intenção, com o desfecho. */}
-          <div className="rounded-md border overflow-x-auto">
+          {/* O relatório: uma seção por família, dobrável, e dentro dela uma
+              linha por intenção. Clicar na linha abre o detalhe ao lado. */}
+          <div className="rounded-md border overflow-hidden">
             <table className="w-full text-[11px]">
-              <thead className="bg-muted/50">
-                <tr className="text-left">
-                  <th className="px-2 py-1.5 font-medium">Pedido do cliente</th>
-                  <th className="px-2 py-1.5 font-medium text-right">Vezes</th>
-                  <th className="px-2 py-1.5 font-medium text-right">Grupos</th>
-                  <th className="px-2 py-1.5 font-medium text-right">Precisou de gente</th>
-                  <th className="px-2 py-1.5 font-medium text-right">Dom respondeu</th>
-                  <th className="px-2 py-1.5 font-medium text-right">Calou</th>
+              <thead className="bg-muted/40">
+                <tr className="text-left text-muted-foreground">
+                  <th className="px-2 py-1.5 font-normal">Pedido do cliente</th>
+                  <th className="px-2 py-1.5 font-normal text-right w-16">Vezes</th>
+                  <th className="px-2 py-1.5 font-normal text-right w-32">Precisou de gente</th>
                 </tr>
               </thead>
-              <tbody>
-                {linhasOrdenadas.map(l => {
-                  const familia = FAMILIA_DE(l.intencao);
-                  const deGente = familia === 'precisa de gente';
-                  return (
-                    <tr key={l.intencao} className="border-t">
+              {secoes.map(s => {
+                const aberta = estaAberta(s.familia);
+                return (
+                  <tbody key={s.familia} className="border-t">
+                    <tr
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={aberta}
+                      className="cursor-pointer select-none hover:bg-muted/40 transition-colors"
+                      onClick={() => alternar(s.familia)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          alternar(s.familia);
+                        }
+                      }}
+                    >
                       <td className="px-2 py-1.5">
-                        <div className="flex items-center gap-1.5 min-w-[180px]">
-                          <span
-                            className="h-2 w-2 rounded-full shrink-0"
-                            style={{ backgroundColor: COR[familia] }}
+                        <div className="flex items-center gap-1.5">
+                          <ChevronRight
+                            className={cn('h-3 w-3 text-muted-foreground transition-transform', aberta && 'rotate-90')}
                             aria-hidden
                           />
-                          <span className={cn('truncate', deGente && 'font-medium')}>
-                            {ROTULOS[l.intencao] || l.intencao}
-                          </span>
-                          <span className="text-[9px] text-muted-foreground shrink-0">{l.intencao}</span>
-                        </div>
-                        {/* Barra proporcional: o olho compara volume sem ler número. */}
-                        <div className="mt-1 h-1 w-full rounded bg-muted overflow-hidden">
-                          <div
-                            className="h-full rounded"
-                            style={{
-                              width: `${(Number(l.total) / maiorTotal) * 100}%`,
-                              backgroundColor: COR[familia],
-                            }}
+                          <span
+                            className="h-2 w-2 rounded-full shrink-0"
+                            style={{ backgroundColor: COR[s.familia] }}
+                            aria-hidden
                           />
+                          <span className="font-medium">{s.familia}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {s.linhas.length} {s.linhas.length === 1 ? 'tipo' : 'tipos'}
+                          </span>
                         </div>
                       </td>
-                      <td className="px-2 py-1.5 text-right font-medium tabular-nums">{l.total}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">{l.grupos}</td>
-                      <td className={cn('px-2 py-1.5 text-right tabular-nums', Number(l.precisou_gente) > 0 && 'text-destructive font-medium')}>
-                        {Number(l.precisou_gente) || '—'}
-                      </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
-                        {Number(l.respondeu) || '—'}
-                      </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
-                        {Number(l.calou) || '—'}
+                      <td className="px-2 py-1.5 text-right font-medium tabular-nums">{s.vezes}</td>
+                      <td className={cn(
+                        'px-2 py-1.5 text-right tabular-nums',
+                        s.gente > 0 ? 'text-destructive font-medium' : 'text-muted-foreground',
+                      )}>
+                        {s.gente || '—'}
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
+
+                    {aberta && s.linhas.map(l => (
+                      <tr
+                        key={l.intencao}
+                        role="button"
+                        tabIndex={0}
+                        title="ver as conversas aqui do lado"
+                        className="cursor-pointer border-t border-border/50 hover:bg-muted/40 transition-colors"
+                        onClick={() => setIntencaoAberta(l.intencao)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setIntencaoAberta(l.intencao);
+                          }
+                        }}
+                      >
+                        <td className="px-2 py-1.5">
+                          <div className="flex items-center gap-1.5 pl-[18px] min-w-[180px]">
+                            <span className="truncate">{rotuloDaIntencao(l.intencao)}</span>
+                            {l.intencao !== SEM_CLASSIFICACAO && (
+                              <span className="text-[9px] text-muted-foreground shrink-0">{l.intencao}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{l.total}</td>
+                        <td className={cn(
+                          'px-2 py-1.5 text-right tabular-nums',
+                          Number(l.precisou_gente) > 0 ? 'text-destructive' : 'text-muted-foreground',
+                        )}>
+                          {Number(l.precisou_gente) || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                );
+              })}
             </table>
           </div>
 
           <p className="text-[10px] text-muted-foreground">
             Conta toda decisão do atendente virtual, inclusive quando ele escolheu
             calar. Dia no fuso de Teresina. "Precisou de gente" é o que virou
-            pendência para a equipe responder.
+            pendência para a equipe responder. Clique num pedido para ver as
+            conversas aqui do lado.
           </p>
         </>
       )}
+
+      <DecisoesDaIntencaoSheet
+        intencao={intencaoAberta}
+        dias={dias}
+        resumo={resumoDaAberta}
+        onClose={() => setIntencaoAberta(null)}
+      />
     </div>
   );
 }
