@@ -76,6 +76,11 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   // tem que ser por service role.
   'inss-procuracao-vincular': 'railway',
   'dictate-activity': 'railway',
+  // Rotina semanal por IA (texto/voz/PDF). Estava na edge do Cloud, que mandava a IA
+  // INVENTAR tipos de atividade e nunca recebia os tipos reais (keys `custom_...`) —
+  // a tela descartava tudo e mostrava "a IA não conseguiu mapear". A versão do Railway
+  // recebe os tipos existentes e prende a IA a eles por enum; o Cloud fica de fallback.
+  'suggest-routine': 'railway',
   'chat-to-activity': 'railway',
   'detect-client-commitments': 'railway', // IA lê a conversa e registra o que o cliente ficou de fazer
   'detect-group-case-reports': 'railway', // IA lê os grupos marcados e acha gente relatando acidente

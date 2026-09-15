@@ -360,6 +360,36 @@ Cria uma atividade interna por ditado: "Iniciar gravação" → falar → "Parar
 
 ---
 
+## Configurar Minha Rotina — assistente por voz, texto e documento (15/09/2026)
+
+Onde: `TimeBlockSettingsDialog.tsx` → painel "✨ Organizar rotina com IA".
+
+O que dá para mandar, junto ou separado:
+- **Escrever** no campo de descrição.
+- **Ditar** — botão "Ditar" (`VoiceDictateButton`, o mesmo do chat interno): grava, sobe para `team-chat-media`, `transcribe-team-audio` transcreve com limpeza e o texto **cai no campo** para conferência. Ditar de novo acrescenta ao que já está escrito, não apaga.
+- **Anexar** PDF, print (PNG/JPG/WEBP/HEIC), TXT ou MD — até 4 arquivos, 15MB cada. Sobem para `activity-chat/routine-documents/` e a IA lê pela URL (PDF e print vão como `inlineData`; o Gemini faz o OCR do print).
+
+Depois de gerar, **nada entra na rotina direto**: aparece a prévia com os blocos (tipo, dias, horário) e três saídas — "Substituir rotina", "Somar à rotina atual" ou "Descartar". O que a pessoa pediu e não tem tipo correspondente aparece em destaque laranja, com o nome que ela usou.
+
+### O bug que isso conserta
+
+"Organizar rotina com IA" falhava **sempre** com *"A IA não conseguiu mapear sugestões aos tipos globais existentes"*. Causa: a edge `suggest-routine` mandava a IA **inventar** tipos (`"reuniao"`, `"audiencia"`, `isCustom: true`) e nunca recebia os tipos que existem — cujas keys são `custom_<timestamp>` (ver `useActivityTypes.ts`). A tela só aceitava key existente, então descartava 100% das sugestões. Não era IA instável: era contrato quebrado.
+
+Conserto em três camadas, para o erro não voltar por nenhuma porta:
+1. Os tipos reais vão no corpo da chamada (`available_types`) e viram **`enum`** do parâmetro `activityType` na tool call — a IA fica impedida de devolver key inexistente.
+2. `sanitizeBlocks()` (Railway) descarta o que ainda assim não for key válida e conserta horário impossível (fim antes do início vira +1h) em vez de jogar o bloco fora. Coberto por `railway-server/src/functions/__tests__/suggestRotinaBlocos.test.ts`.
+3. A tela ainda casa por nome normalizado (`matchType`), para o caminho de fallback (edge antiga do Cloud) não voltar de mãos vazias. Quando nada casa, o aviso diz **o que a IA propôs** e manda criar o tipo — em vez do antigo "não conseguiu mapear", que não dava pista nenhuma.
+
+Também consertado no mesmo caminho: os **minutos** sobreviviam ao caminho antigo (08:30 virava 08:00) e a IA **substituía a rotina inteira** sem avisar (`setBlocks(newBlocks)`) — hoje só substitui se a pessoa clicar em "Substituir".
+
+### Onde a função mora
+
+`suggest-routine` roda no **Railway** (`railway-server/src/functions/suggest-routine.ts`; rota em `functionRouter.ts`). A edge do Cloud fica como fallback do roteador, já corrigida no repo mas **só vale depois de `supabase functions deploy suggest-routine --project-ref gliigkupoebmlbwyvijp`**; ela não lê PDF/print, só texto.
+
+A rotina atual vai junto (`current_blocks`), então dá para pedir **ajuste** em vez de recomeçar: "tira a reunião de sexta", "põe meia hora a mais na filtragem".
+
+---
+
 ## Visão Geral — `/dashboard`
 
 **Propósito**: portal que lista dashboards por funil/processo; cada painel carrega sob demanda.

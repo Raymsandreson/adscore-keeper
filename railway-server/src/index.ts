@@ -109,6 +109,7 @@ import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-ag
 import { handler as transcodeAudioOpus } from './functions/transcode-audio-opus';
 import { handler as extractActivityFromDocument } from './functions/extract-activity-from-document';
 import { handler as dictateActivity } from './functions/dictate-activity';
+import { handler as suggestRoutine } from './functions/suggest-routine';
 import { handler as chatToActivity } from './functions/chat-to-activity';
 import { handler as detectClientCommitments } from './functions/detect-client-commitments';
 import { handler as detectGroupCaseReports } from './functions/detect-group-case-reports';
@@ -220,6 +221,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'transcode-audio-opus': transcodeAudioOpus,
   'extract-activity-from-document': extractActivityFromDocument,
   'dictate-activity': dictateActivity,
+  'suggest-routine': suggestRoutine, // rotina semanal por texto/voz/PDF, presa aos tipos que existem
   'chat-to-activity': chatToActivity,
   'detect-client-commitments': detectClientCommitments,
   'detect-group-case-reports': detectGroupCaseReports, // IA lê grupos marcados e acha gente relatando acidente
