@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ehInstanciaCloud, nomesInstanciasCloud, rotuloDaLinha, TOKEN_CLOUD_API } from '../cloudApiInstances';
+import { ehInstanciaCloud, linhaCloudPadrao, nomesInstanciasCloud, rotuloDaLinha, TOKEN_CLOUD_API } from '../cloudApiInstances';
 
 describe('ehInstanciaCloud', () => {
   it('reconhece a linha renomeada', () => {
@@ -53,5 +53,35 @@ describe('rotuloDaLinha', () => {
     expect(rotuloDaLinha('')).toBe('');
     expect(rotuloDaLinha(null)).toBe('');
     expect(rotuloDaLinha(undefined)).toBe('');
+  });
+});
+
+describe('linhaCloudPadrao', () => {
+  // Só a semente vale aqui (sem banco): 'abraci' e 'cloud_gerencia' são as
+  // linhas que o módulo reconhece sem carregar nada.
+  const abraci = { id: 'id-abraci', instance_name: 'abraci' };
+  const gerencia = { id: 'id-gerencia', instance_name: 'cloud_gerencia' };
+  const uazapi = { id: 'id-raym', instance_name: 'Raym' };
+
+  it('abre na linha do nome travado, e não em "todas"', () => {
+    expect(linhaCloudPadrao([uazapi, gerencia, abraci], 'abraci')).toBe('id-abraci');
+  });
+
+  it('ignora caixa e espaço do nome travado', () => {
+    expect(linhaCloudPadrao([gerencia, abraci], '  ABRACI ')).toBe('id-abraci');
+  });
+
+  it('cai em "todas" quando a linha do nome não está disponível', () => {
+    // Renomeada, desativada ou fora do acesso do usuário: melhor mostrar as
+    // outras linhas do que uma caixa vazia sem explicação.
+    expect(linhaCloudPadrao([gerencia, abraci], 'quitepay')).toBe('all');
+  });
+
+  it('com uma única linha Cloud, abre nela mesmo sem casar o nome', () => {
+    expect(linhaCloudPadrao([uazapi, gerencia], 'abraci')).toBe('id-gerencia');
+  });
+
+  it('não considera instância UazAPI', () => {
+    expect(linhaCloudPadrao([uazapi], 'abraci')).toBe('all');
   });
 });
