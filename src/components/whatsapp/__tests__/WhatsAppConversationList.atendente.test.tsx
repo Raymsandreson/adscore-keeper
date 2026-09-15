@@ -82,7 +82,7 @@ const props = {
     ['5511900000003', 'u-karol'],
   ]),
   currentUserId: 'u-israel',
-  hideSharedFilter: true,
+  hideSharedUi: true,
 };
 
 /** Os filtros só existem com a barra aberta (botão "Filtros"). */

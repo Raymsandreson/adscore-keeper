@@ -89,9 +89,11 @@ interface Props {
   cloudAssignees?: Map<string, string>;
   currentUserId?: string | null;
   canSeeAllAssignments?: boolean;
-  /** Caixa travada num canal (menu WhatsApp API): sem conversa compartilhada na
-   *  lista, o chip "Compartilhadas" só marcaria zero — some com ele. */
-  hideSharedFilter?: boolean;
+  /** Caixa travada num canal (menu WhatsApp API): compartilhamento não existe
+   *  ali. Some o chip "Compartilhadas" com os sub-filtros E o selo
+   *  "↓ de Fulano"/"↑ para Fulano" da linha — inclusive o da conversa que está
+   *  na lista por ser do canal e por acaso também foi compartilhada. */
+  hideSharedUi?: boolean;
   /** Busca server-side: mescla no estado conversas fora do top-N carregado. */
   onServerSearch?: (term: string) => Promise<void>;
   /** Carrega a próxima página de conversas (scroll no fim da lista). Retorna se pode haver mais. */
@@ -104,7 +106,7 @@ type SortMode = 'alpha' | 'last_activity';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 
-export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones, cloudAssignees, currentUserId, canSeeAllAssignments, hideSharedFilter, onServerSearch, onLoadMore, hasMore }: Props) {
+export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones, cloudAssignees, currentUserId, canSeeAllAssignments, hideSharedUi, onServerSearch, onLoadMore, hasMore }: Props) {
   const [search, setSearch] = useState('');
   const [loadingMore, setLoadingMore] = useState(false);
   const loadingMoreRef = useRef(false);
@@ -159,8 +161,13 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   // Compartilhamentos que envolvem esta pessoa — recebidos E enviados, de
   // QUALQUER instância. Recortar pela instância selecionada escondia justamente
   // a conversa compartilhada por quem atende em outra instância.
+  //
+  // Caixa travada num canal (menu WhatsApp API) não trata compartilhamento: a
+  // conversa está ali por ser do canal, não pelo share. Zerar a marca aqui
+  // apaga de uma vez o selo "↓ de Fulano"/"↑ para Fulano" da linha, a contagem
+  // do chip e o caminho do filtro — em vez de esconder cada um por fora.
   const shareMarkOf = (conv: WhatsAppConversation): ShareMark | undefined =>
-    marksByKey.get(sharedConversationKey(conv.phone, conv.instance_name));
+    hideSharedUi ? undefined : marksByKey.get(sharedConversationKey(conv.phone, conv.instance_name));
 
   const sharedUnackKeys = useMemo(
     () => new Set(Array.from(marksByKey.values()).filter(m => m.unacknowledged).map(m => m.key)),
@@ -652,7 +659,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     { key: 'activity_pending', label: 'Atividade pendente', icon: <ClipboardList className="h-3 w-3" /> },
     { key: 'calls', label: 'Ligações', icon: <PhoneCall className="h-3 w-3" /> },
     { key: 'groups', label: 'Grupos', icon: <Users className="h-3 w-3" /> },
-    ...(hideSharedFilter ? [] : [{ key: 'shared' as QuickFilter, label: 'Compartilhadas', icon: <Share2 className="h-3 w-3" /> }]),
+    ...(hideSharedUi ? [] : [{ key: 'shared' as QuickFilter, label: 'Compartilhadas', icon: <Share2 className="h-3 w-3" /> }]),
   ];
 
   const counts: Record<QuickFilter, number> = {
@@ -826,7 +833,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
                 </div>
 
                 {/* Sub-filtros das compartilhadas: direção e contraparte */}
-                {quickFilter === 'shared' && !hideSharedFilter && (
+                {quickFilter === 'shared' && !hideSharedUi && (
                   <div className="flex items-center gap-1 flex-wrap px-0.5">
                     {([
                       { key: 'all' as const, label: 'Todas' },
