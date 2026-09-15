@@ -29,7 +29,7 @@ import {
   hashChave,
   type PessoaDataStone,
 } from '../lib/datastone-lead';
-import { conferirNomeDoSegurado } from '../lib/inss-nome-confere';
+import { conferirNomeDoSegurado, type VereditoNome } from '../lib/inss-nome-confere';
 
 const COLUNAS_LEAD =
   'id, lead_name, victim_name, lead_phone, cpf, rg, birth_date, cep, street, street_number, complement, neighborhood, city, state';
@@ -55,6 +55,32 @@ async function gastoDeHoje(): Promise<number> {
     .gt('creditos', 0)
     .gte('created_at', inicio.toISOString());
   return count ?? 0;
+}
+
+/**
+ * Carimba na linha da consulta o veredito do gate de nome.
+ *
+ * Roda para TODO lead que teve nome conferido, e não só para quem passou. Até
+ * 15/09/2026 o veredito era gravado junto do `gravou: true`, no fim do caminho
+ * de sucesso — então justamente o conflito, que é o caso que precisa de gente
+ * olhando, ficava com a coluna nula. No piloto de 50 leads isso deixou 22
+ * linhas mudas: acharam pessoa, foram barradas, e não davam para listar depois.
+ *
+ * A linha é identificada pelo par (chave_hash, lead_id): quando a resposta vem
+ * do cache não há INSERT nesta rodada, e quem recebe o carimbo é a linha
+ * anterior deste mesmo lead.
+ */
+async function registrarVeredito(
+  chave: string,
+  leadId: string,
+  veredito: VereditoNome,
+): Promise<string | null> {
+  const { error } = await ext
+    .from('datastone_consultas')
+    .update({ nome_confere: veredito })
+    .eq('chave_hash', chave)
+    .eq('lead_id', leadId);
+  return error ? error.message : null;
 }
 
 export const handler: RequestHandler = async (req, res) => {
@@ -103,6 +129,7 @@ export const handler: RequestHandler = async (req, res) => {
   let encontrados = 0;
   let gravados = 0;
   let conflitos = 0;
+  let semBase = 0;
   let creditos = 0;
   let tetoAtingido = false;
 
@@ -193,8 +220,16 @@ export const handler: RequestHandler = async (req, res) => {
       leadName: lead.lead_name,
     });
 
+    // O carimbo vem ANTES da decisão de gravar: é ele que torna o lead barrado
+    // visível para a conferência humana depois.
+    const erroVeredito = await registrarVeredito(chave, lead.id, conferencia.veredito);
+    if (erroVeredito) {
+      detalhes.push({ lead_id: lead.id, acao: 'erro_ao_registrar_veredito', motivo: erroVeredito });
+    }
+
     if (conferencia.veredito !== 'ok') {
       if (conferencia.veredito === 'conflito') conflitos++;
+      else semBase++;
       const previa = camposParaGravar(lead, pessoa);
       detalhes.push({
         lead_id: lead.id,
@@ -282,7 +317,7 @@ export const handler: RequestHandler = async (req, res) => {
     gravados++;
     await ext
       .from('datastone_consultas')
-      .update({ gravou: true, nome_confere: 'ok' })
+      .update({ gravou: true })
       .eq('chave_hash', chave)
       .eq('lead_id', lead.id);
 
@@ -311,6 +346,7 @@ export const handler: RequestHandler = async (req, res) => {
     encontrados,
     gravados,
     conflitos,
+    sem_base: semBase,
     creditos_gastos: creditos,
     teto_diario: teto,
     gasto_hoje: gasto,
