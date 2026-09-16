@@ -56,9 +56,11 @@
 --   ALTER TABLE public.referrals
 --     DROP COLUMN converted_lead_id, DROP COLUMN converted_case_id,
 --     DROP COLUMN converted_at,      DROP COLUMN match_method,
---     DROP COLUMN match_confidence,  DROP COLUMN success_kind,
+--     DROP COLUMN match_confidence,  DROP COLUMN match_attempted_at,
+--     DROP COLUMN success_kind,
 --     DROP COLUMN success_label,     DROP COLUMN success_ref,
 --     DROP COLUMN success_at,        DROP COLUMN success_detected_at,
+--     DROP COLUMN success_scanned_at,
 --     DROP COLUMN consent_status,    DROP COLUMN consent_asked_at,
 --     DROP COLUMN consent_answered_at, DROP COLUMN consent_message_id,
 --     DROP COLUMN consent_reply_text, DROP COLUMN thanks_status,
@@ -83,7 +85,20 @@ ALTER TABLE public.referrals
   -- 'ambigua' → mais de um lead casou (3 casos hoje). Fica para conferência
   --             humana: avisar o indicador sobre o desfecho da PESSOA ERRADA é
   --             pior que não avisar.
-  ADD COLUMN IF NOT EXISTS match_confidence text;
+  ADD COLUMN IF NOT EXISTS match_confidence text,
+  -- Rodízio da varredura. Carimbada em TODA tentativa, casando ou não.
+  --
+  -- Sem ela o scan pegava as N mais novas sem lead — e como "não casou" deixa
+  -- `converted_lead_id` nulo, as mesmas N voltavam à fila em toda rodada e as
+  -- mais antigas nunca eram olhadas. Medido antes do conserto: os 6
+  -- deferimentos que existem hoje estavam TODOS na faixa faminta. A
+  -- funcionalidade rodaria para sempre sem achar nada, e o sintoma seria
+  -- indistinguível de "não há nada para avisar".
+  --
+  -- Ordenar por ela com NULLS FIRST põe quem nunca foi tentado na frente; quem
+  -- não casou hoje volta para o fim e é tentado de novo depois — que é o
+  -- comportamento certo, porque o indicado pode virar lead amanhã.
+  ADD COLUMN IF NOT EXISTS match_attempted_at timestamptz;
 
 -- ===== DESFECHO: o caso do indicado deu certo? =====
 ALTER TABLE public.referrals
@@ -96,7 +111,12 @@ ALTER TABLE public.referrals
   ADD COLUMN IF NOT EXISTS success_ref text,
   -- Data do fato (deferimento, acordo, alvará) — não a data em que varremos.
   ADD COLUMN IF NOT EXISTS success_at date,
-  ADD COLUMN IF NOT EXISTS success_detected_at timestamptz;
+  ADD COLUMN IF NOT EXISTS success_detected_at timestamptz,
+  -- Rodízio da busca de desfecho, mesmo papel de `match_attempted_at`. Esta
+  -- fila CRESCE e nunca esvazia — indicado cujo caso nunca ganha fica nela para
+  -- sempre —, então um top-N sobre ordem fixa pararia de olhar as mais antigas
+  -- assim que passasse do teto, em silêncio e meses depois.
+  ADD COLUMN IF NOT EXISTS success_scanned_at timestamptz;
 
 -- ===== CONSENTIMENTO DO INDICADO =====
 ALTER TABLE public.referrals
@@ -132,15 +152,15 @@ ALTER TABLE public.referrals
   ADD COLUMN IF NOT EXISTS thanks_grupo_id text;
 
 -- ===== ÍNDICES =====
--- O scan varre "indicação já ligada a lead e ainda sem desfecho". Sem este
--- índice ele lê as 1.416 linhas a cada rodada; com 50 mil, lê 50 mil.
-CREATE INDEX IF NOT EXISTS idx_referrals_pendente_de_desfecho
-  ON public.referrals (converted_lead_id)
+-- O rodízio da busca de desfecho: quem nunca foi varrido primeiro.
+CREATE INDEX IF NOT EXISTS idx_referrals_rodizio_de_desfecho
+  ON public.referrals (success_scanned_at NULLS FIRST)
   WHERE converted_lead_id IS NOT NULL AND success_detected_at IS NULL;
 
--- O scan de casamento varre o que ainda não tem lead.
-CREATE INDEX IF NOT EXISTS idx_referrals_sem_lead
-  ON public.referrals (shared_at DESC)
+-- O rodízio do casamento: quem nunca foi tentado primeiro, depois o mais antigo
+-- de tentativa. Ordenar por `shared_at` aqui era o que causava a inanição.
+CREATE INDEX IF NOT EXISTS idx_referrals_rodizio_de_casamento
+  ON public.referrals (match_attempted_at NULLS FIRST, shared_at DESC)
   WHERE converted_lead_id IS NULL;
 
 -- O dispatch varre a fila de aviso e a fila de consentimento pendente.

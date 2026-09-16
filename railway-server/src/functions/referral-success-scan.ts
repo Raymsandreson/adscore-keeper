@@ -44,8 +44,21 @@ const ENVIO_LIGADO = (process.env.REFERRAL_AVISO || '').toLowerCase() === 'on';
  */
 const LIMITE_POR_RODADA = Number(process.env.REFERRAL_AVISO_LIMITE || 20);
 
-/** Quantas indicações sem lead tentamos casar por rodada. */
+/**
+ * Quantas indicações sem lead tentamos casar por rodada.
+ *
+ * É um RODÍZIO, não um top-N: a fila é ordenada por `match_attempted_at` com
+ * NULLS FIRST e o carimbo cai em toda tentativa, casando ou não. A primeira
+ * versão pegava as 500 mais NOVAS e, como "não casou" deixa o lead nulo, as
+ * mesmas 500 voltavam à fila para sempre — as mais antigas nunca eram olhadas.
+ * Conferido no banco antes do conserto: os 6 deferimentos que existem hoje
+ * estavam TODOS na faixa faminta. O scan rodaria eternamente sem achar nada, e
+ * o sintoma seria indistinguível de "não há o que avisar".
+ */
 const LIMITE_CASAMENTO = 500;
+
+/** Idem para a busca de desfecho. Também rodízio, nunca top-N. */
+const LIMITE_DETECCAO = 1000;
 
 const digitos = (v?: string | null) => (v || '').replace(/\D/g, '');
 const chave8 = (v?: string | null) => digitos(v).slice(-8);
@@ -109,6 +122,8 @@ async function casarComLeads(dryRun: boolean) {
     .from('referrals')
     .select('id, indicated_phone, indicated_contact_id')
     .is('converted_lead_id', null)
+    // Rodízio: quem nunca foi tentado na frente, depois o carimbo mais velho.
+    .order('match_attempted_at', { ascending: true, nullsFirst: true })
     .order('shared_at', { ascending: false })
     .limit(LIMITE_CASAMENTO);
 
@@ -140,6 +155,17 @@ async function casarComLeads(dryRun: boolean) {
     }
   }
 
+  // O carimbo do rodízio cai em TODAS as linhas olhadas, inclusive as que não
+  // casaram — é ele que faz a fila girar. Numa tacada só: 500 UPDATEs
+  // individuais por rodada seriam 500 idas ao banco para não gravar nada útil.
+  const agoraISO = new Date().toISOString();
+  if (!dryRun) {
+    await supabase
+      .from('referrals')
+      .update({ match_attempted_at: agoraISO })
+      .in('id', linhas.map((l) => l.id));
+  }
+
   let casadas = 0;
   let ambiguas = 0;
   for (const l of linhas) {
@@ -164,7 +190,7 @@ async function casarComLeads(dryRun: boolean) {
       .from('referrals')
       .update({
         converted_lead_id: achados[0],
-        converted_at: new Date().toISOString(),
+        converted_at: agoraISO,
         match_method: metodo,
         match_confidence: 'alta',
       })
@@ -184,10 +210,24 @@ async function detectarDesfechos(dryRun: boolean) {
     .select('id, converted_lead_id')
     .not('converted_lead_id', 'is', null)
     .is('success_detected_at', null)
-    .limit(1000);
+    // Rodízio, pelo mesmo motivo do passo 1: esta fila CRESCE e nunca esvazia
+    // (indicado cujo caso nunca ganha fica aqui para sempre), então um top-N
+    // sobre ordem fixa pararia de olhar as mais antigas assim que passasse do
+    // teto — em silêncio, meses depois.
+    .order('success_scanned_at', { ascending: true, nullsFirst: true })
+    .limit(LIMITE_DETECCAO);
 
   const linhas = (comLead || []) as Array<{ id: string; converted_lead_id: string }>;
   if (!linhas.length) return { olhadas: 0, com_desfecho: 0, para_revisar: 0 };
+
+  // Carimbo do rodízio em todas as olhadas, achando desfecho ou não.
+  const agoraISO = new Date().toISOString();
+  if (!dryRun) {
+    await supabase
+      .from('referrals')
+      .update({ success_scanned_at: agoraISO })
+      .in('id', linhas.map((l) => l.id));
+  }
 
   const leadIds = [...new Set(linhas.map((l) => l.converted_lead_id))];
 
@@ -240,7 +280,7 @@ async function detectarDesfechos(dryRun: boolean) {
         success_label: desfecho.rotulo,
         success_ref: desfecho.ref,
         success_at: desfecho.data,
-        success_detected_at: new Date().toISOString(),
+        success_detected_at: agoraISO,
         // Sentença vai direto para a fila humana e nunca pede autorização
         // sozinha: primeiro alguém confirma que a sentença foi favorável.
         thanks_status: inequivoco ? null : 'revisar',
