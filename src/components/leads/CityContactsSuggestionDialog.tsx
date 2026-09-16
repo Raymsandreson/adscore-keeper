@@ -39,6 +39,10 @@ interface CityContact {
   neighborhood: string | null;
   city: string | null;
   state: string | null;
+  street: string | null;
+  street_number: string | null;
+  complement: string | null;
+  cep: string | null;
 }
 
 export interface CitySuggestTrigger {
@@ -73,6 +77,24 @@ function formatCep(raw: string): string {
 
 function cepDigits(raw: string): string {
   return (raw || '').replace(/\D/g, '');
+}
+
+/**
+ * Endereço do contato como está no cadastro, do mais amplo ao mais específico:
+ * Cidade/UF · bairro · rua, nº, complemento · CEP.
+ * A busca casa cidade normalizada (acento/hífen/caixa), então a grafia gravada
+ * pode diferir da do título — por isso a cidade aparece em cada card, e não só
+ * no cabeçalho. `faltando` é detector, não filtro: o card segue na lista, só
+ * avisa que o cadastro está incompleto.
+ */
+function addressOf(c: CityContact): { partes: string[]; faltando: string | null } {
+  const local = [c.city, c.state].filter(Boolean).join('/');
+  const rua = [[c.street, c.street_number].filter(Boolean).join(', '), c.complement]
+    .filter(Boolean).join(' — ');
+  const cep = cepDigits(c.cep || '').length === 8 ? formatCep(c.cep || '') : '';
+  const partes = [local, c.neighborhood || '', rua, cep].filter(Boolean) as string[];
+  const vazios = [!c.neighborhood && 'bairro', !c.street && 'rua'].filter(Boolean) as string[];
+  return { partes, faltando: vazios.length > 0 ? vazios.join(' e ') : null };
 }
 
 const UNCLASSIFIED = '__none__';
@@ -375,6 +397,7 @@ export function CityContactsSuggestionDialog({ trigger, onClose, leadId, leadNam
       : (c.classification ? [c.classification] : []);
     const linked = links[c.id] || EMPTY_CONTACT_LINKS;
     const busyDetail = loadingShortcut === `detail:${c.id}`;
+    const endereco = addressOf(c);
     return (
       <div key={c.id} className="rounded-lg border bg-card p-3 space-y-2">
         <div className="flex items-start justify-between gap-2">
@@ -390,16 +413,30 @@ export function CityContactsSuggestionDialog({ trigger, onClose, leadId, leadNam
             </div>
           )}
         </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          {c.profession && (
-            <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" />{c.profession}</span>
-          )}
-          {c.neighborhood && (
-            <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{c.neighborhood}</span>
-          )}
-          {c.instagram_username && (
-            <span className="flex items-center gap-1"><Instagram className="h-3 w-3" />@{c.instagram_username.replace(/^@/, '')}</span>
-          )}
+        {(c.profession || c.instagram_username) && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {c.profession && (
+              <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" />{c.profession}</span>
+            )}
+            {c.instagram_username && (
+              <span className="flex items-center gap-1"><Instagram className="h-3 w-3" />@{c.instagram_username.replace(/^@/, '')}</span>
+            )}
+          </div>
+        )}
+
+        {/* Onde a pessoa está, como está no cadastro: cidade/UF, bairro, rua e
+            CEP. Sem isso o card só dizia o bairro (quando havia) e não dava
+            para conferir se o contato é mesmo da cidade da visita. */}
+        <div className="flex items-start gap-1 text-xs text-muted-foreground">
+          <MapPin className="h-3 w-3 mt-[3px] shrink-0" />
+          <span className="break-words">
+            {endereco.partes.length > 0
+              ? endereco.partes.join(' · ')
+              : <span className="italic">Sem endereço no cadastro</span>}
+            {endereco.partes.length > 0 && endereco.faltando && (
+              <span className="italic opacity-70"> · sem {endereco.faltando}</span>
+            )}
+          </span>
         </div>
 
         {/* Etiquetas com atalho: pendência do cliente, lead e caso de onde ele
